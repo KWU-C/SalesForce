@@ -5,20 +5,22 @@ import {
   getActiveSalesDataSourceLabel,
   getSalesProgressDataSource,
 } from "@/repositories/salesProgressRepository";
-import { MOCK_FISCAL_PERIOD } from "@/config/fiscalPeriods";
+import { getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
 import type { CrProgress } from "@/domain/types";
 
 // 営業データは毎リクエスト取得する（ビルド時に静的化しない）。
 // 更新ボタン（router.refresh()）や将来のSalesforce/Sheets接続で
-// 常に最新のデータ・取得日時を返すために必須。
+// 常に最新のデータ・取得日時を返すために必須。事業期・対象月も
+// リクエストごとに現在時刻から算出するため、この設定と併せて必須。
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const dataSource = getSalesProgressDataSource();
+  const fiscalPeriod = getCurrentFiscalPeriod();
 
   let progressByCr: CrProgress[] | null = null;
   try {
-    progressByCr = await dataSource.getCrProgress(MOCK_FISCAL_PERIOD.currentMonth);
+    progressByCr = await dataSource.getCrProgress(fiscalPeriod.currentMonth);
   } catch {
     // 詳細（エラー種別・シート名）は各DataSource実装が既にサーバーログへ
     // 出力済み（repositories/salesDataSourceError.ts）。画面には出さない。
@@ -28,6 +30,7 @@ export default async function Page() {
   return (
     <>
       <Header
+        fiscalPeriod={fiscalPeriod}
         fetchedAt={progressByCr ? new Date() : null}
         dataSourceLabel={getActiveSalesDataSourceLabel()}
       />
@@ -35,7 +38,7 @@ export default async function Page() {
         {progressByCr ? (
           <DashboardClient
             progressByCr={progressByCr}
-            currentMonth={MOCK_FISCAL_PERIOD.currentMonth}
+            currentMonth={fiscalPeriod.currentMonth}
           />
         ) : (
           <DataFetchErrorState />

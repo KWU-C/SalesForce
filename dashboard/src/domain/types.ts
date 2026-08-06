@@ -58,9 +58,9 @@ export interface CrProgress {
   completed: MonthlyProgress[];
 }
 
-/** 対象事業期・対象月の情報（要ユーザー確認、現状は仮値） */
+/** 対象事業期・対象月の情報 */
 export interface FiscalPeriod {
-  /** 事業期数（例: 50期）※要確認、モックの仮値 */
+  /** 事業期数（例: 49期） */
   term: number;
   /** 対象月（暦月、1〜12） */
   currentMonth: number;

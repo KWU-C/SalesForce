@@ -30,8 +30,8 @@ export const FULL_YEAR: { label: string; months: number[] } = {
   months: [...FISCAL_MONTH_ORDER],
 };
 
-/** モック表示用の仮の事業期・対象月（要ユーザー確認、暦月表記） */
+/** モック表示用の事業期・対象月（事業年度は9月始まり〜8月末、ユーザー確定） */
 export const MOCK_FISCAL_PERIOD = {
-  term: 50,
+  term: 49,
   currentMonth: 11,
 };

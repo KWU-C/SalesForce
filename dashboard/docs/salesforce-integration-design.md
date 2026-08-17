@@ -88,7 +88,7 @@ Google Sheets関連実装（`repositories/googleSheets*`, `repositories/parsers/
 
 ## 5. 集計ロジック（案、4節の判断待ち）
 
-### 受注進捗（月別、CRごと）— 比較的自信あり
+### 受注進捗（月別、CRごと）— ユーザー確定（2026-08-17）
 
 ```sql
 SELECT bumonna__c crId,
@@ -97,11 +97,15 @@ SELECT bumonna__c crId,
 FROM Process__c
 WHERE bumonna__c IN ('CR1','CR2','CR3')
   AND juchuubi__c != null
+  AND juchukakudo__c = 'A (80～100%)'
   AND phase__c != '失注'
   AND juchuubi__c >= {期首} AND juchuubi__c <= {期末}
 GROUP BY bumonna__c, CALENDAR_YEAR(juchuubi__c), CALENDAR_MONTH(juchuubi__c)
 ORDER BY bumonna__c, CALENDAR_YEAR(juchuubi__c), CALENDAR_MONTH(juchuubi__c)
 ```
+
+「受注確定分＝受注・納品・請求・入金を全て含む、確度A（80〜100%）のみ」というユーザー定義に基づき、
+受注進捗にも完了進捗と同じ`juchukakudo__c = 'A (80～100%)'`条件を追加（2026-08-17確定）。
 
 ### 完了進捗（月別、CRごと）— ユーザー確定・検算済み（4節）
 
@@ -130,6 +134,7 @@ SELECT bumonna__c crId, rida__r.Name leaderName,
        SUM(uriagegoukei__c) sales, SUM(arari__c) grossProfit, COUNT(Id) cnt
 FROM Process__c
 WHERE bumonna__c IN ('CR1','CR2','CR3')
+  AND juchukakudo__c = 'A (80～100%)'
   AND phase__c != '失注'
   AND juchuubi__c >= {期首} AND juchuubi__c <= {期末}
 GROUP BY bumonna__c, rida__r.Name, CALENDAR_YEAR(juchuubi__c), CALENDAR_MONTH(juchuubi__c)
@@ -254,11 +259,21 @@ GROUP BY bumonna__c, rida__r.Name, CALENDAR_YEAR(seikyuubi__c), CALENDAR_MONTH(s
 - 唯一の注意点: 現在の`MonthlyProgress.targetGrossProfit`は非null（`number`）。目標値をSalesforce以外のソース（6節）から取得する場合、`SalesforceSalesProgressDataSource`の実装内で実績（Salesforce）と目標（別ソース）をマージしてから`MonthlyProgress`を組み立てる必要があるが、これもDataSource内で完結し、UI・Domain型の変更は不要
 - **リーダー単位の詳細（5節に追加）はCR単位UIの無改修とは別の話**。既存のCR単位画面（`DashboardClient`以下）はそのまま無改修で使えるが、リーダー別ドリルダウンを画面に追加する場合はUI層にも新しいコンポーネント・型が必要になる（5節参照）。これは「Salesforce移行に伴うUI改修」ではなく「新機能追加」であり、範囲を混同しないよう注意する
 
-## 13. 次に実施すること（今回はここまで、API接続実装はしない）
+## 13. 実装完了（2026-08-07）
 
-主要な業務定義（完了の定義・CR4の扱い・目標値保存先・売上/粗利項目）は確定・検算済み（10節）。残っているのは、
+1〜4はすべて完了した。
 
-1. 10節#9: OAuth認証方式の最終決定（JWT Bearer FlowまたはClient Credentials Flow、組織のSalesforce Editionでの利用可否確認）
-2. 10節#10: 統合ユーザー・接続アプリケーションの作成（TCD社内のSalesforce管理者への依頼が必要）
-3. 6節: Google Sheets目標値をDomain層でSalesforce実績とマージする具体的な設計（`repositories/salesforceSalesProgressDataSource.ts`実装時に合わせて設計）
-4. 上記が固まり次第、`SalesforceSalesProgressDataSource`等の実装に着手（次フェーズ、まだ着手しない）
+1. ✅ OAuth認証方式: JWT Bearer Flowに確定。組織が「外部クライアントアプリ」方式(新UI)だったため作成手順は本ドキュメント執筆時の想定と異なったが、機能的には同じ
+2. ✅ 統合ユーザー(`sf-dashboard-integration@tcd.jp`)・外部クライアントアプリ(`TCD Dashboard Integration`)・専用権限セット(`SF Dashboard API Read Access`)を作成済み
+3. ✅ 目標値は**Google Sheetsではなく`SalesTarget__c`（Salesforce上の新規カスタムオブジェクト）に変更**（ユーザー方針転換、2026-08-07）。会社全体の年間目標(売上・粗利)のみ保持し、CR3等分・月12等分はアプリ側で計算する。詳細は`[[project_tcd_dashboard]]`メモリ参照
+4. ✅ `SalesforceSalesProgressDataSource`実装完了。構成:
+   - `src/config/salesforce.ts`: JWT設定の環境変数解決
+   - `src/services/salesforce/salesforceClient.ts`: JWT署名(Node標準crypto、外部ライブラリ不使用)＋SOQL実行の薄いクライアント
+   - `src/services/salesforce/salesforceQueries.ts`: 受注/完了/目標のSOQL組み立て（5節のクエリをそのまま実装）
+   - `src/repositories/salesforceRecordMapper.ts`: 集計結果→`MonthlyProgress[]`変換、年間目標の月次按分
+   - `src/repositories/salesforceSalesProgressDataSource.ts`: `SalesProgressDataSource`実装本体
+   - `salesProgressRepository.ts`に`case "salesforce"`追加
+   - テスト16件追加（クエリ組み立て・レコードマッピング・DataSource全体、いずれもフェイク注入で実ネットワーク不使用）、全パス
+   - 実際の`tcd-company`組織に対する疎通確認済み（JWT認証・受注/完了集計クエリ・目標クエリいずれも成功）
+
+**未実施（本番反映には別途ユーザーのGOが必要）**: Secret Manager登録（コンシューマーキー・JWT秘密鍵）、`dashboard/cloudbuild.yaml`の`--set-env-vars`変更（`SALES_DATA_SOURCE=salesforce`への切替）。現在の本番(`tcd-dashboard-prod`)は引き続き`SALES_DATA_SOURCE=mock`のまま

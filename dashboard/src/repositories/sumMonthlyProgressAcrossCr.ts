@@ -16,7 +16,13 @@ export function sumMonthlyProgressAcrossCr(
 ): MonthlyProgress[] {
   const byMonth = new Map<
     number,
-    { sales: number | null; grossProfit: number | null; targetGrossProfit: number }
+    {
+      sales: number | null;
+      grossProfit: number | null;
+      targetGrossProfit: number;
+      targetSales: number | undefined;
+      targetSalesKnown: boolean;
+    }
   >();
 
   for (const series of perCr) {
@@ -25,10 +31,17 @@ export function sumMonthlyProgressAcrossCr(
         sales: null,
         grossProfit: null,
         targetGrossProfit: 0,
+        targetSales: undefined,
+        targetSalesKnown: true,
       };
       if (row.sales !== null) acc.sales = (acc.sales ?? 0) + row.sales;
       if (row.grossProfit !== null) acc.grossProfit = (acc.grossProfit ?? 0) + row.grossProfit;
       acc.targetGrossProfit += row.targetGrossProfit;
+      if (row.targetSales === undefined) {
+        acc.targetSalesKnown = false;
+      } else {
+        acc.targetSales = (acc.targetSales ?? 0) + row.targetSales;
+      }
       byMonth.set(row.month, acc);
     }
   }
@@ -42,6 +55,7 @@ export function sumMonthlyProgressAcrossCr(
       sales: acc.sales,
       grossProfit: acc.grossProfit,
       targetGrossProfit: acc.targetGrossProfit,
+      targetSales: acc.targetSalesKnown ? acc.targetSales : undefined,
       achievementRate:
         acc.grossProfit === null
           ? null

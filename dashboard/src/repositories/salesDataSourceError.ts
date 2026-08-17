@@ -1,4 +1,5 @@
 import { SheetParseError } from "./parsers/sheetGrid";
+import { SalesforceAuthError, SalesforceQueryError } from "@/services/salesforce/salesforceClient";
 
 /**
  * データ取得エラーの分類。UI・ログの両方でこの固定カテゴリのみを扱い、
@@ -53,6 +54,27 @@ export function classifySheetsError(error: unknown): SalesDataSourceErrorCategor
   if (error instanceof Error) {
     if (/環境変数/.test(error.message)) return "CONFIG_ERROR";
     if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|network/i.test(error.message)) {
+      return "NETWORK_ERROR";
+    }
+  }
+
+  return "UNKNOWN_ERROR";
+}
+
+/** SalesforceSalesProgressDataSource用の分類（classifySheetsErrorと同じ固定カテゴリを使う） */
+export function classifySalesforceError(error: unknown): SalesDataSourceErrorCategory {
+  if (error instanceof SalesforceAuthError) return "AUTH_ERROR";
+
+  if (error instanceof SalesforceQueryError) {
+    if (error.status === 401 || error.status === 403) return "AUTH_ERROR";
+    if (error.status === 404) return "NOT_FOUND";
+    return "UNKNOWN_ERROR";
+  }
+
+  if (error instanceof Error) {
+    if (/環境変数/.test(error.message)) return "CONFIG_ERROR";
+    if (/SalesTarget__cに.+のレコードがありません/.test(error.message)) return "NOT_FOUND";
+    if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|fetch failed/i.test(error.message)) {
       return "NETWORK_ERROR";
     }
   }

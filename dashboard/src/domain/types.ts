@@ -35,6 +35,11 @@ export interface MonthlyProgress {
   grossProfit: number | null;
   /** 月間粗利目標額 */
   targetGrossProfit: number;
+  /**
+   * 月間売上目標額。取得元が売上目標を持たない場合（モック・Google Sheets等）は未設定。
+   * Salesforce連携（SalesTarget__c）では設定される
+   */
+  targetSales?: number;
   /** 粗利目標達成率(%)。grossProfitが未入力の場合はnull */
   achievementRate: number | null;
 }
@@ -47,6 +52,8 @@ export interface PeriodSummary {
   sales: number | null;
   grossProfit: number | null;
   targetGrossProfit: number;
+  /** 期間内合計の売上目標額。取得元が売上目標を持たない場合は未設定 */
+  targetSales?: number;
   /** 粗利目標達成率(%)。grossProfitがnullの場合はnull */
   achievementRate: number | null;
 }

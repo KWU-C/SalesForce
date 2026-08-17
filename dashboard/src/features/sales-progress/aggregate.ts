@@ -20,6 +20,9 @@ export function summarizePeriod(
   const sales = sumOrNull(inRange, "sales");
   const grossProfit = sumOrNull(inRange, "grossProfit");
   const targetGrossProfit = inRange.reduce((sum, d) => sum + d.targetGrossProfit, 0);
+  const targetSales = inRange.every((d) => d.targetSales !== undefined)
+    ? inRange.reduce((sum, d) => sum + (d.targetSales as number), 0)
+    : undefined;
   const achievementRate =
     grossProfit === null
       ? null
@@ -27,5 +30,5 @@ export function summarizePeriod(
         ? 0
         : Math.round((grossProfit / targetGrossProfit) * 1000) / 10;
 
-  return { label, months, sales, grossProfit, targetGrossProfit, achievementRate };
+  return { label, months, sales, grossProfit, targetGrossProfit, targetSales, achievementRate };
 }

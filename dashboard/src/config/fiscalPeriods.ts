@@ -49,3 +49,14 @@ export function getCurrentFiscalPeriod(now: Date = new Date()): { term: number; 
 
   return { term: FISCAL_TERM_ANCHOR.term + termsElapsed, currentMonth };
 }
+
+/** 事業期の期首・期末（暦日、YYYY-MM-DD）。SOQLの日付リテラルに使う */
+export function fiscalTermDateRange(term: number): { start: string; end: string } {
+  const startYear = FISCAL_TERM_ANCHOR.year + (term - FISCAL_TERM_ANCHOR.term);
+  const start = new Date(Date.UTC(startYear, FISCAL_TERM_ANCHOR.month - 1, 1));
+  const end = new Date(Date.UTC(startYear + 1, FISCAL_TERM_ANCHOR.month - 1, 1));
+  end.setUTCDate(end.getUTCDate() - 1);
+
+  const toDateOnly = (d: Date) => d.toISOString().slice(0, 10);
+  return { start: toDateOnly(start), end: toDateOnly(end) };
+}

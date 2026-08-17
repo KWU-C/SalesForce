@@ -1,6 +1,9 @@
 substitutions:
   _SERVICE_NAME: tcd-dashboard-dev
   _REGION: asia-northeast1
+  # 本番(tcd-dashboard-prod)のトリガーではこの値を上書きせず、mockのままにする。
+  # devトリガーのみ salesforce を上書き指定する（ユーザーレビュー用、2026-08-07）。
+  _SALES_DATA_SOURCE: mock
 
 steps:
   - id: deploy
@@ -12,7 +15,8 @@ steps:
       - "${_SERVICE_NAME}"
       - --source=dashboard
       - --region=${_REGION}
-      - --set-env-vars=SALES_DATA_SOURCE=mock
+      - --set-env-vars=SALES_DATA_SOURCE=${_SALES_DATA_SOURCE},SALESFORCE_LOGIN_URL=https://tcd-company.my.salesforce.com,SALESFORCE_USERNAME=sf-dashboard-integration@tcd.jp
+      - --set-secrets=SALESFORCE_CONSUMER_KEY=salesforce-consumer-key:latest,SALESFORCE_PRIVATE_KEY=salesforce-jwt-private-key:latest
       - --quiet
 
 options:

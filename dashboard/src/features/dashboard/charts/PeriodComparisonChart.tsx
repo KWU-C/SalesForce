@@ -2,9 +2,10 @@
 
 import {
   Bar,
-  BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -35,6 +36,7 @@ export function PeriodComparisonChart({
 }: PeriodComparisonChartProps) {
   const seriesCurrent = useCssVar(currentColorVar, "#2a78d6");
   const seriesPrevious = useCssVar("--text-muted", "#898781");
+  const seriesTarget = useCssVar("--series-3", "#1baf7a");
   const gridline = useCssVar("--gridline", "#e1e0d9");
   const muted = useCssVar("--text-muted", "#898781");
   const baseline = useCssVar("--baseline", "#c3c2b7");
@@ -44,13 +46,14 @@ export function PeriodComparisonChart({
     month: row.month,
     前期: previous[i]?.grossProfit ?? null,
     今期: row.grossProfit,
+    月次目標: row.targetGrossProfit,
   }));
 
   return (
     <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
       <h3 className="mb-3 text-sm font-medium text-[var(--text-secondary)]">{title}</h3>
       <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+        <ComposedChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
           <CartesianGrid stroke={gridline} vertical={false} />
           <XAxis
             dataKey="month"
@@ -76,7 +79,15 @@ export function PeriodComparisonChart({
           <Legend wrapperStyle={{ fontSize: 12, color: secondary }} />
           <Bar dataKey="前期" fill={seriesPrevious} radius={[4, 4, 0, 0]} />
           <Bar dataKey="今期" fill={seriesCurrent} radius={[4, 4, 0, 0]} />
-        </BarChart>
+          <Line
+            type="monotone"
+            dataKey="月次目標"
+            stroke={seriesTarget}
+            strokeWidth={2}
+            strokeDasharray="4 4"
+            dot={{ r: 3 }}
+          />
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

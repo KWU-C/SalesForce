@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { CrTabs } from "@/components/CrTabs";
 import { StatCard } from "@/components/StatCard";
 import { MonthlyTable } from "@/components/MonthlyTable";
+import { MonthlyCumulativeTable } from "@/components/MonthlyCumulativeTable";
 import { PeriodSummarySection } from "@/components/PeriodSummarySection";
 import { PeriodComparisonChart } from "./charts/PeriodComparisonChart";
 import { summarizePeriod } from "@/features/sales-progress/aggregate";
@@ -85,6 +86,11 @@ export function DashboardClient({
           previous={current.previousCompleted}
           currentColorVar="--series-2"
         />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <MonthlyCumulativeTable title="受注" data={current.order} />
+        <MonthlyCumulativeTable title="完了" data={current.completed} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

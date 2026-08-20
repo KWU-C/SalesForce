@@ -59,13 +59,18 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
       const client = this.getClient();
       const dateRange = fiscalTermDateRange(term);
 
-      const [orderRows, completedRows, targetRows] = await Promise.all([
-        client.query<ProgressAggregateRow>(buildOrderProgressQuery(dateRange)),
-        client.query<ProgressAggregateRow>(buildCompletedProgressQuery(dateRange)),
-        client.query<{ TargetSales__c: number; TargetGrossProfit__c: number }>(
-          buildSalesTargetQuery(term)
-        ),
-      ]);
+      const previousDateRange = fiscalTermDateRange(term - 1);
+
+      const [orderRows, completedRows, targetRows, previousOrderRows, previousCompletedRows] =
+        await Promise.all([
+          client.query<ProgressAggregateRow>(buildOrderProgressQuery(dateRange)),
+          client.query<ProgressAggregateRow>(buildCompletedProgressQuery(dateRange)),
+          client.query<{ TargetSales__c: number; TargetGrossProfit__c: number }>(
+            buildSalesTargetQuery(term)
+          ),
+          client.query<ProgressAggregateRow>(buildOrderProgressQuery(previousDateRange)),
+          client.query<ProgressAggregateRow>(buildCompletedProgressQuery(previousDateRange)),
+        ]);
 
       if (targetRows.length === 0) {
         throw new Error(`SalesTarget__cに${term}期のレコードがありません`);
@@ -75,6 +80,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         targetSales: companyTarget.TargetSales__c / CR_IDS.length,
         targetGrossProfit: companyTarget.TargetGrossProfit__c / CR_IDS.length,
       };
+      // 前期比較チャートは粗利額のみ使い、目標・達成率は表示しないためダミー値でよい
+      const noTarget: AnnualSalesTarget = { targetSales: 0, targetGrossProfit: 0 };
 
       const perCr: CrProgress[] = CR_IDS.map((crId) => ({
         crId,
@@ -84,6 +91,18 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
           crId,
           "completed",
           perCrTarget
+        ),
+        previousOrder: mapAggregateRowsToMonthlyProgress(
+          previousOrderRows,
+          crId,
+          "order",
+          noTarget
+        ),
+        previousCompleted: mapAggregateRowsToMonthlyProgress(
+          previousCompletedRows,
+          crId,
+          "completed",
+          noTarget
         ),
       }));
 
@@ -95,6 +114,14 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         ),
         completed: sumMonthlyProgressAcrossCr(
           perCr.map((p) => p.completed),
+          "completed"
+        ),
+        previousOrder: sumMonthlyProgressAcrossCr(
+          perCr.map((p) => p.previousOrder),
+          "order"
+        ),
+        previousCompleted: sumMonthlyProgressAcrossCr(
+          perCr.map((p) => p.previousCompleted),
           "completed"
         ),
       };

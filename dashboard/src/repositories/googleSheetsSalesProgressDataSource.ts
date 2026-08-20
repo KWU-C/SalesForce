@@ -56,6 +56,9 @@ export class GoogleSheetsSalesProgressDataSource implements SalesProgressDataSou
         perCr.map((p) => p.completed),
         "completed"
       ),
+      // 前期比較チャート用データは未対応（本番投入しない検証用ソースのため）
+      previousOrder: [],
+      previousCompleted: [],
     };
 
     return [all, ...perCr];
@@ -76,7 +79,13 @@ export class GoogleSheetsSalesProgressDataSource implements SalesProgressDataSou
         console.warn(`[GoogleSheetsSalesProgressDataSource] sheet=${sheetLabel}: ${warning}`);
       }
 
-      return { crId, order: order ?? [], completed: completed ?? [] };
+      return {
+        crId,
+        order: order ?? [],
+        completed: completed ?? [],
+        previousOrder: [],
+        previousCompleted: [],
+      };
     } catch (error) {
       const category = classifySheetsError(error);
       console.error(

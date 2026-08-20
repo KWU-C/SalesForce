@@ -63,6 +63,12 @@ export interface CrProgress {
   crId: CrId;
   order: MonthlyProgress[];
   completed: MonthlyProgress[];
+  /**
+   * 前期（1事業期前）の月別受注・完了。前期／今期比較チャート専用で、
+   * targetGrossProfit/achievementRateは比較に使わないため意味を持たない（0扱い）。
+   */
+  previousOrder: MonthlyProgress[];
+  previousCompleted: MonthlyProgress[];
 }
 
 /** 対象事業期・対象月の情報 */

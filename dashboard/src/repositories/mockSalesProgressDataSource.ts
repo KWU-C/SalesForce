@@ -26,14 +26,15 @@ function buildMonthlySeries(
   crId: ConcreteCrId,
   crIndex: number,
   kind: ProgressKind,
-  upToFiscalIndex: number
+  upToFiscalIndex: number,
+  seedOffset = 0
 ): MonthlyProgress[] {
   const baseTarget = 3_000_000 + crIndex * 500_000;
   const margin = MOCK_GROSS_MARGIN[crId];
 
   return FISCAL_MONTH_ORDER.map((calendarMonth, i) => {
     const fiscalIndex = i + 1;
-    const seed = crIndex * 100 + fiscalIndex * 7 + (kind === "order" ? 1 : 2);
+    const seed = seedOffset + crIndex * 100 + fiscalIndex * 7 + (kind === "order" ? 1 : 2);
     const variance = 0.7 + seededRandom(seed) * 0.6;
     const targetGrossProfit = baseTarget + fiscalIndex * 20_000;
     const isFuture = fiscalIndex > upToFiscalIndex;
@@ -59,6 +60,18 @@ function buildMonthlySeries(
   });
 }
 
+/**
+ * 前期（1事業期前）は決算済みのため全月実績があるものとして生成する
+ * （seedOffsetで今期と異なる系列にする。前期／今期比較チャート専用のモック）。
+ */
+function buildPreviousYearSeries(
+  crId: ConcreteCrId,
+  crIndex: number,
+  kind: ProgressKind
+): MonthlyProgress[] {
+  return buildMonthlySeries(crId, crIndex, kind, 12, 1000);
+}
+
 export class MockSalesProgressDataSource implements SalesProgressDataSource {
   async getCrProgress(currentMonth: number): Promise<CrProgress[]> {
     const upToFiscalIndex = fiscalMonthIndex(currentMonth);
@@ -69,17 +82,27 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
     const completedByCr = CR_IDS.map((crId, i) =>
       buildMonthlySeries(crId, i, "completed", upToFiscalIndex)
     );
+    const previousOrderByCr = CR_IDS.map((crId, i) =>
+      buildPreviousYearSeries(crId, i, "order")
+    );
+    const previousCompletedByCr = CR_IDS.map((crId, i) =>
+      buildPreviousYearSeries(crId, i, "completed")
+    );
 
     const perCr: CrProgress[] = CR_IDS.map((crId, i) => ({
       crId,
       order: orderByCr[i],
       completed: completedByCr[i],
+      previousOrder: previousOrderByCr[i],
+      previousCompleted: previousCompletedByCr[i],
     }));
 
     const all: CrProgress = {
       crId: "ALL",
       order: sumMonthlyProgressAcrossCr(orderByCr, "order"),
       completed: sumMonthlyProgressAcrossCr(completedByCr, "completed"),
+      previousOrder: sumMonthlyProgressAcrossCr(previousOrderByCr, "order"),
+      previousCompleted: sumMonthlyProgressAcrossCr(previousCompletedByCr, "completed"),
     };
 
     return [all, ...perCr];

@@ -5,8 +5,7 @@ import { CrTabs } from "@/components/CrTabs";
 import { StatCard } from "@/components/StatCard";
 import { MonthlyTable } from "@/components/MonthlyTable";
 import { PeriodSummarySection } from "@/components/PeriodSummarySection";
-import { AchievementRateChart } from "./charts/AchievementRateChart";
-import { MonthlyComparisonChart } from "./charts/MonthlyComparisonChart";
+import { PeriodComparisonChart } from "./charts/PeriodComparisonChart";
 import { summarizePeriod } from "@/features/sales-progress/aggregate";
 import { FULL_YEAR, HALVES, QUARTERS } from "@/config/fiscalPeriods";
 import type { CrId, CrProgress } from "@/domain/types";
@@ -74,10 +73,17 @@ export function DashboardClient({
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <AchievementRateChart order={current.order} completed={current.completed} />
-        <MonthlyComparisonChart
-          order={current.order}
-          completed={current.completed}
+        <PeriodComparisonChart
+          title="月別受注：前期／今期"
+          current={current.order}
+          previous={current.previousOrder}
+          currentColorVar="--series-1"
+        />
+        <PeriodComparisonChart
+          title="月別完了：前期／今期"
+          current={current.completed}
+          previous={current.previousCompleted}
+          currentColorVar="--series-2"
         />
       </div>
 

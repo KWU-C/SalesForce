@@ -73,7 +73,7 @@ export function MonthlyCumulativeTable({ title, data }: MonthlyCumulativeTablePr
                 key={group.cumulativeLabel}
                 className="border-t border-[var(--border-hairline)] first:border-t-0"
               >
-                <tr className="text-xs text-[var(--text-muted)]">
+                <tr className="bg-[var(--gridline)] text-xs text-[var(--text-muted)]">
                   <th className="px-3 py-1.5 text-left font-normal"> </th>
                   {group.monthsInGroup.map((month) => (
                     <th key={month} className="px-3 py-1.5 text-right font-normal">

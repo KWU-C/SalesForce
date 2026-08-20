@@ -16,6 +16,15 @@ steps:
     entrypoint: npm
     args: ["ci"]
 
+  # next build/devを一度も実行していないフレッシュチェックアウトでは
+  # .next/types/(LayoutProps等のNext.js生成型)が存在せずtscが誤検出で
+  # 失敗するため、型チェック前に型だけ先に生成する(フルビルドより高速)。
+  - id: typegen
+    name: node:22
+    dir: dashboard
+    entrypoint: npx
+    args: ["next", "typegen"]
+
   # 型チェック・lint・テスト・ビルドのいずれかが失敗したらここで停止し、
   # 後続のdeploy stepは実行されない（Cloud Buildはstep失敗時に後続をスキップする）。
   # 直前のCloud Run revisionはそのままトラフィックを受け続けるため、

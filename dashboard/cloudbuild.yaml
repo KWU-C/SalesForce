@@ -1,11 +1,49 @@
 substitutions:
   _SERVICE_NAME: tcd-dashboard-dev
   _REGION: asia-northeast1
-  # 本番(tcd-dashboard-prod)のトリガーではこの値を上書きせず、mockのままにする。
-  # devトリガーのみ salesforce を上書き指定する（ユーザーレビュー用、2026-08-07）。
+  # ファイル側のデフォルトは安全側のmock。実際にはdev/prod両トリガーとも
+  # トリガー自体にSALES_DATA_SOURCE=salesforceが設定されており、そちらが
+  # 優先される（2026-08-20確認・ユーザー方針確定。dev/prodとも実データ運用）。
+  # このデフォルトは、トリガーを介さず手動でgcloud builds submitする場合の
+  # 安全弁として残す。
   _SALES_DATA_SOURCE: mock
 
 steps:
+  # 依存関係インストール（以降のstepはワークスペース共有のためnode_modulesを再利用）
+  - id: install
+    name: node:22
+    dir: dashboard
+    entrypoint: npm
+    args: ["ci"]
+
+  # 型チェック・lint・テスト・ビルドのいずれかが失敗したらここで停止し、
+  # 後続のdeploy stepは実行されない（Cloud Buildはstep失敗時に後続をスキップする）。
+  # 直前のCloud Run revisionはそのままトラフィックを受け続けるため、
+  # 壊れたコードが本番に出ることはない。
+  - id: typecheck
+    name: node:22
+    dir: dashboard
+    entrypoint: npx
+    args: ["tsc", "--noEmit"]
+
+  - id: lint
+    name: node:22
+    dir: dashboard
+    entrypoint: npm
+    args: ["run", "lint"]
+
+  - id: test
+    name: node:22
+    dir: dashboard
+    entrypoint: npm
+    args: ["test"]
+
+  - id: build
+    name: node:22
+    dir: dashboard
+    entrypoint: npm
+    args: ["run", "build"]
+
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
@@ -19,5 +57,53 @@ steps:
       - --set-secrets=SALESFORCE_CONSUMER_KEY=salesforce-consumer-key:latest,SALESFORCE_PRIVATE_KEY=salesforce-jwt-private-key:latest
       - --quiet
 
+  # デプロイ後の稼働確認（ユーザー確定方針、2026-08-20）。
+  # 1) 新revisionがReady状態か 2) URLがHTTP応答を返すか、を確認する。
+  # このサービスはIAP保護下にあるため、未認証curlは200ではなく302/401/403等を
+  # 返し得る。ここでは「応答があるか（5xx/接続不可でないか）」のみを見る
+  # ゆるいチェックにしている（サーバークラッシュの検知が目的で、IAP認証の
+  # 突破自体は目的ではない）。失敗時はビルドを失敗させ、Cloud Loggingに
+  # 記録が残る（Secret・実データの値は一切出力しない）。
+  - id: verify
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        svc="${_SERVICE_NAME}"
+        region="${_REGION}"
+
+        rev=$(gcloud run services describe "$svc" --region="$region" --format='value(status.latestReadyRevisionName)')
+        if [ -z "$rev" ]; then
+          echo "verify: no ready revision found for $svc"
+          exit 1
+        fi
+        echo "verify: latest ready revision = $rev"
+
+        rev_status=$(gcloud run revisions describe "$rev" --region="$region" --format='value(status.conditions[0].status)')
+        if [ "$rev_status" != "True" ]; then
+          echo "verify: revision $rev is not Ready (status=$rev_status)"
+          exit 1
+        fi
+        echo "verify: revision $rev is Ready"
+
+        url=$(gcloud run services describe "$svc" --region="$region" --format='value(status.url)')
+        token=$(gcloud auth print-identity-token --audiences="$url" 2>/dev/null || echo "")
+        if [ -n "$token" ]; then
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" "$url" || echo "000")
+        else
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$url" || echo "000")
+        fi
+        echo "verify: http status = $code"
+        if [ "$code" = "000" ] || [ "$code" -ge 500 ]; then
+          echo "verify: $svc did not respond healthily (http $code)"
+          exit 1
+        fi
+
+        echo "verify: $svc ($url) deploy confirmed healthy, revision $rev"
+
 options:
   logging: CLOUD_LOGGING_ONLY
+
+timeout: 1800s

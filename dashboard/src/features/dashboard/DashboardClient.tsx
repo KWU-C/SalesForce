@@ -87,6 +87,11 @@ export function DashboardClient({
         />
       </div>
 
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <MonthlyTable title="受注" data={current.order} />
+        <MonthlyTable title="完了" data={current.completed} />
+      </div>
+
       <div className="flex flex-col gap-4">
         <PeriodSummarySection title="受注：四半期累計" summaries={orderQuarterSummaries} />
         <PeriodSummarySection title="受注：上半期・下半期累計" summaries={orderHalfSummaries} />
@@ -98,11 +103,6 @@ export function DashboardClient({
           title="完了：上半期・下半期累計"
           summaries={completedHalfSummaries}
         />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <MonthlyTable title="受注" data={current.order} />
-        <MonthlyTable title="完了" data={current.completed} />
       </div>
 
       <p className="pb-2 text-center text-xs text-[var(--text-muted)]">

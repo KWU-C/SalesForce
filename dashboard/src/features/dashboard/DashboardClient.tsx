@@ -5,6 +5,7 @@ import { CrTabs } from "@/components/CrTabs";
 import { StatCard } from "@/components/StatCard";
 import { MonthlyTable } from "@/components/MonthlyTable";
 import { MonthlyCumulativeTable } from "@/components/MonthlyCumulativeTable";
+import { CrossCrProgressTable } from "@/components/CrossCrProgressTable";
 import { PeriodSummarySection } from "@/components/PeriodSummarySection";
 import { PeriodComparisonChart } from "./charts/PeriodComparisonChart";
 import { summarizePeriod } from "@/features/sales-progress/aggregate";
@@ -110,6 +111,8 @@ export function DashboardClient({
           summaries={completedHalfSummaries}
         />
       </div>
+
+      <CrossCrProgressTable progressByCr={progressByCr} currentMonth={currentMonth} />
 
       <p className="pb-2 text-center text-xs text-[var(--text-muted)]">
         表示中: {currentMonth}月時点までの実績（モックデータ）

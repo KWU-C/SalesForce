@@ -10,3 +10,13 @@ export function formatPercent(rate: number): string {
 export function formatThousandYen(amount: number): string {
   return Math.round(amount / 1000).toLocaleString("ja-JP");
 }
+
+/** 月次達成率用。小数点2桁（例: 115.98%） */
+export function formatPercent2(rate: number): string {
+  return `${rate.toFixed(2)}%`;
+}
+
+/** 累積達成率用。整数丸め（例: 116%） */
+export function formatPercentInt(rate: number): string {
+  return `${Math.round(rate)}%`;
+}

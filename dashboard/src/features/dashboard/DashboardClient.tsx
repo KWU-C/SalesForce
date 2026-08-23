@@ -96,7 +96,7 @@ export function DashboardClient({
 
       <CrossCrProgressTable progressByCr={progressByCr} currentMonth={currentMonth} />
 
-      <hr className="border-t-2 border-[var(--baseline)]" />
+      <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <MonthlyTable title="受注" data={current.order} />

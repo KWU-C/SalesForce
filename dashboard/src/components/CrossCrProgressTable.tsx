@@ -118,25 +118,32 @@ export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProg
             </tr>
           </thead>
           <tbody>
-            {monthRows.map((row) => (
-              <tr
-                key={row.month}
-                className={
-                  row.isCurrentMonth ? "bg-[var(--gridline)]" : "border-t border-[var(--gridline)]"
-                }
-              >
-                <td
-                  className={`sticky left-0 z-10 px-3 py-1.5 text-left font-medium text-[var(--text-primary)] ${
-                    row.isCurrentMonth ? "bg-[var(--gridline)]" : "bg-[var(--surface-1)]"
-                  }`}
-                >
-                  {row.month}月{row.isCurrentMonth ? " ←現在月" : ""}
-                </td>
-                {row.columns.map((col) => (
-                  <CrCells key={col.crId} col={col} />
-                ))}
-              </tr>
-            ))}
+            {monthRows.map((row, i) => {
+              const zebra = i % 2 === 0;
+              const rowBg = row.isCurrentMonth
+                ? "bg-[var(--gridline)]"
+                : zebra
+                  ? "bg-[var(--background)]"
+                  : "";
+              const stickyBg = row.isCurrentMonth
+                ? "bg-[var(--gridline)]"
+                : zebra
+                  ? "bg-[var(--background)]"
+                  : "bg-[var(--surface-1)]";
+
+              return (
+                <tr key={row.month} className={`border-t border-[var(--gridline)] ${rowBg}`}>
+                  <td
+                    className={`sticky left-0 z-10 px-3 py-1.5 text-left font-medium text-[var(--text-primary)] ${stickyBg}`}
+                  >
+                    {row.month}月
+                  </td>
+                  {row.columns.map((col) => (
+                    <CrCells key={col.crId} col={col} />
+                  ))}
+                </tr>
+              );
+            })}
             <tr className="border-t-2 border-[var(--baseline)] font-medium">
               <td className="sticky left-0 z-10 bg-[var(--surface-1)] px-3 py-1.5 text-left text-[var(--text-primary)]">
                 合計

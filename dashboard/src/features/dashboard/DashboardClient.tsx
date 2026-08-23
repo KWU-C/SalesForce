@@ -94,6 +94,10 @@ export function DashboardClient({
         <MonthlyCumulativeTable title="完了" data={current.completed} />
       </div>
 
+      <CrossCrProgressTable progressByCr={progressByCr} currentMonth={currentMonth} />
+
+      <hr className="border-t-2 border-[var(--baseline)]" />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <MonthlyTable title="受注" data={current.order} />
         <MonthlyTable title="完了" data={current.completed} />
@@ -111,8 +115,6 @@ export function DashboardClient({
           summaries={completedHalfSummaries}
         />
       </div>
-
-      <CrossCrProgressTable progressByCr={progressByCr} currentMonth={currentMonth} />
 
       <p className="pb-2 text-center text-xs text-[var(--text-muted)]">
         表示中: {currentMonth}月時点までの実績（モックデータ）

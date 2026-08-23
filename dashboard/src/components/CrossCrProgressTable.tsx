@@ -24,7 +24,7 @@ function CrCells({ col }: { col: CrossCrColumn }) {
       <td className="border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right text-[var(--text-secondary)]">
         {formatThousandYen(col.targetGrossProfit)}
       </td>
-      <td className="px-2 py-1.5 text-right text-[var(--text-primary)]">
+      <td className="border-l border-[var(--gridline)] px-2 py-1.5 text-right text-[var(--text-primary)]">
         {col.orderGrossProfit === null ? "—" : formatThousandYen(col.orderGrossProfit)}
       </td>
       <td
@@ -41,7 +41,7 @@ function CrCells({ col }: { col: CrossCrColumn }) {
       >
         {col.orderCumulativeRate === null ? "—" : formatPercentInt(col.orderCumulativeRate)}
       </td>
-      <td className="px-2 py-1.5 text-right text-[var(--text-primary)]">
+      <td className="border-l border-[var(--gridline)] px-2 py-1.5 text-right text-[var(--text-primary)]">
         {col.completedGrossProfit === null ? "—" : formatThousandYen(col.completedGrossProfit)}
       </td>
       <td
@@ -107,10 +107,14 @@ export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProg
                   <th className="border-l-2 border-[var(--baseline)] px-2 py-1 text-right font-normal">
                     目標
                   </th>
-                  <th className="px-2 py-1 text-right font-normal text-[var(--series-1)]">受注</th>
+                  <th className="border-l border-[var(--gridline)] px-2 py-1 text-right font-normal text-[var(--series-1)]">
+                    受注
+                  </th>
                   <th className="px-2 py-1 text-right font-normal text-[var(--series-1)]">達成率</th>
                   <th className="px-2 py-1 text-right font-semibold text-[var(--series-1)]">累計</th>
-                  <th className="px-2 py-1 text-right font-normal text-[var(--series-2)]">完了</th>
+                  <th className="border-l border-[var(--gridline)] px-2 py-1 text-right font-normal text-[var(--series-2)]">
+                    完了
+                  </th>
                   <th className="px-2 py-1 text-right font-normal text-[var(--series-2)]">達成率</th>
                   <th className="px-2 py-1 text-right font-semibold text-[var(--series-2)]">累計</th>
                 </Fragment>
@@ -121,14 +125,14 @@ export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProg
             {monthRows.map((row, i) => {
               const zebra = i % 2 === 0;
               const rowBg = row.isCurrentMonth
-                ? "bg-[var(--gridline)]"
+                ? "bg-[var(--baseline)]"
                 : zebra
-                  ? "bg-[var(--background)]"
+                  ? "bg-[var(--gridline)]"
                   : "";
               const stickyBg = row.isCurrentMonth
-                ? "bg-[var(--gridline)]"
+                ? "bg-[var(--baseline)]"
                 : zebra
-                  ? "bg-[var(--background)]"
+                  ? "bg-[var(--gridline)]"
                   : "bg-[var(--surface-1)]";
 
               return (

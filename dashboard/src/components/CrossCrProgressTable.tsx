@@ -124,16 +124,8 @@ export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProg
           <tbody>
             {monthRows.map((row, i) => {
               const zebra = i % 2 === 0;
-              const rowBg = row.isCurrentMonth
-                ? "bg-[var(--baseline)]"
-                : zebra
-                  ? "bg-[var(--gridline)]"
-                  : "";
-              const stickyBg = row.isCurrentMonth
-                ? "bg-[var(--baseline)]"
-                : zebra
-                  ? "bg-[var(--gridline)]"
-                  : "bg-[var(--surface-1)]";
+              const rowBg = zebra ? "bg-[var(--gridline)]/50" : "";
+              const stickyBg = zebra ? "bg-[var(--gridline)]/50" : "bg-[var(--surface-1)]";
 
               return (
                 <tr key={row.month} className={`border-t border-[var(--gridline)] ${rowBg}`}>

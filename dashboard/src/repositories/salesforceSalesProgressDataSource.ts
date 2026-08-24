@@ -30,11 +30,17 @@ import { rankClients, type ClientDetailRow } from "./clientRanking";
 interface RawClientDetailRow {
   bumonna__c: string;
   clientName__c: string | null;
+  clientGroupName__c: string | null;
   arari__c: number | null;
 }
 
 function toClientDetailRow(row: RawClientDetailRow): ClientDetailRow {
-  return { crId: row.bumonna__c, clientName: row.clientName__c, grossProfit: row.arari__c };
+  return {
+    crId: row.bumonna__c,
+    clientName: row.clientName__c,
+    clientGroupName: row.clientGroupName__c,
+    grossProfit: row.arari__c,
+  };
 }
 
 type ConcreteCrId = Exclude<CrId, "ALL">;
@@ -101,6 +107,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
       ]);
       const orderClientRows = rawOrderClientRows.map(toClientDetailRow);
       const completedClientRows = rawCompletedClientRows.map(toClientDetailRow);
+      // 「◯◯期新規」のラベルは事業期ごとに更新される想定のため、期数はハードコードしない
+      const newClientMarker = `${term}期新規`;
 
       if (targetRows.length === 0) {
         throw new Error(`SalesTarget__cに${term}期のレコードがありません`);
@@ -134,8 +142,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
           "completed",
           noTarget
         ),
-        topOrderClients: rankClients(orderClientRows, crId),
-        topCompletedClients: rankClients(completedClientRows, crId),
+        topOrderClients: rankClients(orderClientRows, crId, newClientMarker),
+        topCompletedClients: rankClients(completedClientRows, crId, newClientMarker),
       }));
 
       const all: CrProgress = {
@@ -156,8 +164,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
           perCr.map((p) => p.previousCompleted),
           "completed"
         ),
-        topOrderClients: rankClients(orderClientRows, "ALL"),
-        topCompletedClients: rankClients(completedClientRows, "ALL"),
+        topOrderClients: rankClients(orderClientRows, "ALL", newClientMarker),
+        topCompletedClients: rankClients(completedClientRows, "ALL", newClientMarker),
       };
 
       return [all, ...perCr];

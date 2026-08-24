@@ -9,6 +9,8 @@ import type { ClientRanking, CrId } from "@/domain/types";
 export interface ClientDetailRow {
   crId: string;
   clientName: string | null;
+  /** クライアントグループ名（例:"49期新規"）。新規判定にのみ使う */
+  clientGroupName: string | null;
   grossProfit: number | null;
 }
 
@@ -17,29 +19,33 @@ const TOP_N = 20;
 /**
  * クライアント別に明細行を合算し、粗利降順で上位を返す。
  * ALLはCRをまたいで同名クライアントを合算し直す。
- * 新規クライアント判定は現状取得できないため、isNewThisTermは常にfalse
- * （Account.kuraiantogurupumei__cが同じライセンス制約で読めないため。
- * 2026-08-24時点、将来的な橋渡し用フィールド追加やライセンス変更を検討中）。
+ * newClientMarkerを含むclientGroupNameを持つ行が1件でもあれば、そのクライアントは
+ * isNewThisTerm=trueとする（例:"49期新規"。事業期ごとに変わるため呼び出し側で
+ * `${term}期新規`のように動的に組み立てる。ハードコードしない）。
  */
 export function rankClients(
   rows: ClientDetailRow[],
   crId: CrId,
+  newClientMarker: string,
   limit: number = TOP_N
 ): ClientRanking[] {
   const inScope = crId === "ALL" ? rows : rows.filter((r) => r.crId === crId);
 
-  const byClientName = new Map<string, number>();
+  const byClientName = new Map<string, { grossProfit: number; isNewThisTerm: boolean }>();
   for (const row of inScope) {
     if (!row.clientName) continue;
-    byClientName.set(row.clientName, (byClientName.get(row.clientName) ?? 0) + (row.grossProfit ?? 0));
+    const acc = byClientName.get(row.clientName) ?? { grossProfit: 0, isNewThisTerm: false };
+    acc.grossProfit += row.grossProfit ?? 0;
+    if (row.clientGroupName?.includes(newClientMarker)) acc.isNewThisTerm = true;
+    byClientName.set(row.clientName, acc);
   }
 
   return [...byClientName.entries()]
-    .map(([clientName, grossProfit]) => ({
+    .map(([clientName, acc]) => ({
       clientId: clientName,
       clientName,
-      isNewThisTerm: false,
-      grossProfit,
+      isNewThisTerm: acc.isNewThisTerm,
+      grossProfit: acc.grossProfit,
     }))
     .sort((a, b) => b.grossProfit - a.grossProfit)
     .slice(0, limit);

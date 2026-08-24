@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
 import type { SalesforceQueryClient } from "@/services/salesforce/salesforceClient";
 import { SalesforceQueryError } from "@/services/salesforce/salesforceClient";
 import { SalesforceSalesProgressDataSource } from "./salesforceSalesProgressDataSource";
@@ -84,18 +85,36 @@ describe("SalesforceSalesProgressDataSource", () => {
     });
   });
 
-  it("builds top-client rankings per CR from clientName__c detail rows and re-aggregates for ALL", async () => {
+  it("builds top-client rankings per CR from clientName__c detail rows, re-aggregates for ALL, and flags 今期新規 via clientGroupName__c", async () => {
     // クライアントランキングクエリは非集計(列エイリアス不可)なので、フェイクの
     // レスポンスもフィールドAPI名そのまま(実際のSalesforceレスポンスの形)にする
+    const { term } = getCurrentFiscalPeriod();
     const client = new FakeSalesforceQueryClient({
       order: [],
       completed: [],
       target: TARGET_ROW,
       orderClients: [
-        { bumonna__c: "CR1", clientName__c: "株式会社サンプル", arari__c: 5_000_000 },
-        { bumonna__c: "CR1", clientName__c: "テスト商事", arari__c: 1_000_000 },
+        {
+          bumonna__c: "CR1",
+          clientName__c: "株式会社サンプル",
+          clientGroupName__c: `${term}期新規`,
+          arari__c: 5_000_000,
+        },
+        {
+          bumonna__c: "CR1",
+          clientName__c: "テスト商事",
+          clientGroupName__c: "Ｃグループ",
+          arari__c: 1_000_000,
+        },
       ],
-      completedClients: [{ bumonna__c: "CR2", clientName__c: "デモ工業", arari__c: 2_000_000 }],
+      completedClients: [
+        {
+          bumonna__c: "CR2",
+          clientName__c: "デモ工業",
+          clientGroupName__c: null,
+          arari__c: 2_000_000,
+        },
+      ],
     });
     const dataSource = new SalesforceSalesProgressDataSource(client);
 
@@ -104,11 +123,12 @@ describe("SalesforceSalesProgressDataSource", () => {
     const all = result.find((p) => p.crId === "ALL")!;
 
     expect(cr1.topOrderClients.map((c) => c.clientName)).toEqual(["株式会社サンプル", "テスト商事"]);
-    // 新規判定は現状Salesforce側で取得できないため常にfalse(2026-08-24時点)
-    expect(cr1.topOrderClients.every((c) => c.isNewThisTerm === false)).toBe(true);
+    expect(cr1.topOrderClients[0].isNewThisTerm).toBe(true);
+    expect(cr1.topOrderClients[1].isNewThisTerm).toBe(false);
 
     // ALLはCR1〜3横断で再集計されるため、CR2の完了ランキングもここに含まれる
     expect(all.topCompletedClients.map((c) => c.clientName)).toEqual(["デモ工業"]);
+    expect(all.topCompletedClients[0].isNewThisTerm).toBe(false);
   });
 
   it("classifies a 401/403 query error as AUTH_ERROR and never logs the raw message", async () => {

@@ -13,7 +13,7 @@ interface CrossCrProgressTableProps {
 }
 
 function statusColor(rate: number): string | undefined {
-  if (rate < 0) return "var(--status-serious)";
+  if (rate < 100) return "var(--status-serious)";
   return undefined;
 }
 

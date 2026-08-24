@@ -23,7 +23,7 @@ export const CUMULATIVE_GROUPS = GROUP_BOUNDARIES.map((end, i) => ({
 }));
 
 function statusColor(rate: number): string | undefined {
-  if (rate < 0) return "var(--status-serious)";
+  if (rate < 100) return "var(--status-serious)";
   return undefined;
 }
 

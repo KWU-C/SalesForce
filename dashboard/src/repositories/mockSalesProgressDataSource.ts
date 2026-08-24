@@ -2,7 +2,7 @@ import { FISCAL_MONTH_ORDER, fiscalMonthIndex } from "@/config/fiscalPeriods";
 import type { CrId, CrProgress, MonthlyProgress, ProgressKind } from "@/domain/types";
 import type { SalesProgressDataSource } from "./salesProgressDataSource";
 import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
-import { rankClients, type ClientAggregateRow } from "./clientRanking";
+import { rankClients, type ClientDetailRow } from "./clientRanking";
 
 type ConcreteCrId = Exclude<CrId, "ALL">;
 
@@ -75,27 +75,22 @@ function buildPreviousYearSeries(
 
 const CLIENTS_PER_CR = 25;
 
-/** クライアントランキング用の仮データ（受注/完了で別系列にするためseedOffsetを変える） */
-function buildClientRows(
-  crId: ConcreteCrId,
-  crIndex: number,
-  seedOffset: number
-): { rows: ClientAggregateRow[]; names: Map<string, string>; newIds: Set<string> } {
-  const rows: ClientAggregateRow[] = [];
-  const names = new Map<string, string>();
-  const newIds = new Set<string>();
+/**
+ * クライアントランキング用の仮データ（受注/完了で別系列にするためseedOffsetを変える）。
+ * 実データ側(clientName__c)がクライアント名文字列でしか名寄せできないのに合わせ、
+ * モックも安定IDではなくクライアント名だけを持つ形にしている
+ * （新規クライアント判定はSalesforce側が未対応のため、モックでも生成しない）。
+ */
+function buildClientRows(crId: ConcreteCrId, crIndex: number, seedOffset: number): ClientDetailRow[] {
+  const rows: ClientDetailRow[] = [];
 
   for (let n = 0; n < CLIENTS_PER_CR; n++) {
-    const clientId = `${crId}-client-${n}`;
     const seed = seedOffset + crIndex * 1000 + n * 13;
     const grossProfit = Math.round((200_000 + seededRandom(seed) * 4_000_000) / 1000) * 1000;
-    rows.push({ crId, clientId, grossProfit });
-    names.set(clientId, `サンプル商事${crIndex + 1}-${n + 1}`);
-    // 数件だけ「今期新規」扱いにする（モックなので固定インデックス）
-    if (n % 11 === 0) newIds.add(clientId);
+    rows.push({ crId, clientName: `サンプル商事${crIndex + 1}-${n + 1}`, grossProfit });
   }
 
-  return { rows, names, newIds };
+  return rows;
 }
 
 export class MockSalesProgressDataSource implements SalesProgressDataSource {
@@ -115,16 +110,8 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
       buildPreviousYearSeries(crId, i, "completed")
     );
 
-    const orderClientData = CR_IDS.map((crId, i) => buildClientRows(crId, i, 5000));
-    const completedClientData = CR_IDS.map((crId, i) => buildClientRows(crId, i, 6000));
-    const orderClientRows = orderClientData.flatMap((d) => d.rows);
-    const completedClientRows = completedClientData.flatMap((d) => d.rows);
-    const clientNames = new Map(
-      [...orderClientData, ...completedClientData].flatMap((d) => [...d.names])
-    );
-    const newClientIds = new Set(
-      [...orderClientData, ...completedClientData].flatMap((d) => [...d.newIds])
-    );
+    const orderClientRows = CR_IDS.flatMap((crId, i) => buildClientRows(crId, i, 5000));
+    const completedClientRows = CR_IDS.flatMap((crId, i) => buildClientRows(crId, i, 6000));
 
     const perCr: CrProgress[] = CR_IDS.map((crId, i) => ({
       crId,
@@ -132,8 +119,8 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
       completed: completedByCr[i],
       previousOrder: previousOrderByCr[i],
       previousCompleted: previousCompletedByCr[i],
-      topOrderClients: rankClients(orderClientRows, crId, clientNames, newClientIds),
-      topCompletedClients: rankClients(completedClientRows, crId, clientNames, newClientIds),
+      topOrderClients: rankClients(orderClientRows, crId),
+      topCompletedClients: rankClients(completedClientRows, crId),
     }));
 
     const all: CrProgress = {
@@ -142,8 +129,8 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
       completed: sumMonthlyProgressAcrossCr(completedByCr, "completed"),
       previousOrder: sumMonthlyProgressAcrossCr(previousOrderByCr, "order"),
       previousCompleted: sumMonthlyProgressAcrossCr(previousCompletedByCr, "completed"),
-      topOrderClients: rankClients(orderClientRows, "ALL", clientNames, newClientIds),
-      topCompletedClients: rankClients(completedClientRows, "ALL", clientNames, newClientIds),
+      topOrderClients: rankClients(orderClientRows, "ALL"),
+      topCompletedClients: rankClients(completedClientRows, "ALL"),
     };
 
     return [all, ...perCr];

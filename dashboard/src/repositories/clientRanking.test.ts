@@ -1,81 +1,82 @@
 import { describe, expect, it } from "vitest";
-import { rankClients, type ClientAggregateRow } from "./clientRanking";
-
-const NAMES = new Map([
-  ["c1", "株式会社A"],
-  ["c2", "株式会社B"],
-  ["c3", "株式会社C"],
-]);
+import { rankClients, type ClientDetailRow } from "./clientRanking";
 
 describe("rankClients", () => {
-  it("sorts descending by grossProfit and attaches the resolved client name", () => {
-    const rows: ClientAggregateRow[] = [
-      { crId: "CR1", clientId: "c1", grossProfit: 100 },
-      { crId: "CR1", clientId: "c2", grossProfit: 300 },
-      { crId: "CR1", clientId: "c3", grossProfit: 200 },
+  it("sums per-record grossProfit by clientName and sorts descending", () => {
+    const rows: ClientDetailRow[] = [
+      { crId: "CR1", clientName: "株式会社A", grossProfit: 100 },
+      { crId: "CR1", clientName: "株式会社B", grossProfit: 300 },
+      { crId: "CR1", clientName: "株式会社A", grossProfit: 50 },
     ];
 
-    const result = rankClients(rows, "CR1", NAMES, new Set());
+    const result = rankClients(rows, "CR1");
 
-    expect(result.map((r) => r.clientId)).toEqual(["c2", "c3", "c1"]);
-    expect(result[0].clientName).toBe("株式会社B");
-    expect(result[0].grossProfit).toBe(300);
+    expect(result.map((r) => r.clientName)).toEqual(["株式会社B", "株式会社A"]);
+    expect(result[1].grossProfit).toBe(150);
   });
 
   it("filters to the given CR only when crId is not ALL", () => {
-    const rows: ClientAggregateRow[] = [
-      { crId: "CR1", clientId: "c1", grossProfit: 100 },
-      { crId: "CR2", clientId: "c2", grossProfit: 999 },
+    const rows: ClientDetailRow[] = [
+      { crId: "CR1", clientName: "株式会社A", grossProfit: 100 },
+      { crId: "CR2", clientName: "株式会社B", grossProfit: 999 },
     ];
 
-    const result = rankClients(rows, "CR1", NAMES, new Set());
+    const result = rankClients(rows, "CR1");
 
     expect(result).toHaveLength(1);
-    expect(result[0].clientId).toBe("c1");
+    expect(result[0].clientName).toBe("株式会社A");
   });
 
-  it("ALL re-aggregates the same client across CRs instead of listing it twice", () => {
-    const rows: ClientAggregateRow[] = [
-      { crId: "CR1", clientId: "c1", grossProfit: 100 },
-      { crId: "CR2", clientId: "c1", grossProfit: 50 },
-      { crId: "CR3", clientId: "c2", grossProfit: 80 },
+  it("ALL re-aggregates the same client name across CRs instead of listing it twice", () => {
+    const rows: ClientDetailRow[] = [
+      { crId: "CR1", clientName: "株式会社A", grossProfit: 100 },
+      { crId: "CR2", clientName: "株式会社A", grossProfit: 50 },
+      { crId: "CR3", clientName: "株式会社B", grossProfit: 80 },
     ];
 
-    const result = rankClients(rows, "ALL", NAMES, new Set());
+    const result = rankClients(rows, "ALL");
 
     expect(result).toHaveLength(2);
-    const c1 = result.find((r) => r.clientId === "c1")!;
-    expect(c1.grossProfit).toBe(150);
+    expect(result.find((r) => r.clientName === "株式会社A")!.grossProfit).toBe(150);
   });
 
-  it("marks isNewThisTerm from the given client-id set", () => {
-    const rows: ClientAggregateRow[] = [
-      { crId: "CR1", clientId: "c1", grossProfit: 100 },
-      { crId: "CR1", clientId: "c2", grossProfit: 90 },
+  it("skips rows with no client name (kuraiantomei__c not set on the record)", () => {
+    const rows: ClientDetailRow[] = [
+      { crId: "CR1", clientName: null, grossProfit: 500 },
+      { crId: "CR1", clientName: "株式会社A", grossProfit: 100 },
     ];
 
-    const result = rankClients(rows, "CR1", NAMES, new Set(["c2"]));
+    const result = rankClients(rows, "CR1");
 
-    expect(result.find((r) => r.clientId === "c1")!.isNewThisTerm).toBe(false);
-    expect(result.find((r) => r.clientId === "c2")!.isNewThisTerm).toBe(true);
+    expect(result).toHaveLength(1);
+    expect(result[0].clientName).toBe("株式会社A");
+  });
+
+  it("treats a null grossProfit record as a 0 contribution rather than dropping the client", () => {
+    const rows: ClientDetailRow[] = [
+      { crId: "CR1", clientName: "株式会社A", grossProfit: null },
+      { crId: "CR1", clientName: "株式会社A", grossProfit: 100 },
+    ];
+
+    const result = rankClients(rows, "CR1");
+
+    expect(result[0].grossProfit).toBe(100);
+  });
+
+  it("always reports isNewThisTerm as false (新規判定は現状未対応、2026-08-24)", () => {
+    const rows: ClientDetailRow[] = [{ crId: "CR1", clientName: "株式会社A", grossProfit: 100 }];
+
+    expect(rankClients(rows, "CR1")[0].isNewThisTerm).toBe(false);
   });
 
   it("caps the result at the given limit (default 20)", () => {
-    const rows: ClientAggregateRow[] = Array.from({ length: 30 }, (_, i) => ({
+    const rows: ClientDetailRow[] = Array.from({ length: 30 }, (_, i) => ({
       crId: "CR1",
-      clientId: `c${i}`,
+      clientName: `株式会社${i}`,
       grossProfit: i,
     }));
 
-    expect(rankClients(rows, "CR1", new Map(), new Set())).toHaveLength(20);
-    expect(rankClients(rows, "CR1", new Map(), new Set(), 5)).toHaveLength(5);
-  });
-
-  it("falls back to the raw clientId as the name when no Account name was resolved", () => {
-    const rows: ClientAggregateRow[] = [{ crId: "CR1", clientId: "unknown-id", grossProfit: 10 }];
-
-    const result = rankClients(rows, "CR1", new Map(), new Set());
-
-    expect(result[0].clientName).toBe("unknown-id");
+    expect(rankClients(rows, "CR1")).toHaveLength(20);
+    expect(rankClients(rows, "CR1", 5)).toHaveLength(5);
   });
 });

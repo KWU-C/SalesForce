@@ -1,39 +1,44 @@
 import type { ClientRanking, CrId } from "@/domain/types";
 
-/** SOQL集計クエリ（buildOrder/CompletedClientRankingQuery）の1行 */
-export interface ClientAggregateRow {
+/**
+ * SOQL明細クエリ（buildOrder/CompletedClientRankingQuery）の1行。
+ * クライアント名の名寄せキーはclientName__c(文字列)のみ。Account Idのような
+ * 安定した識別子は連携ユーザーのライセンス制約で取得できない
+ * （services/salesforce/salesforceQueries.tsのコメント参照）。
+ */
+export interface ClientDetailRow {
   crId: string;
-  clientId: string;
-  grossProfit: number;
+  clientName: string | null;
+  grossProfit: number | null;
 }
 
 const TOP_N = 20;
 
 /**
- * クライアント別集計行を、指定CR(ALLの場合は全CR横断で再集計)でランキングする。
- * ALLは単純に全行を合算するのではなく、クライアント単位でCRをまたいで合算し直す
- * （同じクライアントが複数CRにまたがって取引している場合、二重の別クライアント
- * 扱いにならないようにするため）。
+ * クライアント別に明細行を合算し、粗利降順で上位を返す。
+ * ALLはCRをまたいで同名クライアントを合算し直す。
+ * 新規クライアント判定は現状取得できないため、isNewThisTermは常にfalse
+ * （Account.kuraiantogurupumei__cが同じライセンス制約で読めないため。
+ * 2026-08-24時点、将来的な橋渡し用フィールド追加やライセンス変更を検討中）。
  */
 export function rankClients(
-  rows: ClientAggregateRow[],
+  rows: ClientDetailRow[],
   crId: CrId,
-  clientNames: Map<string, string>,
-  newClientIds: Set<string>,
   limit: number = TOP_N
 ): ClientRanking[] {
   const inScope = crId === "ALL" ? rows : rows.filter((r) => r.crId === crId);
 
-  const byClient = new Map<string, number>();
+  const byClientName = new Map<string, number>();
   for (const row of inScope) {
-    byClient.set(row.clientId, (byClient.get(row.clientId) ?? 0) + row.grossProfit);
+    if (!row.clientName) continue;
+    byClientName.set(row.clientName, (byClientName.get(row.clientName) ?? 0) + (row.grossProfit ?? 0));
   }
 
-  return [...byClient.entries()]
-    .map(([clientId, grossProfit]) => ({
-      clientId,
-      clientName: clientNames.get(clientId) ?? clientId,
-      isNewThisTerm: newClientIds.has(clientId),
+  return [...byClientName.entries()]
+    .map(([clientName, grossProfit]) => ({
+      clientId: clientName,
+      clientName,
+      isNewThisTerm: false,
       grossProfit,
     }))
     .sort((a, b) => b.grossProfit - a.grossProfit)

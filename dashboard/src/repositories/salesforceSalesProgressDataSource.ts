@@ -8,7 +8,6 @@ import {
 } from "@/services/salesforce/salesforceClient";
 import type { SalesforceQueryClient } from "@/services/salesforce/salesforceClient";
 import {
-  buildClientNamesQuery,
   buildCompletedClientRankingQuery,
   buildCompletedProgressQuery,
   buildOrderClientRankingQuery,
@@ -20,13 +19,7 @@ import { mapAggregateRowsToMonthlyProgress } from "./salesforceRecordMapper";
 import { classifySalesforceError, SalesDataSourceError } from "./salesDataSourceError";
 import type { SalesProgressDataSource } from "./salesProgressDataSource";
 import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
-import { rankClients, type ClientAggregateRow } from "./clientRanking";
-
-interface AccountRow {
-  Id: string;
-  Name: string;
-  kuraiantogurupumei__c: string | null;
-}
+import { rankClients, type ClientDetailRow } from "./clientRanking";
 
 type ConcreteCrId = Exclude<CrId, "ALL">;
 
@@ -87,26 +80,9 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         ),
         client.query<ProgressAggregateRow>(buildOrderProgressQuery(previousDateRange)),
         client.query<ProgressAggregateRow>(buildCompletedProgressQuery(previousDateRange)),
-        client.query<ClientAggregateRow>(buildOrderClientRankingQuery(dateRange)),
-        client.query<ClientAggregateRow>(buildCompletedClientRankingQuery(dateRange)),
+        client.query<ClientDetailRow>(buildOrderClientRankingQuery(dateRange)),
+        client.query<ClientDetailRow>(buildCompletedClientRankingQuery(dateRange)),
       ]);
-
-      // クライアント名・新規判定はランキング対象に出てきたクライアントIdだけ解決する
-      const distinctClientIds = [
-        ...new Set([...orderClientRows, ...completedClientRows].map((r) => r.clientId)),
-      ];
-      const accountRows =
-        distinctClientIds.length > 0
-          ? await client.query<AccountRow>(buildClientNamesQuery(distinctClientIds))
-          : [];
-      const clientNames = new Map(accountRows.map((a) => [a.Id, a.Name]));
-      // 「◯◯期新規」のラベルは事業期ごとに更新される想定のため、期数はハードコードしない
-      const newClientMarker = `${term}期新規`;
-      const newClientIds = new Set(
-        accountRows
-          .filter((a) => (a.kuraiantogurupumei__c ?? "").includes(newClientMarker))
-          .map((a) => a.Id)
-      );
 
       if (targetRows.length === 0) {
         throw new Error(`SalesTarget__cに${term}期のレコードがありません`);
@@ -140,8 +116,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
           "completed",
           noTarget
         ),
-        topOrderClients: rankClients(orderClientRows, crId, clientNames, newClientIds),
-        topCompletedClients: rankClients(completedClientRows, crId, clientNames, newClientIds),
+        topOrderClients: rankClients(orderClientRows, crId),
+        topCompletedClients: rankClients(completedClientRows, crId),
       }));
 
       const all: CrProgress = {
@@ -162,8 +138,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
           perCr.map((p) => p.previousCompleted),
           "completed"
         ),
-        topOrderClients: rankClients(orderClientRows, "ALL", clientNames, newClientIds),
-        topCompletedClients: rankClients(completedClientRows, "ALL", clientNames, newClientIds),
+        topOrderClients: rankClients(orderClientRows, "ALL"),
+        topCompletedClients: rankClients(completedClientRows, "ALL"),
       };
 
       return [all, ...perCr];

@@ -140,8 +140,8 @@ export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProg
                 </tr>
               );
             })}
-            <tr className="border-t-2 border-[var(--baseline)] font-medium">
-              <td className="sticky left-0 z-10 bg-[var(--surface-1)] px-3 py-1.5 text-left text-[var(--text-primary)]">
+            <tr className="border-t-2 border-[var(--baseline)] bg-[var(--gridline)]/50 font-medium">
+              <td className="sticky left-0 z-10 bg-[var(--gridline)]/50 px-3 py-1.5 text-left text-[var(--text-primary)]">
                 合計
               </td>
               {totalRow.map((col) => (

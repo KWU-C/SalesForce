@@ -12,10 +12,9 @@ interface CrossCrProgressTableProps {
   currentMonth: number;
 }
 
-function statusColor(rate: number): string {
-  if (rate >= 100) return "var(--status-good)";
-  if (rate >= 80) return "var(--status-warning)";
-  return "var(--status-critical)";
+function statusColor(rate: number): string | undefined {
+  if (rate < 0) return "var(--status-serious)";
+  return undefined;
 }
 
 function CrCells({ col }: { col: CrossCrColumn }) {

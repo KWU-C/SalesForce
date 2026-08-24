@@ -22,10 +22,9 @@ export const CUMULATIVE_GROUPS = GROUP_BOUNDARIES.map((end, i) => ({
   cumulativeMonths: FISCAL_MONTH_ORDER.slice(0, end),
 }));
 
-function statusColor(rate: number): string {
-  if (rate >= 100) return "var(--status-good)";
-  if (rate >= 80) return "var(--status-warning)";
-  return "var(--status-critical)";
+function statusColor(rate: number): string | undefined {
+  if (rate < 0) return "var(--status-serious)";
+  return undefined;
 }
 
 function AmountCell({ value }: { value: number | null }) {

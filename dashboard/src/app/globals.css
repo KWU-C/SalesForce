@@ -17,9 +17,9 @@
   --series-3: #1baf7a; /* aqua: 目標 */
 
   --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-serious: #ec835a;
-  --status-critical: #d03b3b;
+  --status-warning: #ec835a;
+  --status-serious: #d03b3b;
+  --status-critical: #990000;
 }
 
 @theme inline {
@@ -47,9 +47,9 @@
     --series-3: #199e70;
 
     --status-good: #0ca30c;
-    --status-warning: #fab219;
-    --status-serious: #ec835a;
-    --status-critical: #d03b3b;
+    --status-warning: #ec835a;
+    --status-serious: #d03b3b;
+    --status-critical: #990000;
   }
 }
 

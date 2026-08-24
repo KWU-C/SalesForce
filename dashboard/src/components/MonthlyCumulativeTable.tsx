@@ -84,9 +84,7 @@ export function MonthlyCumulativeTable({ title, data }: MonthlyCumulativeTablePr
                       {month}月
                     </th>
                   ))}
-                  <th
-                    className={`px-3 py-1.5 text-right font-medium text-[var(--text-secondary)] ${CUMULATIVE_COLUMN_BG}`}
-                  >
+                  <th className="px-3 py-1.5 text-right font-medium text-[var(--text-secondary)]">
                     {group.cumulativeLabel}
                   </th>
                 </tr>

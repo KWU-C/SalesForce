@@ -19,7 +19,7 @@
   --status-good: #0ca30c;
   --status-warning: #ec835a;
   --status-serious: #d03b3b;
-  --status-critical: #990000;
+  --status-critical: #ae1b1b;
 }
 
 @theme inline {
@@ -49,7 +49,7 @@
     --status-good: #0ca30c;
     --status-warning: #ec835a;
     --status-serious: #d03b3b;
-    --status-critical: #990000;
+    --status-critical: #ae1b1b;
   }
 }
 

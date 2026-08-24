@@ -21,6 +21,22 @@ import type { SalesProgressDataSource } from "./salesProgressDataSource";
 import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
 import { rankClients, type ClientDetailRow } from "./clientRanking";
 
+/**
+ * クライアントランキングSOQLの生レスポンス1行。
+ * 非集計クエリなので列エイリアスが使えず(2026-08-24、本番で実際に踏んだ
+ * "only aggregate expressions use field aliasing"参照)、キーはフィールド
+ * API名そのまま返ってくる。
+ */
+interface RawClientDetailRow {
+  bumonna__c: string;
+  clientName__c: string | null;
+  arari__c: number | null;
+}
+
+function toClientDetailRow(row: RawClientDetailRow): ClientDetailRow {
+  return { crId: row.bumonna__c, clientName: row.clientName__c, grossProfit: row.arari__c };
+}
+
 type ConcreteCrId = Exclude<CrId, "ALL">;
 
 const CR_IDS: ConcreteCrId[] = ["CR1", "CR2", "CR3"];
@@ -70,8 +86,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         targetRows,
         previousOrderRows,
         previousCompletedRows,
-        orderClientRows,
-        completedClientRows,
+        rawOrderClientRows,
+        rawCompletedClientRows,
       ] = await Promise.all([
         client.query<ProgressAggregateRow>(buildOrderProgressQuery(dateRange)),
         client.query<ProgressAggregateRow>(buildCompletedProgressQuery(dateRange)),
@@ -80,9 +96,11 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         ),
         client.query<ProgressAggregateRow>(buildOrderProgressQuery(previousDateRange)),
         client.query<ProgressAggregateRow>(buildCompletedProgressQuery(previousDateRange)),
-        client.query<ClientDetailRow>(buildOrderClientRankingQuery(dateRange)),
-        client.query<ClientDetailRow>(buildCompletedClientRankingQuery(dateRange)),
+        client.query<RawClientDetailRow>(buildOrderClientRankingQuery(dateRange)),
+        client.query<RawClientDetailRow>(buildCompletedClientRankingQuery(dateRange)),
       ]);
+      const orderClientRows = rawOrderClientRows.map(toClientDetailRow);
+      const completedClientRows = rawCompletedClientRows.map(toClientDetailRow);
 
       if (targetRows.length === 0) {
         throw new Error(`SalesTarget__cに${term}期のレコードがありません`);

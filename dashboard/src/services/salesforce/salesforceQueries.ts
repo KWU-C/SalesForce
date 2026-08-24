@@ -61,9 +61,15 @@ export function buildSalesTargetQuery(term: number): string {
  * 識別子は使えない（同名クライアントがあれば合算されてしまう）。「今期新規」
  * フラグもAccount.kuraiantogurupumei__cに保持されており同じ理由で取得不可
  * のため、ここでは扱わない（isNewThisTermは常にfalse）。
+ *
+ * 列エイリアスは付けない: SOQLではGROUP BYを伴わない非集計クエリで
+ * フィールドエイリアシングを使うと"only aggregate expressions use field
+ * aliasing"エラーになる（2026-08-24、本番で実際に踏んだ）。レスポンスの
+ * キーはフィールドAPI名(bumonna__c/clientName__c/arari__c)そのものになる
+ * ため、呼び出し側でその名前のまま受け取る。
  */
 export function buildOrderClientRankingQuery(dateRange: { start: string; end: string }): string {
-  return `SELECT bumonna__c crId, clientName__c clientName, arari__c grossProfit
+  return `SELECT bumonna__c, clientName__c, arari__c
     FROM Process__c
     WHERE bumonna__c IN (${crInClause()})
       AND juchuubi__c != null
@@ -73,7 +79,7 @@ export function buildOrderClientRankingQuery(dateRange: { start: string; end: st
 }
 
 export function buildCompletedClientRankingQuery(dateRange: { start: string; end: string }): string {
-  return `SELECT bumonna__c crId, clientName__c clientName, arari__c grossProfit
+  return `SELECT bumonna__c, clientName__c, arari__c
     FROM Process__c
     WHERE bumonna__c IN (${crInClause()})
       AND juchukakudo__c = 'A (80～100%)'

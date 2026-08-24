@@ -85,15 +85,17 @@ describe("SalesforceSalesProgressDataSource", () => {
   });
 
   it("builds top-client rankings per CR from clientName__c detail rows and re-aggregates for ALL", async () => {
+    // クライアントランキングクエリは非集計(列エイリアス不可)なので、フェイクの
+    // レスポンスもフィールドAPI名そのまま(実際のSalesforceレスポンスの形)にする
     const client = new FakeSalesforceQueryClient({
       order: [],
       completed: [],
       target: TARGET_ROW,
       orderClients: [
-        { crId: "CR1", clientName: "株式会社サンプル", grossProfit: 5_000_000 },
-        { crId: "CR1", clientName: "テスト商事", grossProfit: 1_000_000 },
+        { bumonna__c: "CR1", clientName__c: "株式会社サンプル", arari__c: 5_000_000 },
+        { bumonna__c: "CR1", clientName__c: "テスト商事", arari__c: 1_000_000 },
       ],
-      completedClients: [{ crId: "CR2", clientName: "デモ工業", grossProfit: 2_000_000 }],
+      completedClients: [{ bumonna__c: "CR2", clientName__c: "デモ工業", arari__c: 2_000_000 }],
     });
     const dataSource = new SalesforceSalesProgressDataSource(client);
 

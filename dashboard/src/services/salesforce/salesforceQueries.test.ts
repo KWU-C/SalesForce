@@ -42,7 +42,7 @@ describe("buildSalesTargetQuery", () => {
 });
 
 describe("buildOrderClientRankingQuery", () => {
-  it("selects 受注 detail rows (crId/clientName__c/arari__c) with the same business filters as the monthly query, without GROUP BY", () => {
+  it("selects 受注 detail rows (bumonna__c/clientName__c/arari__c) with the same business filters as the monthly query, without GROUP BY or aliasing", () => {
     const soql = buildOrderClientRankingQuery(dateRange);
 
     expect(soql).toContain("FROM Process__c");
@@ -51,20 +51,25 @@ describe("buildOrderClientRankingQuery", () => {
     expect(soql).toContain("juchukakudo__c = 'A (80～100%)'");
     expect(soql).toContain("phase__c != '失注'");
     expect(soql).toContain("juchuubi__c >= 2025-09-01 AND juchuubi__c <= 2026-08-31");
-    expect(soql).toContain("clientName__c clientName");
-    // clientName__cはSOQLのGROUP BY対象にできないため明細のまま取得する（アプリ側で合算）
+    expect(soql).toContain("SELECT bumonna__c, clientName__c, arari__c");
     expect(soql).not.toContain("GROUP BY");
     expect(soql).not.toContain("kuraiantomei__c");
+    // 列エイリアスは非集計クエリでは使えない("only aggregate expressions use
+    // field aliasing"、2026-08-24に本番で実際に踏んだ回帰防止)
+    expect(soql).not.toMatch(/clientName__c[ \t]+\w+/);
+    expect(soql).not.toMatch(/arari__c[ \t]+\w+/);
   });
 });
 
 describe("buildCompletedClientRankingQuery", () => {
-  it("selects 完了 detail rows using 請求日(seikyuubi__c), without GROUP BY", () => {
+  it("selects 完了 detail rows using 請求日(seikyuubi__c), without GROUP BY or aliasing", () => {
     const soql = buildCompletedClientRankingQuery(dateRange);
 
     expect(soql).toContain("seikyuubi__c >= 2025-09-01 AND seikyuubi__c <= 2026-08-31");
-    expect(soql).toContain("clientName__c clientName");
+    expect(soql).toContain("SELECT bumonna__c, clientName__c, arari__c");
     expect(soql).not.toContain("GROUP BY");
     expect(soql).not.toContain("kuraiantomei__c");
+    expect(soql).not.toMatch(/clientName__c[ \t]+\w+/);
+    expect(soql).not.toMatch(/arari__c[ \t]+\w+/);
   });
 });

@@ -17,7 +17,7 @@ function statusColor(rate: number): string | undefined {
   return undefined;
 }
 
-function CrCells({ col }: { col: CrossCrColumn }) {
+function CrCells({ col, cumulativeBg }: { col: CrossCrColumn; cumulativeBg: string }) {
   return (
     <>
       <td className="border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right text-[var(--text-secondary)]">
@@ -33,7 +33,7 @@ function CrCells({ col }: { col: CrossCrColumn }) {
         {col.orderMonthlyRate === null ? "—" : formatPercent2(col.orderMonthlyRate)}
       </td>
       <td
-        className="px-2 py-1.5 text-right font-semibold"
+        className={`px-2 py-1.5 text-right font-semibold ${cumulativeBg}`}
         style={
           col.orderCumulativeRate === null ? undefined : { color: statusColor(col.orderCumulativeRate) }
         }
@@ -52,7 +52,7 @@ function CrCells({ col }: { col: CrossCrColumn }) {
         {col.completedMonthlyRate === null ? "—" : formatPercent2(col.completedMonthlyRate)}
       </td>
       <td
-        className="px-2 py-1.5 text-right font-semibold"
+        className={`px-2 py-1.5 text-right font-semibold ${cumulativeBg}`}
         style={
           col.completedCumulativeRate === null
             ? undefined
@@ -125,6 +125,8 @@ export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProg
               const zebra = i % 2 === 0;
               const rowBg = zebra ? "bg-[var(--gridline)]/50" : "";
               const stickyBg = zebra ? "bg-[var(--gridline)]/50" : "bg-[var(--surface-1)]";
+              // 帯色のある行(9月/11月/...)は少し濃いめ、白地の行(10月/12月/...)は薄めのクリーム色
+              const cumulativeBg = zebra ? "bg-[#ece2bf]" : "bg-[#fdf3d0]";
 
               return (
                 <tr key={row.month} className={`border-t border-[var(--gridline)] ${rowBg}`}>
@@ -134,7 +136,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProg
                     {row.month}月
                   </td>
                   {row.columns.map((col) => (
-                    <CrCells key={col.crId} col={col} />
+                    <CrCells key={col.crId} col={col} cumulativeBg={cumulativeBg} />
                   ))}
                 </tr>
               );
@@ -144,7 +146,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProg
                 合計
               </td>
               {totalRow.map((col) => (
-                <CrCells key={col.crId} col={col} />
+                <CrCells key={col.crId} col={col} cumulativeBg="bg-[#ece2bf]" />
               ))}
             </tr>
           </tbody>

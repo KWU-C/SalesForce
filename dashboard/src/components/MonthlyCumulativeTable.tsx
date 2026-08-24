@@ -27,18 +27,23 @@ function statusColor(rate: number): string | undefined {
   return undefined;
 }
 
-function AmountCell({ value }: { value: number | null }) {
+/** 第1四半期・上半期・第3四半期・通期の累計列に敷く背景色 */
+const CUMULATIVE_COLUMN_BG = "bg-[#fdf3d0]";
+
+function AmountCell({ value, highlight = false }: { value: number | null; highlight?: boolean }) {
   return (
-    <td className="px-3 py-1.5 text-right text-[var(--text-primary)]">
+    <td
+      className={`px-3 py-1.5 text-right text-[var(--text-primary)] ${highlight ? CUMULATIVE_COLUMN_BG : ""}`}
+    >
       {value === null ? "—" : formatThousandYen(value)}
     </td>
   );
 }
 
-function RateCell({ value }: { value: number | null }) {
+function RateCell({ value, highlight = false }: { value: number | null; highlight?: boolean }) {
   return (
     <td
-      className="px-3 py-1.5 text-right font-medium"
+      className={`px-3 py-1.5 text-right font-medium ${highlight ? CUMULATIVE_COLUMN_BG : ""}`}
       style={value === null ? undefined : { color: statusColor(value) }}
     >
       {value === null ? "—" : formatPercent(value)}
@@ -79,7 +84,9 @@ export function MonthlyCumulativeTable({ title, data }: MonthlyCumulativeTablePr
                       {month}月
                     </th>
                   ))}
-                  <th className="px-3 py-1.5 text-right font-medium text-[var(--text-secondary)]">
+                  <th
+                    className={`px-3 py-1.5 text-right font-medium text-[var(--text-secondary)] ${CUMULATIVE_COLUMN_BG}`}
+                  >
                     {group.cumulativeLabel}
                   </th>
                 </tr>
@@ -88,14 +95,14 @@ export function MonthlyCumulativeTable({ title, data }: MonthlyCumulativeTablePr
                   {monthRows.map((row, i) => (
                     <AmountCell key={i} value={row?.sales ?? null} />
                   ))}
-                  <AmountCell value={cumulative.sales} />
+                  <AmountCell value={cumulative.sales} highlight />
                 </tr>
                 <tr className="border-t border-[var(--gridline)]">
                   <td className="px-3 py-1.5 text-left text-[var(--text-secondary)]">粗利</td>
                   {monthRows.map((row, i) => (
                     <AmountCell key={i} value={row?.grossProfit ?? null} />
                   ))}
-                  <AmountCell value={cumulative.grossProfit} />
+                  <AmountCell value={cumulative.grossProfit} highlight />
                 </tr>
                 <tr className="border-t border-[var(--gridline)]">
                   <td className="px-3 py-1.5 text-left text-[var(--text-secondary)]">
@@ -104,7 +111,7 @@ export function MonthlyCumulativeTable({ title, data }: MonthlyCumulativeTablePr
                   {monthRows.map((row, i) => (
                     <RateCell key={i} value={row?.achievementRate ?? null} />
                   ))}
-                  <RateCell value={cumulative.achievementRate} />
+                  <RateCell value={cumulative.achievementRate} highlight />
                 </tr>
               </tbody>
             );

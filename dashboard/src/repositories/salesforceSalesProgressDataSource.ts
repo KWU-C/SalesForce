@@ -9,8 +9,10 @@ import {
 import type { SalesforceQueryClient } from "@/services/salesforce/salesforceClient";
 import {
   buildCompletedClientRankingQuery,
+  buildCompletedLeaderRankingQuery,
   buildCompletedProgressQuery,
   buildOrderClientRankingQuery,
+  buildOrderLeaderRankingQuery,
   buildOrderProgressQuery,
   buildSalesTargetQuery,
 } from "@/services/salesforce/salesforceQueries";
@@ -20,6 +22,7 @@ import { classifySalesforceError, SalesDataSourceError } from "./salesDataSource
 import type { SalesProgressDataSource } from "./salesProgressDataSource";
 import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
 import { rankClients, type ClientDetailRow } from "./clientRanking";
+import { rankLeaders, type LeaderAggregateRow } from "./leaderRanking";
 
 /**
  * クライアントランキングSOQLの生レスポンス1行。
@@ -94,6 +97,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         previousCompletedRows,
         rawOrderClientRows,
         rawCompletedClientRows,
+        orderLeaderRows,
+        completedLeaderRows,
       ] = await Promise.all([
         client.query<ProgressAggregateRow>(buildOrderProgressQuery(dateRange)),
         client.query<ProgressAggregateRow>(buildCompletedProgressQuery(dateRange)),
@@ -104,6 +109,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         client.query<ProgressAggregateRow>(buildCompletedProgressQuery(previousDateRange)),
         client.query<RawClientDetailRow>(buildOrderClientRankingQuery(dateRange)),
         client.query<RawClientDetailRow>(buildCompletedClientRankingQuery(dateRange)),
+        client.query<LeaderAggregateRow>(buildOrderLeaderRankingQuery(dateRange)),
+        client.query<LeaderAggregateRow>(buildCompletedLeaderRankingQuery(dateRange)),
       ]);
       const orderClientRows = rawOrderClientRows.map(toClientDetailRow);
       const completedClientRows = rawCompletedClientRows.map(toClientDetailRow);
@@ -144,6 +151,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         ),
         topOrderClients: rankClients(orderClientRows, crId, newClientMarker),
         topCompletedClients: rankClients(completedClientRows, crId, newClientMarker),
+        topOrderLeaders: rankLeaders(orderLeaderRows, crId),
+        topCompletedLeaders: rankLeaders(completedLeaderRows, crId),
       }));
 
       const all: CrProgress = {
@@ -166,6 +175,8 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         ),
         topOrderClients: rankClients(orderClientRows, "ALL", newClientMarker),
         topCompletedClients: rankClients(completedClientRows, "ALL", newClientMarker),
+        topOrderLeaders: rankLeaders(orderLeaderRows, "ALL"),
+        topCompletedLeaders: rankLeaders(completedLeaderRows, "ALL"),
       };
 
       return [all, ...perCr];

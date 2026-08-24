@@ -7,6 +7,7 @@ import { MonthlyTable } from "@/components/MonthlyTable";
 import { MonthlyCumulativeTable } from "@/components/MonthlyCumulativeTable";
 import { CrossCrProgressTable } from "@/components/CrossCrProgressTable";
 import { ClientRankingTable } from "@/components/ClientRankingTable";
+import { LeaderRankingTable } from "@/components/LeaderRankingTable";
 import { PeriodSummarySection } from "@/components/PeriodSummarySection";
 import { PeriodComparisonChart } from "./charts/PeriodComparisonChart";
 import { summarizePeriod } from "@/features/sales-progress/aggregate";
@@ -112,23 +113,40 @@ export function DashboardClient({
 
       <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <MonthlyTable title="受注" data={current.order} />
-        <MonthlyTable title="完了" data={current.completed} />
-      </div>
+      {selectedCr === "ALL" ? (
+        <>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <MonthlyTable title="受注" data={current.order} />
+            <MonthlyTable title="完了" data={current.completed} />
+          </div>
 
-      <div className="flex flex-col gap-4">
-        <PeriodSummarySection title="受注：四半期累計" summaries={orderQuarterSummaries} />
-        <PeriodSummarySection title="受注：上半期・下半期累計" summaries={orderHalfSummaries} />
-        <PeriodSummarySection
-          title="完了：四半期累計"
-          summaries={completedQuarterSummaries}
-        />
-        <PeriodSummarySection
-          title="完了：上半期・下半期累計"
-          summaries={completedHalfSummaries}
-        />
-      </div>
+          <div className="flex flex-col gap-4">
+            <PeriodSummarySection title="受注：四半期累計" summaries={orderQuarterSummaries} />
+            <PeriodSummarySection title="受注：上半期・下半期累計" summaries={orderHalfSummaries} />
+            <PeriodSummarySection
+              title="完了：四半期累計"
+              summaries={completedQuarterSummaries}
+            />
+            <PeriodSummarySection
+              title="完了：上半期・下半期累計"
+              summaries={completedHalfSummaries}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <LeaderRankingTable
+            title="受注（粗利）リーダー別"
+            leaders={current.topOrderLeaders}
+            accentColorVar="--series-1"
+          />
+          <LeaderRankingTable
+            title="完了（粗利）リーダー別"
+            leaders={current.topCompletedLeaders}
+            accentColorVar="--series-2"
+          />
+        </div>
+      )}
 
       <p className="pb-2 text-center text-xs text-[var(--text-muted)]">
         表示中: {currentMonth}月時点までの実績（モックデータ）

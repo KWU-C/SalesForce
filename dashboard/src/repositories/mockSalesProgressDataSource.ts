@@ -3,6 +3,7 @@ import type { CrId, CrProgress, MonthlyProgress, ProgressKind } from "@/domain/t
 import type { SalesProgressDataSource } from "./salesProgressDataSource";
 import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
 import { rankClients, type ClientDetailRow } from "./clientRanking";
+import { rankLeaders, type LeaderAggregateRow } from "./leaderRanking";
 
 type ConcreteCrId = Exclude<CrId, "ALL">;
 
@@ -100,6 +101,26 @@ function buildClientRows(
   return rows;
 }
 
+const LEADERS_PER_CR = 6;
+
+/** リーダーランキング用の仮データ（CR内リーダー6人程度、受注/完了で別系列） */
+function buildLeaderRows(crId: ConcreteCrId, crIndex: number, seedOffset: number): LeaderAggregateRow[] {
+  const rows: LeaderAggregateRow[] = [];
+
+  for (let n = 0; n < LEADERS_PER_CR; n++) {
+    const seed = seedOffset + crIndex * 1000 + n * 17;
+    const grossProfit = Math.round((500_000 + seededRandom(seed) * 8_000_000) / 1000) * 1000;
+    rows.push({
+      crId,
+      leaderId: `${crId}-leader-${n}`,
+      leaderName: `リーダー${crIndex + 1}-${n + 1}`,
+      grossProfit,
+    });
+  }
+
+  return rows;
+}
+
 export class MockSalesProgressDataSource implements SalesProgressDataSource {
   async getCrProgress(currentMonth: number): Promise<CrProgress[]> {
     const upToFiscalIndex = fiscalMonthIndex(currentMonth);
@@ -123,6 +144,8 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
     const completedClientRows = CR_IDS.flatMap((crId, i) =>
       buildClientRows(crId, i, 6000, newClientMarker)
     );
+    const orderLeaderRows = CR_IDS.flatMap((crId, i) => buildLeaderRows(crId, i, 7000));
+    const completedLeaderRows = CR_IDS.flatMap((crId, i) => buildLeaderRows(crId, i, 8000));
 
     const perCr: CrProgress[] = CR_IDS.map((crId, i) => ({
       crId,
@@ -132,6 +155,8 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
       previousCompleted: previousCompletedByCr[i],
       topOrderClients: rankClients(orderClientRows, crId, newClientMarker),
       topCompletedClients: rankClients(completedClientRows, crId, newClientMarker),
+      topOrderLeaders: rankLeaders(orderLeaderRows, crId),
+      topCompletedLeaders: rankLeaders(completedLeaderRows, crId),
     }));
 
     const all: CrProgress = {
@@ -142,6 +167,8 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
       previousCompleted: sumMonthlyProgressAcrossCr(previousCompletedByCr, "completed"),
       topOrderClients: rankClients(orderClientRows, "ALL", newClientMarker),
       topCompletedClients: rankClients(completedClientRows, "ALL", newClientMarker),
+      topOrderLeaders: rankLeaders(orderLeaderRows, "ALL"),
+      topCompletedLeaders: rankLeaders(completedLeaderRows, "ALL"),
     };
 
     return [all, ...perCr];

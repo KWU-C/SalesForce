@@ -18,6 +18,8 @@ class FakeSalesforceQueryClient implements SalesforceQueryClient {
       target: unknown[] | Error;
       orderClients?: unknown[];
       completedClients?: unknown[];
+      orderLeaders?: unknown[];
+      completedLeaders?: unknown[];
     }
   ) {}
 
@@ -28,6 +30,11 @@ class FakeSalesforceQueryClient implements SalesforceQueryClient {
     if (soql.includes("clientName__c")) {
       if (soql.includes("juchuubi__c")) return (this.responses.orderClients ?? []) as T[];
       if (soql.includes("seikyuubi__c")) return (this.responses.completedClients ?? []) as T[];
+    }
+    // リーダーランキングクエリ(rida__c選択、集計クエリ)も月別集計との判別が必要
+    if (soql.includes("rida__c")) {
+      if (soql.includes("juchuubi__c")) return (this.responses.orderLeaders ?? []) as T[];
+      if (soql.includes("seikyuubi__c")) return (this.responses.completedLeaders ?? []) as T[];
     }
     if (soql.includes("juchuubi__c")) return this.responses.order as T[];
     if (soql.includes("seikyuubi__c")) return this.responses.completed as T[];
@@ -129,6 +136,32 @@ describe("SalesforceSalesProgressDataSource", () => {
     // ALLはCR1〜3横断で再集計されるため、CR2の完了ランキングもここに含まれる
     expect(all.topCompletedClients.map((c) => c.clientName)).toEqual(["デモ工業"]);
     expect(all.topCompletedClients[0].isNewThisTerm).toBe(false);
+  });
+
+  it("builds top-leader rankings per CR from aliased aggregate rows and re-aggregates for ALL", async () => {
+    // リーダーランキングは通常の集計クエリ(GROUP BY+エイリアス)なので、フェイクの
+    // レスポンスもcrId/leaderId/leaderName/grossProfitのまま(クライアントと違い変換不要)
+    const client = new FakeSalesforceQueryClient({
+      order: [],
+      completed: [],
+      target: TARGET_ROW,
+      orderLeaders: [
+        { crId: "CR1", leaderId: "005AAA", leaderName: "青木 睦", grossProfit: 5_000_000 },
+        { crId: "CR1", leaderId: "005BBB", leaderName: "山田 太郎", grossProfit: 1_000_000 },
+      ],
+      completedLeaders: [
+        { crId: "CR2", leaderId: "005CCC", leaderName: "佐藤 花子", grossProfit: 2_000_000 },
+      ],
+    });
+    const dataSource = new SalesforceSalesProgressDataSource(client);
+
+    const result = await dataSource.getCrProgress();
+    const cr1 = result.find((p) => p.crId === "CR1")!;
+    const all = result.find((p) => p.crId === "ALL")!;
+
+    expect(cr1.topOrderLeaders.map((l) => l.leaderName)).toEqual(["青木 睦", "山田 太郎"]);
+    // ALLはCR1〜3横断で再集計されるため、CR2の完了ランキングもここに含まれる
+    expect(all.topCompletedLeaders.map((l) => l.leaderName)).toEqual(["佐藤 花子"]);
   });
 
   it("classifies a 401/403 query error as AUTH_ERROR and never logs the raw message", async () => {

@@ -44,6 +44,8 @@ function buildCrProgress(
     previousCompleted: [],
     topOrderClients: [],
     topCompletedClients: [],
+    topOrderLeaders: [],
+    topCompletedLeaders: [],
   };
 }
 

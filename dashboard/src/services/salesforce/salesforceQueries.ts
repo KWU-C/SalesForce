@@ -89,3 +89,31 @@ export function buildCompletedClientRankingQuery(dateRange: { start: string; end
       AND phase__c != '失注'
       AND seikyuubi__c >= ${dateRange.start} AND seikyuubi__c <= ${dateRange.end}`;
 }
+
+/**
+ * 受注/完了 リーダー別粗利ランキング用の集計（CR×リーダーごと）。
+ * rida__c(リーダー=Userへの参照)はkuraiantomei__c(Account)と違いライセンス
+ * 制約を受けず、GROUP BYでの通常のフィールドエイリアシングも問題なく使える
+ * （2026-08-24確認、集計クエリなのでaliasingは合法）。そのためクライアント
+ * ランキングのような明細取得+アプリ側集計は不要で、通常の集計クエリで済む。
+ */
+export function buildOrderLeaderRankingQuery(dateRange: { start: string; end: string }): string {
+  return `SELECT bumonna__c crId, rida__c leaderId, rida__r.Name leaderName, SUM(arari__c) grossProfit
+    FROM Process__c
+    WHERE bumonna__c IN (${crInClause()})
+      AND juchuubi__c != null
+      AND juchukakudo__c = 'A (80～100%)'
+      AND phase__c != '失注'
+      AND juchuubi__c >= ${dateRange.start} AND juchuubi__c <= ${dateRange.end}
+    GROUP BY bumonna__c, rida__c, rida__r.Name`;
+}
+
+export function buildCompletedLeaderRankingQuery(dateRange: { start: string; end: string }): string {
+  return `SELECT bumonna__c crId, rida__c leaderId, rida__r.Name leaderName, SUM(arari__c) grossProfit
+    FROM Process__c
+    WHERE bumonna__c IN (${crInClause()})
+      AND juchukakudo__c = 'A (80～100%)'
+      AND phase__c != '失注'
+      AND seikyuubi__c >= ${dateRange.start} AND seikyuubi__c <= ${dateRange.end}
+    GROUP BY bumonna__c, rida__c, rida__r.Name`;
+}

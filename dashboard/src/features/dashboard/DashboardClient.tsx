@@ -115,9 +115,14 @@ export function DashboardClient({
 
       {selectedCr === "ALL" ? (
         <>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <MonthlyTable title="受注" data={current.order} />
-            <MonthlyTable title="完了" data={current.completed} />
+          <div>
+            <h3 className="mb-2 text-sm font-medium text-[var(--text-secondary)]">
+              全社月別詳細
+            </h3>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <MonthlyTable title="受注" data={current.order} />
+              <MonthlyTable title="完了" data={current.completed} />
+            </div>
           </div>
 
           <div className="flex flex-col gap-4">

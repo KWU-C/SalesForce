@@ -30,9 +30,7 @@ export function ClientRankingTable({ title, clients, accentColorVar }: ClientRan
                 </td>
                 <td className="px-2 py-1.5 text-left text-[var(--text-primary)]">
                   {client.clientName}
-                  {client.isNewThisTerm && (
-                    <span className="text-[var(--text-muted)]">（新規）</span>
-                  )}
+                  {client.isNewThisTerm && <span className="text-[#ec835a]">（新規）</span>}
                 </td>
                 <td className="px-4 py-1.5 text-right font-medium text-[var(--text-primary)]">
                   {formatThousandYen(client.grossProfit)}

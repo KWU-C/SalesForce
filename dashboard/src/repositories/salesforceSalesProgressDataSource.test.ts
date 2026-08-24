@@ -15,12 +15,21 @@ class FakeSalesforceQueryClient implements SalesforceQueryClient {
       order: unknown[];
       completed: unknown[];
       target: unknown[] | Error;
+      orderClients?: unknown[];
+      completedClients?: unknown[];
+      accounts?: unknown[];
     }
   ) {}
 
   async query<T>(soql: string): Promise<T[]> {
     if (this.responses.target instanceof Error) throw this.responses.target;
     if (soql.includes("SalesTarget__c")) return this.responses.target as T[];
+    if (soql.includes("FROM Account")) return (this.responses.accounts ?? []) as T[];
+    // クライアントランキングクエリはCALENDAR_MONTHを使わない月別集計との判別が必要
+    if (soql.includes("kuraiantomei__c")) {
+      if (soql.includes("juchuubi__c")) return (this.responses.orderClients ?? []) as T[];
+      if (soql.includes("seikyuubi__c")) return (this.responses.completedClients ?? []) as T[];
+    }
     if (soql.includes("juchuubi__c")) return this.responses.order as T[];
     if (soql.includes("seikyuubi__c")) return this.responses.completed as T[];
     throw new Error(`unexpected SOQL in test fake: ${soql}`);
@@ -75,6 +84,38 @@ describe("SalesforceSalesProgressDataSource", () => {
       name: "SalesDataSourceError",
       category: "NOT_FOUND",
     });
+  });
+
+  it("builds top-client rankings per CR and re-aggregates for ALL, resolving names and 新規 via Account", async () => {
+    const client = new FakeSalesforceQueryClient({
+      order: [],
+      completed: [],
+      target: TARGET_ROW,
+      orderClients: [
+        { crId: "CR1", clientId: "001AAA", grossProfit: 5_000_000 },
+        { crId: "CR1", clientId: "001BBB", grossProfit: 1_000_000 },
+      ],
+      completedClients: [{ crId: "CR2", clientId: "001CCC", grossProfit: 2_000_000 }],
+      accounts: [
+        { Id: "001AAA", Name: "株式会社サンプル", kuraiantogurupumei__c: "49期新規" },
+        { Id: "001BBB", Name: "テスト商事", kuraiantogurupumei__c: "Ｃグループ" },
+        { Id: "001CCC", Name: "デモ工業", kuraiantogurupumei__c: null },
+      ],
+    });
+    const dataSource = new SalesforceSalesProgressDataSource(client);
+
+    const result = await dataSource.getCrProgress();
+    const cr1 = result.find((p) => p.crId === "CR1")!;
+    const all = result.find((p) => p.crId === "ALL")!;
+
+    expect(cr1.topOrderClients.map((c) => c.clientId)).toEqual(["001AAA", "001BBB"]);
+    expect(cr1.topOrderClients[0].clientName).toBe("株式会社サンプル");
+    expect(cr1.topOrderClients[0].isNewThisTerm).toBe(true);
+    expect(cr1.topOrderClients[1].isNewThisTerm).toBe(false);
+
+    // ALLはCR1〜3横断で再集計されるため、CR2の完了ランキングもここに含まれる
+    expect(all.topCompletedClients.map((c) => c.clientId)).toEqual(["001CCC"]);
+    expect(all.topCompletedClients[0].clientName).toBe("デモ工業");
   });
 
   it("classifies a 401/403 query error as AUTH_ERROR and never logs the raw message", async () => {

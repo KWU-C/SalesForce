@@ -42,6 +42,8 @@ function buildCrProgress(
     completed: buildSeries(crId, "completed", target, completed, upToFiscalIndex),
     previousOrder: [],
     previousCompleted: [],
+    topOrderClients: [],
+    topCompletedClients: [],
   };
 }
 

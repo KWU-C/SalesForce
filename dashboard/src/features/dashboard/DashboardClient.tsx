@@ -6,6 +6,7 @@ import { StatCard } from "@/components/StatCard";
 import { MonthlyTable } from "@/components/MonthlyTable";
 import { MonthlyCumulativeTable } from "@/components/MonthlyCumulativeTable";
 import { CrossCrProgressTable } from "@/components/CrossCrProgressTable";
+import { ClientRankingTable } from "@/components/ClientRankingTable";
 import { PeriodSummarySection } from "@/components/PeriodSummarySection";
 import { PeriodComparisonChart } from "./charts/PeriodComparisonChart";
 import { summarizePeriod } from "@/features/sales-progress/aggregate";
@@ -95,6 +96,19 @@ export function DashboardClient({
       </div>
 
       <CrossCrProgressTable progressByCr={progressByCr} currentMonth={currentMonth} />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ClientRankingTable
+          title="受注額（粗利）トップ20クライアント"
+          clients={current.topOrderClients}
+          accentColorVar="--series-1"
+        />
+        <ClientRankingTable
+          title="完了額（粗利）トップ20クライアント"
+          clients={current.topCompletedClients}
+          accentColorVar="--series-2"
+        />
+      </div>
 
       <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
 

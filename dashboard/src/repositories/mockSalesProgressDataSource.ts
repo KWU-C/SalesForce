@@ -2,6 +2,7 @@ import { FISCAL_MONTH_ORDER, fiscalMonthIndex } from "@/config/fiscalPeriods";
 import type { CrId, CrProgress, MonthlyProgress, ProgressKind } from "@/domain/types";
 import type { SalesProgressDataSource } from "./salesProgressDataSource";
 import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
+import { rankClients, type ClientAggregateRow } from "./clientRanking";
 
 type ConcreteCrId = Exclude<CrId, "ALL">;
 
@@ -72,6 +73,31 @@ function buildPreviousYearSeries(
   return buildMonthlySeries(crId, crIndex, kind, 12, 1000);
 }
 
+const CLIENTS_PER_CR = 25;
+
+/** クライアントランキング用の仮データ（受注/完了で別系列にするためseedOffsetを変える） */
+function buildClientRows(
+  crId: ConcreteCrId,
+  crIndex: number,
+  seedOffset: number
+): { rows: ClientAggregateRow[]; names: Map<string, string>; newIds: Set<string> } {
+  const rows: ClientAggregateRow[] = [];
+  const names = new Map<string, string>();
+  const newIds = new Set<string>();
+
+  for (let n = 0; n < CLIENTS_PER_CR; n++) {
+    const clientId = `${crId}-client-${n}`;
+    const seed = seedOffset + crIndex * 1000 + n * 13;
+    const grossProfit = Math.round((200_000 + seededRandom(seed) * 4_000_000) / 1000) * 1000;
+    rows.push({ crId, clientId, grossProfit });
+    names.set(clientId, `サンプル商事${crIndex + 1}-${n + 1}`);
+    // 数件だけ「今期新規」扱いにする（モックなので固定インデックス）
+    if (n % 11 === 0) newIds.add(clientId);
+  }
+
+  return { rows, names, newIds };
+}
+
 export class MockSalesProgressDataSource implements SalesProgressDataSource {
   async getCrProgress(currentMonth: number): Promise<CrProgress[]> {
     const upToFiscalIndex = fiscalMonthIndex(currentMonth);
@@ -89,12 +115,25 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
       buildPreviousYearSeries(crId, i, "completed")
     );
 
+    const orderClientData = CR_IDS.map((crId, i) => buildClientRows(crId, i, 5000));
+    const completedClientData = CR_IDS.map((crId, i) => buildClientRows(crId, i, 6000));
+    const orderClientRows = orderClientData.flatMap((d) => d.rows);
+    const completedClientRows = completedClientData.flatMap((d) => d.rows);
+    const clientNames = new Map(
+      [...orderClientData, ...completedClientData].flatMap((d) => [...d.names])
+    );
+    const newClientIds = new Set(
+      [...orderClientData, ...completedClientData].flatMap((d) => [...d.newIds])
+    );
+
     const perCr: CrProgress[] = CR_IDS.map((crId, i) => ({
       crId,
       order: orderByCr[i],
       completed: completedByCr[i],
       previousOrder: previousOrderByCr[i],
       previousCompleted: previousCompletedByCr[i],
+      topOrderClients: rankClients(orderClientRows, crId, clientNames, newClientIds),
+      topCompletedClients: rankClients(completedClientRows, crId, clientNames, newClientIds),
     }));
 
     const all: CrProgress = {
@@ -103,6 +142,8 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
       completed: sumMonthlyProgressAcrossCr(completedByCr, "completed"),
       previousOrder: sumMonthlyProgressAcrossCr(previousOrderByCr, "order"),
       previousCompleted: sumMonthlyProgressAcrossCr(previousCompletedByCr, "completed"),
+      topOrderClients: rankClients(orderClientRows, "ALL", clientNames, newClientIds),
+      topCompletedClients: rankClients(completedClientRows, "ALL", clientNames, newClientIds),
     };
 
     return [all, ...perCr];

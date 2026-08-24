@@ -58,6 +58,15 @@ export interface PeriodSummary {
   achievementRate: number | null;
 }
 
+/** クライアント別の粗利ランキング1件分（当該事業期・CR内での合計） */
+export interface ClientRanking {
+  clientId: string;
+  clientName: string;
+  /** 今期(現在の事業期)が初取引のクライアントかどうか */
+  isNewThisTerm: boolean;
+  grossProfit: number;
+}
+
 /** CRごとの進捗まとめ（受注・完了の月別データ） */
 export interface CrProgress {
   crId: CrId;
@@ -69,6 +78,9 @@ export interface CrProgress {
    */
   previousOrder: MonthlyProgress[];
   previousCompleted: MonthlyProgress[];
+  /** 受注／完了 粗利トップ20クライアント（当該事業期・当該crIdのみ。ALLは全CR横断で再集計） */
+  topOrderClients: ClientRanking[];
+  topCompletedClients: ClientRanking[];
 }
 
 /** 対象事業期・対象月の情報 */

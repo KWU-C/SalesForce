@@ -121,15 +121,29 @@ function buildLeaderRows(crId: ConcreteCrId, crIndex: number, seedOffset: number
   return rows;
 }
 
+/** 期セレクター用モック選択肢。今期と過去2期分をダミーで用意する */
+const MOCK_TERM_HISTORY = 2;
+
 export class MockSalesProgressDataSource implements SalesProgressDataSource {
-  async getCrProgress(currentMonth: number): Promise<CrProgress[]> {
-    const upToFiscalIndex = fiscalMonthIndex(currentMonth);
+  async getAvailableTerms(): Promise<number[]> {
+    const { term } = getCurrentFiscalPeriod();
+    return Array.from({ length: MOCK_TERM_HISTORY + 1 }, (_, i) => term - i);
+  }
+
+  async getCrProgress(term?: number): Promise<CrProgress[]> {
+    const { term: actualTerm, currentMonth: actualCurrentMonth } = getCurrentFiscalPeriod();
+    const selectedTerm = term ?? actualTerm;
+    // 今期以外(過去に選んだ期)は決算済みとして全月分のデータがあることにする
+    const upToFiscalIndex =
+      selectedTerm === actualTerm ? fiscalMonthIndex(actualCurrentMonth) : 12;
+    // 期ごとに異なる数値になるよう、シードに期数を混ぜる（セレクターの動作確認用）
+    const termSeed = selectedTerm * 10_000;
 
     const orderByCr = CR_IDS.map((crId, i) =>
-      buildMonthlySeries(crId, i, "order", upToFiscalIndex)
+      buildMonthlySeries(crId, i, "order", upToFiscalIndex, termSeed)
     );
     const completedByCr = CR_IDS.map((crId, i) =>
-      buildMonthlySeries(crId, i, "completed", upToFiscalIndex)
+      buildMonthlySeries(crId, i, "completed", upToFiscalIndex, termSeed)
     );
     const previousOrderByCr = CR_IDS.map((crId, i) =>
       buildPreviousYearSeries(crId, i, "order")
@@ -138,14 +152,17 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
       buildPreviousYearSeries(crId, i, "completed")
     );
 
-    const { term } = getCurrentFiscalPeriod();
-    const newClientMarker = `${term}期新規`;
-    const orderClientRows = CR_IDS.flatMap((crId, i) => buildClientRows(crId, i, 5000, newClientMarker));
-    const completedClientRows = CR_IDS.flatMap((crId, i) =>
-      buildClientRows(crId, i, 6000, newClientMarker)
+    const newClientMarker = `${selectedTerm}期新規`;
+    const orderClientRows = CR_IDS.flatMap((crId, i) =>
+      buildClientRows(crId, i, termSeed + 5000, newClientMarker)
     );
-    const orderLeaderRows = CR_IDS.flatMap((crId, i) => buildLeaderRows(crId, i, 7000));
-    const completedLeaderRows = CR_IDS.flatMap((crId, i) => buildLeaderRows(crId, i, 8000));
+    const completedClientRows = CR_IDS.flatMap((crId, i) =>
+      buildClientRows(crId, i, termSeed + 6000, newClientMarker)
+    );
+    const orderLeaderRows = CR_IDS.flatMap((crId, i) => buildLeaderRows(crId, i, termSeed + 7000));
+    const completedLeaderRows = CR_IDS.flatMap((crId, i) =>
+      buildLeaderRows(crId, i, termSeed + 8000)
+    );
 
     const perCr: CrProgress[] = CR_IDS.map((crId, i) => ({
       crId,

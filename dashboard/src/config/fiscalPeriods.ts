@@ -13,6 +13,9 @@ export function fiscalMonthIndex(calendarMonth: number): number {
   return FISCAL_MONTH_ORDER.indexOf(calendarMonth) + 1;
 }
 
+/** 事業年度の期末月（暦月）。9月始まりなので常に8月 */
+export const FISCAL_YEAR_END_MONTH = FISCAL_MONTH_ORDER[FISCAL_MONTH_ORDER.length - 1];
+
 export const QUARTERS: { label: string; months: number[] }[] = [
   { label: "第1四半期", months: [9, 10, 11] },
   { label: "第2四半期", months: [12, 1, 2] },

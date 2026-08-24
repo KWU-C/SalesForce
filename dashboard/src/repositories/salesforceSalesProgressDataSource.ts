@@ -59,8 +59,9 @@ const CR_IDS: ConcreteCrId[] = ["CR1", "CR2", "CR3"];
  * 目標: SalesTarget__c（会社全体の年間目標。CR3等分・月12等分はこのクラスで計算、
  * ユーザー確定2026-08-07）
  *
- * currentMonthは使わない（GoogleSheetsSalesProgressDataSourceと同様、対象事業期は
- * 取得時点の現在時刻から算出する。未到来月は集計行が存在しないため自然にnullになる）。
+ * getCrProgress(term)にtermを渡さない場合は現在時刻から算出した事業期を使う
+ * （GoogleSheetsSalesProgressDataSourceと同様）。未到来月は集計行が存在しないため
+ * 自然にnullになる。
  *
  * エラー時は必ずSalesDataSourceErrorを投げる。サーバーログには事業期とエラー種別のみを
  * 出し、認証情報・SOQL文・金額など元の例外の詳細は一切出力しない。モックへの自動
@@ -80,14 +81,34 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
     return this.injectedClient ?? new SalesforceClient(getSalesforceJwtConfig());
   }
 
-  async getCrProgress(): Promise<CrProgress[]> {
-    const { term } = getCurrentFiscalPeriod();
+  /**
+   * 期セレクター用。SalesTarget__cにレコードのある事業期＝目標設定済み＝
+   * ダッシュボードで選べる期、として扱う（実機確認済み、2026-08-24時点は49期のみ）。
+   * 失敗しても画面全体を落とさないよう、現在の事業期だけのフォールバックにする。
+   */
+  async getAvailableTerms(): Promise<number[]> {
+    try {
+      const client = this.getClient();
+      const rows = await client.query<{ Term__c: number }>(
+        "SELECT Term__c FROM SalesTarget__c ORDER BY Term__c DESC"
+      );
+      const terms = rows.map((r) => r.Term__c);
+      return terms.length > 0 ? terms : [getCurrentFiscalPeriod().term];
+    } catch (error) {
+      const category = classifySalesforceError(error);
+      console.error(`[SalesforceSalesProgressDataSource] 期一覧の取得に失敗しました category=${category}`);
+      return [getCurrentFiscalPeriod().term];
+    }
+  }
+
+  async getCrProgress(term?: number): Promise<CrProgress[]> {
+    const selectedTerm = term ?? getCurrentFiscalPeriod().term;
 
     try {
       const client = this.getClient();
-      const dateRange = fiscalTermDateRange(term);
+      const dateRange = fiscalTermDateRange(selectedTerm);
 
-      const previousDateRange = fiscalTermDateRange(term - 1);
+      const previousDateRange = fiscalTermDateRange(selectedTerm - 1);
 
       const [
         orderRows,
@@ -103,7 +124,7 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         client.query<ProgressAggregateRow>(buildOrderProgressQuery(dateRange)),
         client.query<ProgressAggregateRow>(buildCompletedProgressQuery(dateRange)),
         client.query<{ TargetSales__c: number; TargetGrossProfit__c: number }>(
-          buildSalesTargetQuery(term)
+          buildSalesTargetQuery(selectedTerm)
         ),
         client.query<ProgressAggregateRow>(buildOrderProgressQuery(previousDateRange)),
         client.query<ProgressAggregateRow>(buildCompletedProgressQuery(previousDateRange)),
@@ -115,10 +136,10 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
       const orderClientRows = rawOrderClientRows.map(toClientDetailRow);
       const completedClientRows = rawCompletedClientRows.map(toClientDetailRow);
       // 「◯◯期新規」のラベルは事業期ごとに更新される想定のため、期数はハードコードしない
-      const newClientMarker = `${term}期新規`;
+      const newClientMarker = `${selectedTerm}期新規`;
 
       if (targetRows.length === 0) {
-        throw new Error(`SalesTarget__cに${term}期のレコードがありません`);
+        throw new Error(`SalesTarget__cに${selectedTerm}期のレコードがありません`);
       }
       const companyTarget = targetRows[0];
       const perCrTarget: AnnualSalesTarget = {
@@ -183,9 +204,9 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
     } catch (error) {
       const category = classifySalesforceError(error);
       console.error(
-        `[SalesforceSalesProgressDataSource] 取得に失敗しました term=${term} category=${category}`
+        `[SalesforceSalesProgressDataSource] 取得に失敗しました term=${selectedTerm} category=${category}`
       );
-      throw new SalesDataSourceError(category, `term=${term}`);
+      throw new SalesDataSourceError(category, `term=${selectedTerm}`);
     }
   }
 }

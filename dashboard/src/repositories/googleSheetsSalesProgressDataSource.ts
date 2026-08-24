@@ -1,4 +1,5 @@
 import { getCrReportSheetRef } from "@/config/googleSheets";
+import { getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
 import type { CrId, CrProgress } from "@/domain/types";
 import type { SheetsValuesReader } from "@/services/google-sheets/sheetsClient";
 import { createDefaultReportRegistry } from "./reportDefinitions";
@@ -38,9 +39,14 @@ export class GoogleSheetsSalesProgressDataSource implements SalesProgressDataSou
 
   constructor(private readonly valuesReader: SheetsValuesReader) {}
 
-  // currentMonthは使わない: シート側に存在する月のラベルがそのまま実績（未到来月の
-  // 列が無ければ単にその月は返さない）。モックのように「何月まで実績があることに
-  // するか」を人工的に決める必要がないため。
+  // 期セレクターは未対応（検証用ソースのため）。現在の事業期だけを返す
+  async getAvailableTerms(): Promise<number[]> {
+    return [getCurrentFiscalPeriod().term];
+  }
+
+  // termは使わない: シート側に存在する月のラベルがそのまま実績（未到来月の
+  // 列が無ければ単にその月は返さない）。モックのように「どの期・何月まで
+  // 実績があることにするか」を人工的に決める必要がないため。
   async getCrProgress(): Promise<CrProgress[]> {
     const perCr: CrProgress[] = await Promise.all(
       CR_IDS.map((crId) => this.fetchAndParse(crId))

@@ -5,7 +5,7 @@ import {
   getActiveSalesDataSourceLabel,
   getSalesProgressDataSource,
 } from "@/repositories/salesProgressRepository";
-import { getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
+import { FISCAL_YEAR_END_MONTH, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
 import type { CrProgress } from "@/domain/types";
 
 // 営業データは毎リクエスト取得する（ビルド時に静的化しない）。
@@ -14,15 +14,35 @@ import type { CrProgress } from "@/domain/types";
 // リクエストごとに現在時刻から算出するため、この設定と併せて必須。
 export const dynamic = "force-dynamic";
 
-export default async function Page() {
+interface PageProps {
+  searchParams: Promise<{ term?: string }>;
+}
+
+export default async function Page({ searchParams }: PageProps) {
   const dataSource = getSalesProgressDataSource();
-  const fiscalPeriod = getCurrentFiscalPeriod();
+  const { term: actualTerm, currentMonth: actualCurrentMonth } = getCurrentFiscalPeriod();
+
+  // 期セレクターの選択肢。取得できなければ現在の事業期のみにフォールバック
+  // （各DataSource実装が自分でこのフォールバックを持つため、ここでは待つだけ）
+  const availableTerms = await dataSource.getAvailableTerms();
+
+  const requestedTermRaw = (await searchParams).term;
+  const requestedTerm = requestedTermRaw ? Number(requestedTermRaw) : actualTerm;
+  // 不正な値やデータの無い期がURLに指定された場合は現在の事業期にフォールバックする
+  const selectedTerm =
+    Number.isInteger(requestedTerm) && availableTerms.includes(requestedTerm)
+      ? requestedTerm
+      : actualTerm;
+
+  const isCurrentTerm = selectedTerm === actualTerm;
+  // 過去の期は決算済み(通期)として期末月を対象月とする。現在の期だけ今日時点の月を使う
+  const displayMonth = isCurrentTerm ? actualCurrentMonth : FISCAL_YEAR_END_MONTH;
 
   let progressByCr: CrProgress[] | null = null;
   try {
-    progressByCr = await dataSource.getCrProgress(fiscalPeriod.currentMonth);
+    progressByCr = await dataSource.getCrProgress(selectedTerm);
   } catch {
-    // 詳細（エラー種別・シート名）は各DataSource実装が既にサーバーログへ
+    // 詳細（エラー種別・シート名）は各DataSource実装が既にサーバーへ
     // 出力済み（repositories/salesDataSourceError.ts）。画面には出さない。
     // モックへの自動フォールバックは行わない。
   }
@@ -30,16 +50,14 @@ export default async function Page() {
   return (
     <>
       <Header
-        fiscalPeriod={fiscalPeriod}
+        fiscalPeriod={{ term: selectedTerm, currentMonth: displayMonth }}
+        availableTerms={availableTerms}
         fetchedAt={progressByCr ? new Date() : null}
         dataSourceLabel={getActiveSalesDataSourceLabel()}
       />
       <main className="flex-1 bg-[var(--background)]">
         {progressByCr ? (
-          <DashboardClient
-            progressByCr={progressByCr}
-            currentMonth={fiscalPeriod.currentMonth}
-          />
+          <DashboardClient progressByCr={progressByCr} currentMonth={displayMonth} />
         ) : (
           <DataFetchErrorState />
         )}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fiscalTermDateRange, getCurrentFiscalPeriod } from "./fiscalPeriods";
+import { fiscalTermDateRange, getAdjacentTerms, getCurrentFiscalPeriod } from "./fiscalPeriods";
 
 describe("getCurrentFiscalPeriod", () => {
   it("returns 49期・8月 for 2026-08-06 (today at time of writing)", () => {
@@ -20,6 +20,16 @@ describe("getCurrentFiscalPeriod", () => {
 
   it("rolls forward multiple fiscal years correctly (2027-09-01 => 51期)", () => {
     expect(getCurrentFiscalPeriod(new Date(2027, 8, 1))).toEqual({ term: 51, currentMonth: 9 });
+  });
+});
+
+describe("getAdjacentTerms", () => {
+  it("returns [50, 49, 48] (next, current, previous) when today is in 49期", () => {
+    expect(getAdjacentTerms(new Date(2026, 7, 6))).toEqual([50, 49, 48]);
+  });
+
+  it("returns [51, 50, 49] right after rolling over to 50期", () => {
+    expect(getAdjacentTerms(new Date(2026, 8, 1))).toEqual([51, 50, 49]);
   });
 });
 

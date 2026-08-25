@@ -82,14 +82,34 @@ describe("SalesforceSalesProgressDataSource", () => {
     expect(cr1?.order[0]?.targetGrossProfit).toBeCloseTo(15_000_000, 5);
   });
 
-  it("throws a sanitized SalesDataSourceError when SalesTarget__c has no record for the current term", async () => {
-    const client = new FakeSalesforceQueryClient({ order: [], completed: [], target: [] });
+  it("falls back to a 0 target (not an error) when SalesTarget__c has no record for the selected term", async () => {
+    // 前後1期(48/50期のような隣接期)にはまだ目標レコードが無いことがあるため、
+    // 画面全体を落とさず「目標未設定」として続行する（2026-08-25、隣接期セレクター対応）
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new FakeSalesforceQueryClient({
+      order: [{ crId: "CR1", mo: 9, sales: 20_000_000, grossProfit: 6_000_000 }],
+      completed: [],
+      target: [],
+    });
     const dataSource = new SalesforceSalesProgressDataSource(client);
 
-    await expect(dataSource.getCrProgress()).rejects.toMatchObject({
-      name: "SalesDataSourceError",
-      category: "NOT_FOUND",
-    });
+    const result = await dataSource.getCrProgress(48);
+    const cr1 = result.find((p) => p.crId === "CR1");
+
+    expect(cr1?.order[0]?.targetGrossProfit).toBe(0);
+    // 目標0のときは実績があっても達成率0%（NaN/Infinityにはしない）
+    expect(cr1?.order.find((r) => r.month === 9)?.achievementRate).toBe(0);
+    expect(warnSpy.mock.calls.some((call) => call.join(" ").includes("48期のレコードがありません"))).toBe(
+      true
+    );
+  });
+
+  it("returns [next, current, previous] terms without querying Salesforce", async () => {
+    const { term } = getCurrentFiscalPeriod();
+    const client = new FakeSalesforceQueryClient({ order: [], completed: [], target: TARGET_ROW });
+    const dataSource = new SalesforceSalesProgressDataSource(client);
+
+    await expect(dataSource.getAvailableTerms()).resolves.toEqual([term + 1, term, term - 1]);
   });
 
   it("builds top-client rankings per CR from clientName__c detail rows, re-aggregates for ALL, and flags 今期新規 via clientGroupName__c", async () => {

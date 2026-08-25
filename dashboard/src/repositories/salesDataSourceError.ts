@@ -73,7 +73,6 @@ export function classifySalesforceError(error: unknown): SalesDataSourceErrorCat
 
   if (error instanceof Error) {
     if (/環境変数/.test(error.message)) return "CONFIG_ERROR";
-    if (/SalesTarget__cに.+のレコードがありません/.test(error.message)) return "NOT_FOUND";
     if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|fetch failed/i.test(error.message)) {
       return "NETWORK_ERROR";
     }

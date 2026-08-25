@@ -1,4 +1,9 @@
-import { FISCAL_MONTH_ORDER, fiscalMonthIndex, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
+import {
+  FISCAL_MONTH_ORDER,
+  fiscalMonthIndex,
+  getAdjacentTerms,
+  getCurrentFiscalPeriod,
+} from "@/config/fiscalPeriods";
 import type { CrId, CrProgress, MonthlyProgress, ProgressKind } from "@/domain/types";
 import type { SalesProgressDataSource } from "./salesProgressDataSource";
 import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
@@ -121,21 +126,21 @@ function buildLeaderRows(crId: ConcreteCrId, crIndex: number, seedOffset: number
   return rows;
 }
 
-/** 期セレクター用モック選択肢。今期と過去2期分をダミーで用意する */
-const MOCK_TERM_HISTORY = 2;
-
 export class MockSalesProgressDataSource implements SalesProgressDataSource {
   async getAvailableTerms(): Promise<number[]> {
-    const { term } = getCurrentFiscalPeriod();
-    return Array.from({ length: MOCK_TERM_HISTORY + 1 }, (_, i) => term - i);
+    return getAdjacentTerms();
   }
 
   async getCrProgress(term?: number): Promise<CrProgress[]> {
     const { term: actualTerm, currentMonth: actualCurrentMonth } = getCurrentFiscalPeriod();
     const selectedTerm = term ?? actualTerm;
-    // 今期以外(過去に選んだ期)は決算済みとして全月分のデータがあることにする
+    // 今期は現在月まで、過去期は決算済みとして全月、来期はまだ何も実績が無いものとする
     const upToFiscalIndex =
-      selectedTerm === actualTerm ? fiscalMonthIndex(actualCurrentMonth) : 12;
+      selectedTerm === actualTerm
+        ? fiscalMonthIndex(actualCurrentMonth)
+        : selectedTerm < actualTerm
+          ? 12
+          : 0;
     // 期ごとに異なる数値になるよう、シードに期数を混ぜる（セレクターの動作確認用）
     const termSeed = selectedTerm * 10_000;
 

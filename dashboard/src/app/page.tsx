@@ -5,7 +5,7 @@ import {
   getActiveSalesDataSourceLabel,
   getSalesProgressDataSource,
 } from "@/repositories/salesProgressRepository";
-import { FISCAL_YEAR_END_MONTH, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
+import { FISCAL_MONTH_ORDER, FISCAL_YEAR_END_MONTH, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
 import type { CrProgress } from "@/domain/types";
 
 // 営業データは毎リクエスト取得する（ビルド時に静的化しない）。
@@ -34,9 +34,14 @@ export default async function Page({ searchParams }: PageProps) {
       ? requestedTerm
       : actualTerm;
 
-  const isCurrentTerm = selectedTerm === actualTerm;
-  // 過去の期は決算済み(通期)として期末月を対象月とする。現在の期だけ今日時点の月を使う
-  const displayMonth = isCurrentTerm ? actualCurrentMonth : FISCAL_YEAR_END_MONTH;
+  // 現在の期は今日時点の月、過去の期は決算済み(通期)として期末月、
+  // 来期(まだ開始していない期)はまだ何も実績が無いため期首月を対象月とする
+  const displayMonth =
+    selectedTerm === actualTerm
+      ? actualCurrentMonth
+      : selectedTerm > actualTerm
+        ? FISCAL_MONTH_ORDER[0]
+        : FISCAL_YEAR_END_MONTH;
 
   let progressByCr: CrProgress[] | null = null;
   try {

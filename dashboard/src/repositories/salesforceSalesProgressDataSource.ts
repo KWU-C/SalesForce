@@ -1,4 +1,4 @@
-import { fiscalTermDateRange, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
+import { fiscalTermDateRange, getAdjacentTerms, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
 import { getSalesforceJwtConfig } from "@/config/salesforce";
 import type { CrId, CrProgress } from "@/domain/types";
 import {
@@ -82,23 +82,11 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
   }
 
   /**
-   * 期セレクター用。SalesTarget__cにレコードのある事業期＝目標設定済み＝
-   * ダッシュボードで選べる期、として扱う（実機確認済み、2026-08-24時点は49期のみ）。
-   * 失敗しても画面全体を落とさないよう、現在の事業期だけのフォールバックにする。
+   * 期セレクター用。前期・今期・来期の固定ウィンドウ（ユーザー確定、2026-08-25）。
+   * SalesTarget__cのレコード有無には依存しない（無い期を選んでも下でフォールバックする）。
    */
   async getAvailableTerms(): Promise<number[]> {
-    try {
-      const client = this.getClient();
-      const rows = await client.query<{ Term__c: number }>(
-        "SELECT Term__c FROM SalesTarget__c ORDER BY Term__c DESC"
-      );
-      const terms = rows.map((r) => r.Term__c);
-      return terms.length > 0 ? terms : [getCurrentFiscalPeriod().term];
-    } catch (error) {
-      const category = classifySalesforceError(error);
-      console.error(`[SalesforceSalesProgressDataSource] 期一覧の取得に失敗しました category=${category}`);
-      return [getCurrentFiscalPeriod().term];
-    }
+    return getAdjacentTerms();
   }
 
   async getCrProgress(term?: number): Promise<CrProgress[]> {
@@ -138,10 +126,14 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
       // 「◯◯期新規」のラベルは事業期ごとに更新される想定のため、期数はハードコードしない
       const newClientMarker = `${selectedTerm}期新規`;
 
+      // 前後1期(48/50期のような隣接期)はSalesTarget__cにまだレコードが無いことがある
+      // （目標未設定）。全体をエラーにはせず、目標0(=達成率も0%)として扱う。
       if (targetRows.length === 0) {
-        throw new Error(`SalesTarget__cに${selectedTerm}期のレコードがありません`);
+        console.warn(
+          `[SalesforceSalesProgressDataSource] SalesTarget__cに${selectedTerm}期のレコードがありません。目標未設定として扱います`
+        );
       }
-      const companyTarget = targetRows[0];
+      const companyTarget = targetRows[0] ?? { TargetSales__c: 0, TargetGrossProfit__c: 0 };
       const perCrTarget: AnnualSalesTarget = {
         targetSales: companyTarget.TargetSales__c / CR_IDS.length,
         targetGrossProfit: companyTarget.TargetGrossProfit__c / CR_IDS.length,

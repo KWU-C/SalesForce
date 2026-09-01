@@ -60,7 +60,7 @@ describe("SalesforceSalesProgressDataSource", () => {
     });
     const dataSource = new SalesforceSalesProgressDataSource(client);
 
-    const result = await dataSource.getCrProgress();
+    const result = await dataSource.getCrProgress(49);
 
     const cr1 = result.find((p) => p.crId === "CR1");
     const all = result.find((p) => p.crId === "ALL");
@@ -71,15 +71,118 @@ describe("SalesforceSalesProgressDataSource", () => {
     expect(all?.order.find((r) => r.month === 9)?.sales).toBe(30_000_000);
   });
 
-  it("splits the company-wide annual target evenly across the 3 CRs", async () => {
+  it("splits the company-wide annual target evenly across the 3 CRs (48・49期)", async () => {
     const client = new FakeSalesforceQueryClient({ order: [], completed: [], target: TARGET_ROW });
     const dataSource = new SalesforceSalesProgressDataSource(client);
 
-    const result = await dataSource.getCrProgress();
+    const result = await dataSource.getCrProgress(49);
     const cr1 = result.find((p) => p.crId === "CR1");
 
     // 540,000,000 / 3 CR / 12ヶ月 = 15,000,000
     expect(cr1?.order[0]?.targetGrossProfit).toBeCloseTo(15_000_000, 5);
+  });
+
+  it("splits the company-wide annual target evenly across the 4 CRs once CR4 is introduced (50期以降、ユーザー確定2026-09-01)", async () => {
+    const client = new FakeSalesforceQueryClient({ order: [], completed: [], target: TARGET_ROW });
+    const dataSource = new SalesforceSalesProgressDataSource(client);
+
+    const result = await dataSource.getCrProgress(50);
+    const cr1 = result.find((p) => p.crId === "CR1");
+    const cr4 = result.find((p) => p.crId === "CR4");
+
+    // 540,000,000 / 4 CR / 12ヶ月 = 11,250,000
+    expect(cr1?.order[0]?.targetGrossProfit).toBeCloseTo(11_250_000, 5);
+    expect(cr4).toBeDefined();
+    expect(cr4?.order[0]?.targetGrossProfit).toBeCloseTo(11_250_000, 5);
+  });
+
+  it("uses the CR-specific target breakdown when SalesTarget__c has it set, instead of an equal split (50期、ユーザー確定2026-09-01)", async () => {
+    const client = new FakeSalesforceQueryClient({
+      order: [],
+      completed: [],
+      target: [
+        {
+          TargetSales__c: 660_000_000,
+          TargetGrossProfit__c: 560_000_000,
+          CR1TargetGrossProfit__c: 150_000_000,
+          CR2TargetGrossProfit__c: 130_000_000,
+          CR3TargetGrossProfit__c: 180_000_000,
+          CR4TargetGrossProfit__c: 100_000_000,
+        },
+      ],
+    });
+    const dataSource = new SalesforceSalesProgressDataSource(client);
+
+    const result = await dataSource.getCrProgress(50);
+    const targetOf = (crId: string) =>
+      result.find((p) => p.crId === crId)?.order[0]?.targetGrossProfit;
+
+    // 年間目標 / 12ヶ月
+    expect(targetOf("CR1")).toBeCloseTo(150_000_000 / 12, 5);
+    expect(targetOf("CR2")).toBeCloseTo(130_000_000 / 12, 5);
+    expect(targetOf("CR3")).toBeCloseTo(180_000_000 / 12, 5);
+    expect(targetOf("CR4")).toBeCloseTo(100_000_000 / 12, 5);
+  });
+
+  it("falls back to an equal split only for CRs missing from the breakdown, when it's partially set", async () => {
+    const client = new FakeSalesforceQueryClient({
+      order: [],
+      completed: [],
+      target: [
+        {
+          TargetSales__c: 660_000_000,
+          TargetGrossProfit__c: 560_000_000,
+          CR1TargetGrossProfit__c: 150_000_000,
+          CR2TargetGrossProfit__c: null,
+          CR3TargetGrossProfit__c: null,
+          CR4TargetGrossProfit__c: null,
+        },
+      ],
+    });
+    const dataSource = new SalesforceSalesProgressDataSource(client);
+
+    const result = await dataSource.getCrProgress(50);
+    const targetOf = (crId: string) =>
+      result.find((p) => p.crId === crId)?.order[0]?.targetGrossProfit;
+
+    expect(targetOf("CR1")).toBeCloseTo(150_000_000 / 12, 5);
+    // 未設定のCRは全社目標(560,000,000)を4等分 / 12ヶ月
+    expect(targetOf("CR2")).toBeCloseTo(560_000_000 / 4 / 12, 5);
+    expect(targetOf("CR4")).toBeCloseTo(560_000_000 / 4 / 12, 5);
+  });
+
+  it("warns when the CR breakdown sum disagrees with the company-wide target (data-entry sanity check)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new FakeSalesforceQueryClient({
+      order: [],
+      completed: [],
+      target: [
+        {
+          TargetSales__c: 660_000_000,
+          TargetGrossProfit__c: 560_000_000,
+          CR1TargetGrossProfit__c: 150_000_000,
+          CR2TargetGrossProfit__c: 130_000_000,
+          CR3TargetGrossProfit__c: 180_000_000,
+          CR4TargetGrossProfit__c: 999_000_000, // 合計が全社目標と一致しない
+        },
+      ],
+    });
+    const dataSource = new SalesforceSalesProgressDataSource(client);
+
+    await dataSource.getCrProgress(50);
+
+    expect(warnSpy.mock.calls.some((call) => call.join(" ").includes("CR別目標粗利の合計"))).toBe(
+      true
+    );
+  });
+
+  it("does not include a CR4 entry for terms before 50期", async () => {
+    const client = new FakeSalesforceQueryClient({ order: [], completed: [], target: TARGET_ROW });
+    const dataSource = new SalesforceSalesProgressDataSource(client);
+
+    const result = await dataSource.getCrProgress(49);
+
+    expect(result.find((p) => p.crId === "CR4")).toBeUndefined();
   });
 
   it("falls back to a 0 target (not an error) when SalesTarget__c has no record for the selected term", async () => {
@@ -104,12 +207,12 @@ describe("SalesforceSalesProgressDataSource", () => {
     );
   });
 
-  it("returns [next, current, previous] terms without querying Salesforce", async () => {
+  it("returns [current, previous, two terms back] without querying Salesforce", async () => {
     const { term } = getCurrentFiscalPeriod();
     const client = new FakeSalesforceQueryClient({ order: [], completed: [], target: TARGET_ROW });
     const dataSource = new SalesforceSalesProgressDataSource(client);
 
-    await expect(dataSource.getAvailableTerms()).resolves.toEqual([term + 1, term, term - 1]);
+    await expect(dataSource.getAvailableTerms()).resolves.toEqual([term, term - 1, term - 2]);
   });
 
   it("builds top-client rankings per CR from clientName__c detail rows, re-aggregates for ALL, and flags 今期新規 via clientGroupName__c", async () => {

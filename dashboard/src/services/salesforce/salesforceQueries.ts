@@ -8,18 +8,25 @@
  * ここでは組み立てのみ行い、実行はsalesforceClient.query()に委ねる。
  */
 
-const CR_IDS = ["CR1", "CR2", "CR3"] as const;
-
-function crInClause(): string {
-  return CR_IDS.map((id) => `'${id}'`).join(",");
+/**
+ * 対象CR一覧は事業期によって変わる（48・49期はCR1〜3、50期以降はCR1〜4、
+ * ユーザー確定2026-09-01。domain/types.tsのgetConcreteCrIdsForTerm参照）。
+ * ここではハードコードせず、呼び出し側(salesforceSalesProgressDataSource.ts)から
+ * 事業期に応じたCR一覧を受け取る。
+ */
+function crInClause(crIds: readonly string[]): string {
+  return crIds.map((id) => `'${id}'`).join(",");
 }
 
 /** 受注進捗（月別・CRごとの集計） */
-export function buildOrderProgressQuery(dateRange: { start: string; end: string }): string {
+export function buildOrderProgressQuery(
+  dateRange: { start: string; end: string },
+  crIds: readonly string[]
+): string {
   return `SELECT bumonna__c crId, CALENDAR_MONTH(juchuubi__c) mo,
     SUM(uriagegoukei__c) sales, SUM(arari__c) grossProfit
     FROM Process__c
-    WHERE bumonna__c IN (${crInClause()})
+    WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchuubi__c != null
       AND juchukakudo__c = 'A (80～100%)'
       AND phase__c != '失注'
@@ -28,11 +35,14 @@ export function buildOrderProgressQuery(dateRange: { start: string; end: string 
 }
 
 /** 完了進捗（月別・CRごとの集計） */
-export function buildCompletedProgressQuery(dateRange: { start: string; end: string }): string {
+export function buildCompletedProgressQuery(
+  dateRange: { start: string; end: string },
+  crIds: readonly string[]
+): string {
   return `SELECT bumonna__c crId, CALENDAR_MONTH(seikyuubi__c) mo,
     SUM(uriagegoukei__c) sales, SUM(arari__c) grossProfit
     FROM Process__c
-    WHERE bumonna__c IN (${crInClause()})
+    WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchukakudo__c = 'A (80～100%)'
       AND phase__c != '失注'
       AND seikyuubi__c >= ${dateRange.start} AND seikyuubi__c <= ${dateRange.end}
@@ -40,8 +50,14 @@ export function buildCompletedProgressQuery(dateRange: { start: string; end: str
 }
 
 /** 年間目標（SalesTarget__c、事業期ごとに1レコード） */
+/**
+ * CR1〜4TargetGrossProfit__cはCR別の目標粗利内訳（任意項目、ユーザー確定2026-09-01）。
+ * 未設定(null)のCRは呼び出し側で会社目標の均等按分にフォールバックする。
+ */
 export function buildSalesTargetQuery(term: number): string {
-  return `SELECT TargetSales__c, TargetGrossProfit__c FROM SalesTarget__c WHERE Term__c = ${term} LIMIT 1`;
+  return `SELECT TargetSales__c, TargetGrossProfit__c,
+    CR1TargetGrossProfit__c, CR2TargetGrossProfit__c, CR3TargetGrossProfit__c, CR4TargetGrossProfit__c
+    FROM SalesTarget__c WHERE Term__c = ${term} LIMIT 1`;
 }
 
 /**
@@ -71,20 +87,26 @@ export function buildSalesTargetQuery(term: number): string {
  * キーはフィールドAPI名(bumonna__c/clientName__c/clientGroupName__c/arari__c)
  * そのものになるため、呼び出し側でその名前のまま受け取る。
  */
-export function buildOrderClientRankingQuery(dateRange: { start: string; end: string }): string {
+export function buildOrderClientRankingQuery(
+  dateRange: { start: string; end: string },
+  crIds: readonly string[]
+): string {
   return `SELECT bumonna__c, clientName__c, clientGroupName__c, arari__c
     FROM Process__c
-    WHERE bumonna__c IN (${crInClause()})
+    WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchuubi__c != null
       AND juchukakudo__c = 'A (80～100%)'
       AND phase__c != '失注'
       AND juchuubi__c >= ${dateRange.start} AND juchuubi__c <= ${dateRange.end}`;
 }
 
-export function buildCompletedClientRankingQuery(dateRange: { start: string; end: string }): string {
+export function buildCompletedClientRankingQuery(
+  dateRange: { start: string; end: string },
+  crIds: readonly string[]
+): string {
   return `SELECT bumonna__c, clientName__c, clientGroupName__c, arari__c
     FROM Process__c
-    WHERE bumonna__c IN (${crInClause()})
+    WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchukakudo__c = 'A (80～100%)'
       AND phase__c != '失注'
       AND seikyuubi__c >= ${dateRange.start} AND seikyuubi__c <= ${dateRange.end}`;
@@ -97,10 +119,13 @@ export function buildCompletedClientRankingQuery(dateRange: { start: string; end
  * （2026-08-24確認、集計クエリなのでaliasingは合法）。そのためクライアント
  * ランキングのような明細取得+アプリ側集計は不要で、通常の集計クエリで済む。
  */
-export function buildOrderLeaderRankingQuery(dateRange: { start: string; end: string }): string {
+export function buildOrderLeaderRankingQuery(
+  dateRange: { start: string; end: string },
+  crIds: readonly string[]
+): string {
   return `SELECT bumonna__c crId, rida__c leaderId, rida__r.Name leaderName, SUM(arari__c) grossProfit
     FROM Process__c
-    WHERE bumonna__c IN (${crInClause()})
+    WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchuubi__c != null
       AND juchukakudo__c = 'A (80～100%)'
       AND phase__c != '失注'
@@ -108,10 +133,13 @@ export function buildOrderLeaderRankingQuery(dateRange: { start: string; end: st
     GROUP BY bumonna__c, rida__c, rida__r.Name`;
 }
 
-export function buildCompletedLeaderRankingQuery(dateRange: { start: string; end: string }): string {
+export function buildCompletedLeaderRankingQuery(
+  dateRange: { start: string; end: string },
+  crIds: readonly string[]
+): string {
   return `SELECT bumonna__c crId, rida__c leaderId, rida__r.Name leaderName, SUM(arari__c) grossProfit
     FROM Process__c
-    WHERE bumonna__c IN (${crInClause()})
+    WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchukakudo__c = 'A (80～100%)'
       AND phase__c != '失注'
       AND seikyuubi__c >= ${dateRange.start} AND seikyuubi__c <= ${dateRange.end}

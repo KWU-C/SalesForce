@@ -62,7 +62,7 @@ export default async function Page({ searchParams }: PageProps) {
       />
       <main className="flex-1 bg-[var(--background)]">
         {progressByCr ? (
-          <DashboardClient progressByCr={progressByCr} currentMonth={displayMonth} />
+          <DashboardClient progressByCr={progressByCr} currentMonth={displayMonth} term={selectedTerm} />
         ) : (
           <DataFetchErrorState />
         )}

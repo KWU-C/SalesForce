@@ -10,10 +10,12 @@ import {
 } from "./salesforceQueries";
 
 const dateRange = { start: "2025-09-01", end: "2026-08-31" };
+const CR_IDS_3 = ["CR1", "CR2", "CR3"];
+const CR_IDS_4 = ["CR1", "CR2", "CR3", "CR4"];
 
 describe("buildOrderProgressQuery", () => {
   it("filters by 受注日(juchuubi__c) + 受注確度A + 失注除外(ユーザー確定の定義、2026-08-17)", () => {
-    const soql = buildOrderProgressQuery(dateRange);
+    const soql = buildOrderProgressQuery(dateRange, CR_IDS_3);
 
     expect(soql).toContain("FROM Process__c");
     expect(soql).toContain("bumonna__c IN ('CR1','CR2','CR3')");
@@ -26,7 +28,7 @@ describe("buildOrderProgressQuery", () => {
 
 describe("buildCompletedProgressQuery", () => {
   it("filters by 請求日(seikyuubi__c) + 受注確度A + 失注除外(ユーザー確定・検算済みの定義)", () => {
-    const soql = buildCompletedProgressQuery(dateRange);
+    const soql = buildCompletedProgressQuery(dateRange, CR_IDS_3);
 
     expect(soql).toContain("FROM Process__c");
     expect(soql).toContain("juchukakudo__c = 'A (80～100%)'");
@@ -35,17 +37,34 @@ describe("buildCompletedProgressQuery", () => {
   });
 });
 
+describe("crIds引数によるIN句の切り替え(48・49期はCR1〜3、50期以降はCR1〜4、ユーザー確定2026-09-01)", () => {
+  it("includes CR4 when the caller passes the 4-CR list (50期以降)", () => {
+    const soql = buildOrderProgressQuery(dateRange, CR_IDS_4);
+    expect(soql).toContain("bumonna__c IN ('CR1','CR2','CR3','CR4')");
+  });
+
+  it("excludes CR4 when the caller passes the 3-CR list (48・49期)", () => {
+    const soql = buildOrderProgressQuery(dateRange, CR_IDS_3);
+    expect(soql).not.toContain("CR4");
+  });
+});
+
 describe("buildSalesTargetQuery", () => {
-  it("filters SalesTarget__c by the given fiscal term", () => {
-    expect(buildSalesTargetQuery(49)).toBe(
-      "SELECT TargetSales__c, TargetGrossProfit__c FROM SalesTarget__c WHERE Term__c = 49 LIMIT 1"
-    );
+  it("filters SalesTarget__c by the given fiscal term and selects the per-CR breakdown fields", () => {
+    const soql = buildSalesTargetQuery(49);
+
+    expect(soql).toContain("FROM SalesTarget__c WHERE Term__c = 49 LIMIT 1");
+    expect(soql).toContain("TargetSales__c, TargetGrossProfit__c");
+    expect(soql).toContain("CR1TargetGrossProfit__c");
+    expect(soql).toContain("CR2TargetGrossProfit__c");
+    expect(soql).toContain("CR3TargetGrossProfit__c");
+    expect(soql).toContain("CR4TargetGrossProfit__c");
   });
 });
 
 describe("buildOrderClientRankingQuery", () => {
   it("selects 受注 detail rows (bumonna__c/clientName__c/clientGroupName__c/arari__c) with the same business filters as the monthly query, without GROUP BY or aliasing", () => {
-    const soql = buildOrderClientRankingQuery(dateRange);
+    const soql = buildOrderClientRankingQuery(dateRange, CR_IDS_3);
 
     expect(soql).toContain("FROM Process__c");
     expect(soql).toContain("bumonna__c IN ('CR1','CR2','CR3')");
@@ -66,7 +85,7 @@ describe("buildOrderClientRankingQuery", () => {
 
 describe("buildCompletedClientRankingQuery", () => {
   it("selects 完了 detail rows using 請求日(seikyuubi__c), without GROUP BY or aliasing", () => {
-    const soql = buildCompletedClientRankingQuery(dateRange);
+    const soql = buildCompletedClientRankingQuery(dateRange, CR_IDS_3);
 
     expect(soql).toContain("seikyuubi__c >= 2025-09-01 AND seikyuubi__c <= 2026-08-31");
     expect(soql).toContain("SELECT bumonna__c, clientName__c, clientGroupName__c, arari__c");
@@ -80,7 +99,7 @@ describe("buildCompletedClientRankingQuery", () => {
 
 describe("buildOrderLeaderRankingQuery", () => {
   it("groups 受注 by CR × リーダー(rida__c/rida__r.Name) with the same business filters as the monthly query", () => {
-    const soql = buildOrderLeaderRankingQuery(dateRange);
+    const soql = buildOrderLeaderRankingQuery(dateRange, CR_IDS_3);
 
     expect(soql).toContain("FROM Process__c");
     expect(soql).toContain("bumonna__c IN ('CR1','CR2','CR3')");
@@ -99,7 +118,7 @@ describe("buildOrderLeaderRankingQuery", () => {
 
 describe("buildCompletedLeaderRankingQuery", () => {
   it("groups 完了 by CR × リーダー using 請求日(seikyuubi__c)", () => {
-    const soql = buildCompletedLeaderRankingQuery(dateRange);
+    const soql = buildCompletedLeaderRankingQuery(dateRange, CR_IDS_3);
 
     expect(soql).toContain("seikyuubi__c >= 2025-09-01 AND seikyuubi__c <= 2026-08-31");
     expect(soql).toContain(

@@ -1,20 +1,21 @@
 "use client";
 
-import { CR_LIST, type CrId } from "@/domain/types";
+import type { CrId } from "@/domain/types";
 
 interface CrTabsProps {
+  crList: { id: CrId; label: string }[];
   selected: CrId;
   onSelect: (crId: CrId) => void;
 }
 
-export function CrTabs({ selected, onSelect }: CrTabsProps) {
+export function CrTabs({ crList, selected, onSelect }: CrTabsProps) {
   return (
     <div
       role="tablist"
       aria-label="CR選択"
       className="flex flex-wrap gap-1 border-b border-[var(--border-hairline)]"
     >
-      {CR_LIST.map(({ id, label }) => {
+      {crList.map(({ id, label }) => {
         const isActive = id === selected;
         return (
           <button

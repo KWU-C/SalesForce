@@ -1,10 +1,15 @@
-import { CR_LIST } from "@/domain/types";
+import { getConcreteCrIdsForTerm } from "@/domain/types";
 import type { CrProgress, MonthlyProgress } from "@/domain/types";
 import { FISCAL_MONTH_ORDER, fiscalMonthIndex } from "@/config/fiscalPeriods";
 import { summarizePeriod } from "./aggregate";
 
-/** CR横断表の対象CR一覧。ALL(全社)は対象外、CR_LISTが増えれば自動で列も増える */
-export const CROSS_CR_LIST = CR_LIST.filter((cr) => cr.id !== "ALL");
+/**
+ * CR横断表の対象CR一覧。ALL(全社)は対象外。事業期によって列数が変わる
+ * (48・49期はCR1〜3、50期以降はCR1〜4、ユーザー確定2026-09-01)
+ */
+export function getCrossCrList(term: number): { id: string; label: string }[] {
+  return getConcreteCrIdsForTerm(term).map((id) => ({ id, label: id }));
+}
 
 export interface CrossCrColumn {
   crId: string;
@@ -101,14 +106,16 @@ function buildTotalColumn(
  */
 export function buildCrossCrProgress(
   progressByCr: CrProgress[],
-  currentMonth: number
+  currentMonth: number,
+  term: number
 ): CrossCrProgress {
+  const crossCrList = getCrossCrList(term);
   const monthRows: CrossCrMonthRow[] = FISCAL_MONTH_ORDER.map((month, i) => {
     const cumulativeMonths = FISCAL_MONTH_ORDER.slice(0, i + 1);
     return {
       month,
       isCurrentMonth: month === currentMonth,
-      columns: CROSS_CR_LIST.map((cr) => {
+      columns: crossCrList.map((cr) => {
         const progress = progressByCr.find((p) => p.crId === cr.id)!;
         return buildMonthColumn(cr.id, cr.label, progress, month, cumulativeMonths);
       }),
@@ -116,7 +123,7 @@ export function buildCrossCrProgress(
   });
 
   const totalCumulativeMonths = FISCAL_MONTH_ORDER.slice(0, fiscalMonthIndex(currentMonth));
-  const totalRow: CrossCrColumn[] = CROSS_CR_LIST.map((cr) => {
+  const totalRow: CrossCrColumn[] = crossCrList.map((cr) => {
     const progress = progressByCr.find((p) => p.crId === cr.id)!;
     return buildTotalColumn(cr.id, cr.label, progress, totalCumulativeMonths);
   });

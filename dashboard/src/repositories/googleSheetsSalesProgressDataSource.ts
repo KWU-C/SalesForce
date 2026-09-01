@@ -1,6 +1,6 @@
 import { getCrReportSheetRef } from "@/config/googleSheets";
 import { getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
-import type { CrId, CrProgress } from "@/domain/types";
+import type { CrProgress } from "@/domain/types";
 import type { SheetsValuesReader } from "@/services/google-sheets/sheetsClient";
 import { createDefaultReportRegistry } from "./reportDefinitions";
 import type { ReportRegistry } from "./reportRegistry";
@@ -8,7 +8,11 @@ import { classifySheetsError, SalesDataSourceError } from "./salesDataSourceErro
 import type { SalesProgressDataSource } from "./salesProgressDataSource";
 import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
 
-type ConcreteCrId = Exclude<CrId, "ALL">;
+/**
+ * このデータソースは検証用（本番投入しない）で、CR4のシートは存在しないため
+ * 常にCR1〜3固定（domain/types.tsのConcreteCrIdとは意図的に別定義。CR4は含めない）。
+ */
+type ConcreteCrId = "CR1" | "CR2" | "CR3";
 
 const CR_IDS: ConcreteCrId[] = ["CR1", "CR2", "CR3"];
 

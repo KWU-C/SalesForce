@@ -12,22 +12,31 @@ import { PeriodSummarySection } from "@/components/PeriodSummarySection";
 import { PeriodComparisonChart } from "./charts/PeriodComparisonChart";
 import { summarizePeriod } from "@/features/sales-progress/aggregate";
 import { FULL_YEAR, HALVES, QUARTERS } from "@/config/fiscalPeriods";
+import { getCrListForTerm } from "@/domain/types";
 import type { CrId, CrProgress } from "@/domain/types";
 
 interface DashboardClientProps {
   progressByCr: CrProgress[];
   currentMonth: number;
+  term: number;
 }
 
 export function DashboardClient({
   progressByCr,
   currentMonth,
+  term,
 }: DashboardClientProps) {
   const [selectedCr, setSelectedCr] = useState<CrId>("ALL");
+  const crList = useMemo(() => getCrListForTerm(term), [term]);
+  // CR一覧は事業期によって変わる(48・49期はCR1〜3、50期以降はCR1〜4、
+  // ユーザー確定2026-09-01)。CR4選択中に48/49期へ切り替えるなど、選択中のCRが
+  // 新しい期に存在しない場合は表示上は全社(ALL)へフォールバックする
+  // (existingのselectedCr自体は変更しない。存在しないcrIdでfindするとクラッシュするため)
+  const effectiveCr = crList.some((cr) => cr.id === selectedCr) ? selectedCr : "ALL";
 
   const current = useMemo(
-    () => progressByCr.find((p) => p.crId === selectedCr)!,
-    [progressByCr, selectedCr]
+    () => progressByCr.find((p) => p.crId === effectiveCr) ?? progressByCr[0],
+    [progressByCr, effectiveCr]
   );
 
   const orderYearSummary = summarizePeriod(
@@ -57,7 +66,7 @@ export function DashboardClient({
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6">
-      <CrTabs selected={selectedCr} onSelect={setSelectedCr} />
+      <CrTabs crList={crList} selected={effectiveCr} onSelect={setSelectedCr} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <StatCard
@@ -96,7 +105,7 @@ export function DashboardClient({
         <MonthlyCumulativeTable title="完了" data={current.completed} />
       </div>
 
-      <CrossCrProgressTable progressByCr={progressByCr} currentMonth={currentMonth} />
+      <CrossCrProgressTable progressByCr={progressByCr} currentMonth={currentMonth} term={term} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ClientRankingTable
@@ -113,7 +122,7 @@ export function DashboardClient({
 
       <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
 
-      {selectedCr === "ALL" ? (
+      {effectiveCr === "ALL" ? (
         <>
           <div>
             <h3 className="mb-2 text-sm font-medium text-[var(--text-secondary)]">

@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import type { CrProgress } from "@/domain/types";
 import {
   buildCrossCrProgress,
-  CROSS_CR_LIST,
+  getCrossCrList,
   type CrossCrColumn,
 } from "@/features/sales-progress/crossCrProgress";
 import { formatPercent2, formatPercentInt, formatThousandYen } from "@/utils/format";
@@ -10,6 +10,7 @@ import { formatPercent2, formatPercentInt, formatThousandYen } from "@/utils/for
 interface CrossCrProgressTableProps {
   progressByCr: CrProgress[];
   currentMonth: number;
+  term: number;
 }
 
 function statusColor(rate: number): string | undefined {
@@ -71,8 +72,9 @@ function CrCells({ col, cumulativeBg }: { col: CrossCrColumn; cumulativeBg: stri
  * データはprogressByCrをそのまま渡し、表専用のSalesforce取得・集計は行わない
  * （features/sales-progress/crossCrProgress.tsで既存のsummarizePeriodを再利用）。
  */
-export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProgressTableProps) {
-  const { monthRows, totalRow } = buildCrossCrProgress(progressByCr, currentMonth);
+export function CrossCrProgressTable({ progressByCr, currentMonth, term }: CrossCrProgressTableProps) {
+  const { monthRows, totalRow } = buildCrossCrProgress(progressByCr, currentMonth, term);
+  const crossCrList = getCrossCrList(term);
 
   return (
     <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
@@ -90,7 +92,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProg
               >
                 月
               </th>
-              {CROSS_CR_LIST.map((cr) => (
+              {crossCrList.map((cr) => (
                 <th
                   key={cr.id}
                   colSpan={7}
@@ -101,7 +103,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth }: CrossCrProg
               ))}
             </tr>
             <tr className="text-xs text-[var(--text-muted)]">
-              {CROSS_CR_LIST.map((cr) => (
+              {crossCrList.map((cr) => (
                 <Fragment key={cr.id}>
                   <th className="border-l-2 border-[var(--baseline)] px-2 py-1 text-right font-normal">
                     目標

@@ -1,6 +1,7 @@
-import { fiscalTermDateRange, getAdjacentTerms, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
+import { fiscalTermDateRange, getSelectableTerms, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
 import { getSalesforceJwtConfig } from "@/config/salesforce";
-import type { CrId, CrProgress } from "@/domain/types";
+import { getConcreteCrIdsForTerm } from "@/domain/types";
+import type { CrProgress } from "@/domain/types";
 import {
   SalesforceAuthError,
   SalesforceClient,
@@ -46,9 +47,60 @@ function toClientDetailRow(row: RawClientDetailRow): ClientDetailRow {
   };
 }
 
-type ConcreteCrId = Exclude<CrId, "ALL">;
+interface SalesTargetRow {
+  TargetSales__c: number;
+  TargetGrossProfit__c: number;
+  /** CR別目標粗利の内訳（任意項目、ユーザー確定2026-09-01）。未設定のCRはnull */
+  CR1TargetGrossProfit__c: number | null;
+  CR2TargetGrossProfit__c: number | null;
+  CR3TargetGrossProfit__c: number | null;
+  CR4TargetGrossProfit__c: number | null;
+}
 
-const CR_IDS: ConcreteCrId[] = ["CR1", "CR2", "CR3"];
+const CR_GROSS_PROFIT_TARGET_FIELD: Record<string, keyof SalesTargetRow> = {
+  CR1: "CR1TargetGrossProfit__c",
+  CR2: "CR2TargetGrossProfit__c",
+  CR3: "CR3TargetGrossProfit__c",
+  CR4: "CR4TargetGrossProfit__c",
+};
+
+/** CR別目標粗利の内訳と会社全体目標との差(円)。この範囲を超えたらconsole.warnのみ(検算警告、既存パターンに準拠) */
+const GROSS_PROFIT_TARGET_TOLERANCE_YEN = 1;
+
+/**
+ * CRごとの年間目標粗利を決める。SalesTarget__cにCR別の内訳(CR1〜4TargetGrossProfit__c)が
+ * 設定されていればそれを使い、未設定のCRは会社全体目標をCR数で均等按分した値にフォールバックする
+ * （CR別は等分でよい、ユーザー確定2026-08-07。50期はCR別の内訳が別途確定した、ユーザー確定2026-09-01）。
+ * 売上目標はCR別の内訳が提供されていないため常に均等按分。
+ */
+function resolveCrAnnualTargets(
+  companyTarget: SalesTargetRow,
+  crIds: readonly string[]
+): Record<string, AnnualSalesTarget> {
+  const equalSplitSales = companyTarget.TargetSales__c / crIds.length;
+  const equalSplitGrossProfit = companyTarget.TargetGrossProfit__c / crIds.length;
+
+  const explicitGrossProfits = crIds.map((crId) => companyTarget[CR_GROSS_PROFIT_TARGET_FIELD[crId]]);
+  if (explicitGrossProfits.every((v) => v != null)) {
+    const sum = explicitGrossProfits.reduce((total, v) => total + (v ?? 0), 0);
+    const diff = Math.abs(sum - companyTarget.TargetGrossProfit__c);
+    if (diff > GROSS_PROFIT_TARGET_TOLERANCE_YEN) {
+      console.warn(
+        `[SalesforceSalesProgressDataSource] CR別目標粗利の合計(${sum})が全社目標粗利(${companyTarget.TargetGrossProfit__c})と一致しません(差${diff}円)`
+      );
+    }
+  }
+
+  const result: Record<string, AnnualSalesTarget> = {};
+  for (const crId of crIds) {
+    const explicit = companyTarget[CR_GROSS_PROFIT_TARGET_FIELD[crId]];
+    result[crId] = {
+      targetSales: equalSplitSales,
+      targetGrossProfit: explicit ?? equalSplitGrossProfit,
+    };
+  }
+  return result;
+}
 
 /**
  * Salesforceを取得元とする実装。
@@ -82,15 +134,18 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
   }
 
   /**
-   * 期セレクター用。前期・今期・来期の固定ウィンドウ（ユーザー確定、2026-08-25）。
+   * 期セレクター用。今期・前期・前々期の固定ウィンドウ（ユーザー確定、2026-09-01）。
    * SalesTarget__cのレコード有無には依存しない（無い期を選んでも下でフォールバックする）。
    */
   async getAvailableTerms(): Promise<number[]> {
-    return getAdjacentTerms();
+    return getSelectableTerms();
   }
 
   async getCrProgress(term?: number): Promise<CrProgress[]> {
     const selectedTerm = term ?? getCurrentFiscalPeriod().term;
+    // 対象CR一覧は事業期によって変わる(48・49期はCR1〜3、50期以降はCR1〜4、
+    // ユーザー確定2026-09-01)。前期比較データも「今期選択中のCR一覧」を基準に取得する
+    const crIds = getConcreteCrIdsForTerm(selectedTerm);
 
     try {
       const client = this.getClient();
@@ -109,17 +164,15 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         orderLeaderRows,
         completedLeaderRows,
       ] = await Promise.all([
-        client.query<ProgressAggregateRow>(buildOrderProgressQuery(dateRange)),
-        client.query<ProgressAggregateRow>(buildCompletedProgressQuery(dateRange)),
-        client.query<{ TargetSales__c: number; TargetGrossProfit__c: number }>(
-          buildSalesTargetQuery(selectedTerm)
-        ),
-        client.query<ProgressAggregateRow>(buildOrderProgressQuery(previousDateRange)),
-        client.query<ProgressAggregateRow>(buildCompletedProgressQuery(previousDateRange)),
-        client.query<RawClientDetailRow>(buildOrderClientRankingQuery(dateRange)),
-        client.query<RawClientDetailRow>(buildCompletedClientRankingQuery(dateRange)),
-        client.query<LeaderAggregateRow>(buildOrderLeaderRankingQuery(dateRange)),
-        client.query<LeaderAggregateRow>(buildCompletedLeaderRankingQuery(dateRange)),
+        client.query<ProgressAggregateRow>(buildOrderProgressQuery(dateRange, crIds)),
+        client.query<ProgressAggregateRow>(buildCompletedProgressQuery(dateRange, crIds)),
+        client.query<SalesTargetRow>(buildSalesTargetQuery(selectedTerm)),
+        client.query<ProgressAggregateRow>(buildOrderProgressQuery(previousDateRange, crIds)),
+        client.query<ProgressAggregateRow>(buildCompletedProgressQuery(previousDateRange, crIds)),
+        client.query<RawClientDetailRow>(buildOrderClientRankingQuery(dateRange, crIds)),
+        client.query<RawClientDetailRow>(buildCompletedClientRankingQuery(dateRange, crIds)),
+        client.query<LeaderAggregateRow>(buildOrderLeaderRankingQuery(dateRange, crIds)),
+        client.query<LeaderAggregateRow>(buildCompletedLeaderRankingQuery(dateRange, crIds)),
       ]);
       const orderClientRows = rawOrderClientRows.map(toClientDetailRow);
       const completedClientRows = rawCompletedClientRows.map(toClientDetailRow);
@@ -133,22 +186,26 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
           `[SalesforceSalesProgressDataSource] SalesTarget__cに${selectedTerm}期のレコードがありません。目標未設定として扱います`
         );
       }
-      const companyTarget = targetRows[0] ?? { TargetSales__c: 0, TargetGrossProfit__c: 0 };
-      const perCrTarget: AnnualSalesTarget = {
-        targetSales: companyTarget.TargetSales__c / CR_IDS.length,
-        targetGrossProfit: companyTarget.TargetGrossProfit__c / CR_IDS.length,
+      const companyTarget: SalesTargetRow = targetRows[0] ?? {
+        TargetSales__c: 0,
+        TargetGrossProfit__c: 0,
+        CR1TargetGrossProfit__c: null,
+        CR2TargetGrossProfit__c: null,
+        CR3TargetGrossProfit__c: null,
+        CR4TargetGrossProfit__c: null,
       };
+      const targetByCr = resolveCrAnnualTargets(companyTarget, crIds);
       // 前期比較チャートは粗利額のみ使い、目標・達成率は表示しないためダミー値でよい
       const noTarget: AnnualSalesTarget = { targetSales: 0, targetGrossProfit: 0 };
 
-      const perCr: CrProgress[] = CR_IDS.map((crId) => ({
+      const perCr: CrProgress[] = crIds.map((crId) => ({
         crId,
-        order: mapAggregateRowsToMonthlyProgress(orderRows, crId, "order", perCrTarget),
+        order: mapAggregateRowsToMonthlyProgress(orderRows, crId, "order", targetByCr[crId]),
         completed: mapAggregateRowsToMonthlyProgress(
           completedRows,
           crId,
           "completed",
-          perCrTarget
+          targetByCr[crId]
         ),
         previousOrder: mapAggregateRowsToMonthlyProgress(
           previousOrderRows,

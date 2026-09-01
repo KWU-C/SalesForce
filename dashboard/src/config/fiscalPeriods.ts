@@ -54,13 +54,14 @@ export function getCurrentFiscalPeriod(now: Date = new Date()): { term: number; 
 }
 
 /**
- * 期セレクター用。現在の事業期を基準に「前期・今期・来期」の3つを新しい順で返す
- * （ユーザー確定、2026-08-25：「現在49期であれば、48期と50期を見れるように」）。
+ * 期セレクター用。今期を基準に「前々期・前期・今期」の3つを新しい順で返す
+ * （ユーザー確定、2026-09-01：CR4が50期から加わったことを受け、来期(51期)を
+ * 見せていた従来の「前期・今期・来期」窓から、今期・前期・前々期の窓へ変更）。
  * SalesTarget__c等の実データ有無には依存しない固定ウィンドウ。
  */
-export function getAdjacentTerms(now: Date = new Date()): number[] {
+export function getSelectableTerms(now: Date = new Date()): number[] {
   const { term } = getCurrentFiscalPeriod(now);
-  return [term + 1, term, term - 1];
+  return [term, term - 1, term - 2];
 }
 
 /** 事業期の期首・期末（暦日、YYYY-MM-DD）。SOQLの日付リテラルに使う */

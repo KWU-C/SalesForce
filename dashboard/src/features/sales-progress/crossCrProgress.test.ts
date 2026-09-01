@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { CrId, CrProgress, MonthlyProgress, ProgressKind } from "@/domain/types";
 import { FISCAL_MONTH_ORDER } from "@/config/fiscalPeriods";
-import { buildCrossCrProgress, CROSS_CR_LIST } from "./crossCrProgress";
+import { buildCrossCrProgress, getCrossCrList } from "./crossCrProgress";
+
+const TERM_49 = 49; // CR1〜3構成（48・49期）
+const TERM_50 = 50; // CR1〜4構成（50期以降、ユーザー確定2026-09-01）
 
 type ConcreteCrId = Exclude<CrId, "ALL">;
 
@@ -77,15 +80,33 @@ function expectedRate(gpSum: number, targetSum: number): number {
   return Math.round((gpSum / targetSum) * 1000) / 10;
 }
 
-describe("CROSS_CR_LIST", () => {
-  it("excludes ALL(全社) and lists CR1/CR2/CR3 only, in CR_LIST order", () => {
-    expect(CROSS_CR_LIST.map((cr) => cr.id)).toEqual(["CR1", "CR2", "CR3"]);
+describe("getCrossCrList", () => {
+  it("lists CR1/CR2/CR3 only for 48・49期 (excludes ALL)", () => {
+    expect(getCrossCrList(TERM_49).map((cr) => cr.id)).toEqual(["CR1", "CR2", "CR3"]);
+  });
+
+  it("includes CR4 for 50期以降 (ユーザー確定2026-09-01)", () => {
+    expect(getCrossCrList(TERM_50).map((cr) => cr.id)).toEqual(["CR1", "CR2", "CR3", "CR4"]);
+  });
+});
+
+describe("buildCrossCrProgress — 50期はCR4列が加わる", () => {
+  it("includes a CR4 column when progressByCr has a CR4 entry and term=50", () => {
+    const progressByCr = [
+      ...fullYearFixture(),
+      buildCrProgress("CR4", 12_000, { 9: 12_000 }, { 9: 12_000 }),
+    ];
+    const { monthRows, totalRow } = buildCrossCrProgress(progressByCr, 9, TERM_50);
+
+    expect(monthRows[0].columns.map((c) => c.crId)).toEqual(["CR1", "CR2", "CR3", "CR4"]);
+    expect(totalRow.map((c) => c.crId)).toEqual(["CR1", "CR2", "CR3", "CR4"]);
+    expect(monthRows[0].columns.find((c) => c.crId === "CR4")?.orderGrossProfit).toBe(12_000);
   });
 });
 
 describe("buildCrossCrProgress — 通年(currentMonth=8月)", () => {
   const progressByCr = fullYearFixture();
-  const { monthRows, totalRow } = buildCrossCrProgress(progressByCr, 8);
+  const { monthRows, totalRow } = buildCrossCrProgress(progressByCr, 8, TERM_49);
 
   function col(month: number, crId: string) {
     const row = monthRows.find((r) => r.month === month)!;
@@ -145,14 +166,14 @@ describe("buildCrossCrProgress — 通年(currentMonth=8月)", () => {
 });
 
 describe("buildCrossCrProgress — 期中(currentMonth=11月、12月以降は未到来)", () => {
-  // buildCrossCrProgressはCROSS_CR_LIST(CR1〜3)全件を走査するため、テスト対象がCR1でも
+  // buildCrossCrProgressはgetCrossCrList(49期はCR1〜3)全件を走査するため、テスト対象がCR1でも
   // CR2/CR3のデータも用意しておく必要がある
   const progressByCr = [
     buildCrProgress("CR1", 15_000, CR1_ORDER, CR1_COMPLETED, 3), // fiscalIndex 3 = 11月まで
     buildCrProgress("CR2", 20_000, CR2_ORDER, CR2_COMPLETED, 3),
     buildCrProgress("CR3", 10_000, CR3_ORDER, CR3_COMPLETED, 3),
   ];
-  const { monthRows, totalRow } = buildCrossCrProgress(progressByCr, 11);
+  const { monthRows, totalRow } = buildCrossCrProgress(progressByCr, 11, TERM_49);
 
   function col(month: number) {
     return monthRows.find((r) => r.month === month)!.columns[0];
@@ -188,7 +209,7 @@ describe("null(未入力)と0(実績0円)の区別", () => {
       buildCrProgress("CR2", 20_000, {}, {}, 12),
       buildCrProgress("CR3", 10_000, {}, {}, 12),
     ];
-    const { monthRows } = buildCrossCrProgress(progressByCr, 8);
+    const { monthRows } = buildCrossCrProgress(progressByCr, 8, TERM_49);
     const sep = monthRows.find((r) => r.month === 9)!.columns[0];
     const oct = monthRows.find((r) => r.month === 10)!.columns[0];
 

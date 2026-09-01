@@ -5,14 +5,27 @@
  * （実データ接続時にユーザー確認の上で反映する。docs/sheet-mapping.md参照）。
  */
 
-export type CrId = "ALL" | "CR1" | "CR2" | "CR3";
+export type ConcreteCrId = "CR1" | "CR2" | "CR3" | "CR4";
+export type CrId = "ALL" | ConcreteCrId;
 
-export const CR_LIST: { id: CrId; label: string }[] = [
-  { id: "ALL", label: "全社" },
-  { id: "CR1", label: "CR1" },
-  { id: "CR2", label: "CR2" },
-  { id: "CR3", label: "CR3" },
-];
+/**
+ * CR4が加わった事業期。ユーザー確定（2026-09-01）:
+ * 48期・49期はCR1〜CR3の3部門構成、50期以降はCR1〜CR4の4部門構成。
+ */
+export const CR4_INTRODUCED_TERM = 50;
+
+/** 事業期に応じた実在CR一覧（ALLを除く）。CR_LISTを直接使わず必ずこの関数経由で求める */
+export function getConcreteCrIdsForTerm(term: number): ConcreteCrId[] {
+  return term >= CR4_INTRODUCED_TERM ? ["CR1", "CR2", "CR3", "CR4"] : ["CR1", "CR2", "CR3"];
+}
+
+/** 事業期に応じたCRタブ一覧（先頭にALL=全社を含む） */
+export function getCrListForTerm(term: number): { id: CrId; label: string }[] {
+  return [
+    { id: "ALL", label: "全社" },
+    ...getConcreteCrIdsForTerm(term).map((id) => ({ id, label: id })),
+  ];
+}
 
 /** 受注 or 完了 */
 export type ProgressKind = "order" | "completed";

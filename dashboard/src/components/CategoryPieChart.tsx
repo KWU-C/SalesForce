@@ -1,6 +1,6 @@
 "use client";
 
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { useCssVar } from "@/utils/useCssVar";
 import { formatYen } from "@/utils/format";
 import type { CategorySlice } from "@/features/sales-progress/categoryChart";
@@ -46,7 +46,6 @@ export function CategoryPieChart({ title, slices, compact = false }: CategoryPie
   const categoryColor5 = useCssVar("--series-category-5", "#c7ac41");
   const otherColor = useCssVar("--series-other", "#c9c7bf");
   const surface = useCssVar("--surface-1", "#fcfcfb");
-  const secondary = useCssVar("--text-secondary", "#52514e");
 
   const colorByVar: Record<CategorySlice["colorVar"], string> = {
     "--series-category-1": categoryColor1,
@@ -66,12 +65,7 @@ export function CategoryPieChart({ title, slices, compact = false }: CategoryPie
 
   const size = compact ? 140 : 240;
   const outerRadius = compact ? 60 : 100;
-  // 凡例(最大6項目、折り返しで2〜3行になる)がPie本体と重ならないよう、
-  // 非compact(凡例あり)の場合だけコンテナを高くして下に専用スペースを確保する。
-  // 円の直径・中心位置はそのまま(cyを上に詰めるだけ)にする
-  const legendReservedHeight = compact ? 0 : 72;
-  const containerHeight = size + legendReservedHeight;
-  const pieCy = compact ? "50%" : `${((size / 2) / containerHeight) * 100}%`;
+  const legendWidth = 150;
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -87,39 +81,54 @@ export function CategoryPieChart({ title, slices, compact = false }: CategoryPie
       {total === 0 ? (
         <div
           className="flex items-center justify-center text-xs text-[var(--text-muted)]"
-          style={{ width: size, height: containerHeight }}
+          style={{ width: size, height: size }}
         >
           データなし
         </div>
       ) : (
-        <ResponsiveContainer width={size} height={containerHeight}>
-          <PieChart>
-            <Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              cy={pieCy}
-              outerRadius={outerRadius}
-              // 12時位置(真上)から時計回りに開始する(業務資料の円グラフの慣例に合わせる、
-              // ユーザー確定2026-09-01)。Rechartsの角度は3時位置=0°・反時計回りが正なので、
-              // 12時=90°から開始し、終角を-270°(=90-360)にして時計回りへ反転させる
-              startAngle={90}
-              endAngle={-270}
-              stroke={surface}
-              strokeWidth={2}
-              // Recharts 3のPie既定(isAnimationActive="auto")は、タブが非フォーカスで
-              // requestAnimationFrameが回らない環境(自動テスト等)だと入場アニメーションが
-              // 開始角のまま進まず扇形が一切描画されない不具合を実機で確認したため無効化
-              isAnimationActive={false}
-            >
+        <div className="flex items-center gap-3">
+          <ResponsiveContainer width={size} height={size}>
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                outerRadius={outerRadius}
+                // 12時位置(真上)から時計回りに開始する(業務資料の円グラフの慣例に合わせる、
+                // ユーザー確定2026-09-01)。Rechartsの角度は3時位置=0°・反時計回りが正なので、
+                // 12時=90°から開始し、終角を-270°(=90-360)にして時計回りへ反転させる
+                startAngle={90}
+                endAngle={-270}
+                stroke={surface}
+                strokeWidth={2}
+                // Recharts 3のPie既定(isAnimationActive="auto")は、タブが非フォーカスで
+                // requestAnimationFrameが回らない環境(自動テスト等)だと入場アニメーションが
+                // 開始角のまま進まず扇形が一切描画されない不具合を実機で確認したため無効化
+                isAnimationActive={false}
+              >
+                {data.map((d, i) => (
+                  <Cell key={i} fill={d.color} />
+                ))}
+              </Pie>
+              <Tooltip content={<CategoryPieTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+          {!compact && (
+            // Rechartsの<Legend>はPieの並び順を保持せず表示順が崩れることがあるため
+            // (実機確認2026-09-01)、順位1〜6の並びを保証できる自前の凡例を右側に置く
+            <ul className="flex flex-col gap-1" style={{ width: legendWidth }}>
               {data.map((d, i) => (
-                <Cell key={i} fill={d.color} />
+                <li key={i} className="flex items-center gap-1.5 text-xs">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: d.color }}
+                  />
+                  <span className="truncate text-[var(--text-secondary)]">{d.name}</span>
+                </li>
               ))}
-            </Pie>
-            <Tooltip content={<CategoryPieTooltip />} />
-            {!compact && <Legend wrapperStyle={{ fontSize: 12, color: secondary }} />}
-          </PieChart>
-        </ResponsiveContainer>
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );

@@ -16,17 +16,24 @@ import { buildCategorySlices } from "@/features/sales-progress/categoryChart";
 import { FULL_YEAR, HALVES, QUARTERS } from "@/config/fiscalPeriods";
 import { getCrListForTerm } from "@/domain/types";
 import type { CrId, CrProgress } from "@/domain/types";
+import { formatTime } from "@/utils/format";
 
 interface DashboardClientProps {
   progressByCr: CrProgress[];
   currentMonth: number;
   term: number;
+  /** データ取得時刻。ヘッダーと同じ値を使い、フッターにも取得元・取得日時を表示する */
+  fetchedAt: Date;
+  /** "Salesforce"/"モックデータ"等、取得元を示す短いラベル */
+  dataSourceLabel: string;
 }
 
 export function DashboardClient({
   progressByCr,
   currentMonth,
   term,
+  fetchedAt,
+  dataSourceLabel,
 }: DashboardClientProps) {
   const [selectedCr, setSelectedCr] = useState<CrId>("ALL");
   const crList = useMemo(() => getCrListForTerm(term), [term]);
@@ -193,7 +200,7 @@ export function DashboardClient({
       )}
 
       <p className="pb-2 text-center text-xs text-[var(--text-muted)]">
-        表示中: {currentMonth}月時点までの実績（モックデータ）
+        表示中: {currentMonth}月時点までの実績（{dataSourceLabel}、取得日時 {formatTime(fetchedAt)}）
       </p>
     </div>
   );

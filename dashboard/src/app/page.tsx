@@ -51,18 +51,26 @@ export default async function Page({ searchParams }: PageProps) {
     // 出力済み（repositories/salesDataSourceError.ts）。画面には出さない。
     // モックへの自動フォールバックは行わない。
   }
+  const fetchedAt = new Date();
+  const dataSourceLabel = getActiveSalesDataSourceLabel();
 
   return (
     <>
       <Header
         fiscalPeriod={{ term: selectedTerm, currentMonth: displayMonth }}
         availableTerms={availableTerms}
-        fetchedAt={progressByCr ? new Date() : null}
-        dataSourceLabel={getActiveSalesDataSourceLabel()}
+        fetchedAt={progressByCr ? fetchedAt : null}
+        dataSourceLabel={dataSourceLabel}
       />
       <main className="flex-1 bg-[var(--background)]">
         {progressByCr ? (
-          <DashboardClient progressByCr={progressByCr} currentMonth={displayMonth} term={selectedTerm} />
+          <DashboardClient
+            progressByCr={progressByCr}
+            currentMonth={displayMonth}
+            term={selectedTerm}
+            fetchedAt={fetchedAt}
+            dataSourceLabel={dataSourceLabel}
+          />
         ) : (
           <DataFetchErrorState />
         )}

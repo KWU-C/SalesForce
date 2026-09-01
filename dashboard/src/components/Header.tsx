@@ -1,5 +1,6 @@
 import { RefreshButton } from "./RefreshButton";
 import { TermSelector } from "./TermSelector";
+import { formatTime } from "@/utils/format";
 
 interface HeaderProps {
   fiscalPeriod: { term: number; currentMonth: number };
@@ -9,10 +10,6 @@ interface HeaderProps {
   fetchedAt: Date | null;
   /** "モックデータ" 等、取得元を示す短いラベル */
   dataSourceLabel: string;
-}
-
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export function Header({ fiscalPeriod, availableTerms, fetchedAt, dataSourceLabel }: HeaderProps) {

@@ -20,3 +20,8 @@ export function formatPercent2(rate: number): string {
 export function formatPercentInt(rate: number): string {
   return `${Math.round(rate)}%`;
 }
+
+/** データ取得日時表示用（例: 08:45:43） */
+export function formatTime(date: Date): string {
+  return date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}

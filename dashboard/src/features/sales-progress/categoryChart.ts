@@ -1,6 +1,7 @@
 import type { CategoryBreakdown } from "@/domain/types";
+import { UNSPECIFIED_CATEGORY_LABEL } from "@/repositories/categoryBreakdown";
 
-export const OTHER_CATEGORY_LABEL = "その他";
+export const OTHER_CATEGORY_LABEL = "その他・未設定";
 
 const TOP_CATEGORY_COUNT = 5;
 
@@ -36,7 +37,12 @@ export function buildCategorySlices(
   companyWideBreakdown: CategoryBreakdown[],
   targetBreakdown: CategoryBreakdown[]
 ): CategorySlice[] {
-  const topCategories = companyWideBreakdown.slice(0, TOP_CATEGORY_COUNT).map((c) => c.category);
+  // 「未設定」は区分の入力漏れであり実区分ではないため、どれだけ粗利が大きくても
+  // 上位5には入れず必ず「その他」側に合算する（ユーザー確定、2026-09-01）
+  const topCategories = companyWideBreakdown
+    .filter((c) => c.category !== UNSPECIFIED_CATEGORY_LABEL)
+    .slice(0, TOP_CATEGORY_COUNT)
+    .map((c) => c.category);
 
   const byCategory = new Map<string, number>();
   let otherTotal = 0;

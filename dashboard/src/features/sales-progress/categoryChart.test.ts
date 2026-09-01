@@ -13,23 +13,30 @@ const COMPANY_WIDE: CategoryBreakdown[] = [
 ];
 
 describe("buildCategorySlices", () => {
-  it("keeps only the company-wide top 5 categories, folding the rest into その他", () => {
+  it("keeps only the company-wide top 5 real categories (excluding 未設定), folding the rest into その他・未設定", () => {
     const slices = buildCategorySlices(COMPANY_WIDE, COMPANY_WIDE);
 
     expect(slices.map((s) => s.category)).toEqual([
-      "未設定",
       "企業ブランディング",
       "パッケージ",
       "商品ブランディング",
       "Web・デジタル",
+      "ネーミング",
       OTHER_CATEGORY_LABEL,
     ]);
-    // ネーミング(50) + グラフィック(10) = その他60
-    expect(slices.find((s) => s.category === OTHER_CATEGORY_LABEL)?.grossProfit).toBe(60);
+    // 未設定(1000) + グラフィック(10) = その他・未設定 1010
+    expect(slices.find((s) => s.category === OTHER_CATEGORY_LABEL)?.grossProfit).toBe(1010);
+  });
+
+  it("never treats 未設定 as a top category, even when it's the single largest bucket", () => {
+    const slices = buildCategorySlices(COMPANY_WIDE, COMPANY_WIDE);
+
+    expect(slices.some((s) => s.category === "未設定")).toBe(false);
+    expect(slices[0].category).not.toBe("未設定");
   });
 
   it("assigns a fixed color slot per category name, even when a CR's own ranking differs from the company-wide ranking", () => {
-    // このCRでは「パッケージ」が最大だが、全社の上位5(未設定/企業ブランディング/パッケージ/商品ブランディング/Web・デジタル)は変わらない
+    // このCRでは「パッケージ」が最大だが、全社の上位5(企業ブランディング/パッケージ/商品ブランディング/Web・デジタル/ネーミング)は変わらない
     const crBreakdown: CategoryBreakdown[] = [
       { category: "パッケージ", grossProfit: 500 },
       { category: "企業ブランディング", grossProfit: 10 },
@@ -38,16 +45,25 @@ describe("buildCategorySlices", () => {
 
     const packaging = slices.find((s) => s.category === "パッケージ");
     const branding = slices.find((s) => s.category === "企業ブランディング");
-    expect(packaging?.colorVar).toBe("--series-category-3"); // 全社基準で3番目の色のまま
-    expect(branding?.colorVar).toBe("--series-category-2"); // 全社基準で2番目の色のまま
+    expect(packaging?.colorVar).toBe("--series-category-2"); // 全社基準で2番目の色のまま
+    expect(branding?.colorVar).toBe("--series-category-1"); // 全社基準で1番目の色のまま
   });
 
-  it("folds a category outside the company-wide top 5 into その他 even if it's large within this CR", () => {
+  it("folds a category outside the company-wide top 5 into その他・未設定 even if it's large within this CR", () => {
     const crBreakdown: CategoryBreakdown[] = [{ category: "グラフィック", grossProfit: 9_000_000 }];
     const slices = buildCategorySlices(COMPANY_WIDE, crBreakdown);
 
     expect(slices).toEqual([
       { category: OTHER_CATEGORY_LABEL, grossProfit: 9_000_000, colorVar: "--series-other" },
+    ]);
+  });
+
+  it("folds this CR's own 未設定 records into その他・未設定 too", () => {
+    const crBreakdown: CategoryBreakdown[] = [{ category: "未設定", grossProfit: 5_000_000 }];
+    const slices = buildCategorySlices(COMPANY_WIDE, crBreakdown);
+
+    expect(slices).toEqual([
+      { category: OTHER_CATEGORY_LABEL, grossProfit: 5_000_000, colorVar: "--series-other" },
     ]);
   });
 

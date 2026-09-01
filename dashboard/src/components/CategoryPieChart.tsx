@@ -100,6 +100,11 @@ export function CategoryPieChart({ title, slices, compact = false }: CategoryPie
               nameKey="name"
               cy={pieCy}
               outerRadius={outerRadius}
+              // 12時位置(真上)から時計回りに開始する(業務資料の円グラフの慣例に合わせる、
+              // ユーザー確定2026-09-01)。Rechartsの角度は3時位置=0°・反時計回りが正なので、
+              // 12時=90°から開始し、終角を-270°(=90-360)にして時計回りへ反転させる
+              startAngle={90}
+              endAngle={-270}
               stroke={surface}
               strokeWidth={2}
               // Recharts 3のPie既定(isAnimationActive="auto")は、タブが非フォーカスで

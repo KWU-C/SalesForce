@@ -11,7 +11,7 @@ export interface CategoryAggregateRow {
   grossProfit: number;
 }
 
-const UNSPECIFIED_CATEGORY_LABEL = "未設定";
+export const UNSPECIFIED_CATEGORY_LABEL = "未設定";
 
 /**
  * 商品区分別に集計行を合算し、粗利降順で返す。

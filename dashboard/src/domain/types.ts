@@ -87,6 +87,12 @@ export interface LeaderRanking {
   grossProfit: number;
 }
 
+/** 商品区分別の粗利内訳1件分（当該事業期・CR内での合計）。区分未設定は"未設定"としてまとめる */
+export interface CategoryBreakdown {
+  category: string;
+  grossProfit: number;
+}
+
 /** CRごとの進捗まとめ（受注・完了の月別データ） */
 export interface CrProgress {
   crId: CrId;
@@ -104,6 +110,8 @@ export interface CrProgress {
   /** 受注／完了 リーダー別粗利ランキング（当該事業期・当該crIdのみ。ALLは全CR横断で再集計） */
   topOrderLeaders: LeaderRanking[];
   topCompletedLeaders: LeaderRanking[];
+  /** 受注 商品区分別粗利内訳（当該事業期・当該crIdのみ、粗利降順。ALLは全CR横断で再集計） */
+  orderByCategory: CategoryBreakdown[];
 }
 
 /** 対象事業期・対象月の情報 */

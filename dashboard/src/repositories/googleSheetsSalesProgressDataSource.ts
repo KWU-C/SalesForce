@@ -73,6 +73,7 @@ export class GoogleSheetsSalesProgressDataSource implements SalesProgressDataSou
       topCompletedClients: [],
       topOrderLeaders: [],
       topCompletedLeaders: [],
+      orderByCategory: [],
     };
 
     return [all, ...perCr];
@@ -103,6 +104,7 @@ export class GoogleSheetsSalesProgressDataSource implements SalesProgressDataSou
         topCompletedClients: [],
         topOrderLeaders: [],
         topCompletedLeaders: [],
+        orderByCategory: [],
       };
     } catch (error) {
       const category = classifySheetsError(error);

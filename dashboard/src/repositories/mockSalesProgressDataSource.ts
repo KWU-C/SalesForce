@@ -10,6 +10,7 @@ import type { SalesProgressDataSource } from "./salesProgressDataSource";
 import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
 import { rankClients, type ClientDetailRow } from "./clientRanking";
 import { rankLeaders, type LeaderAggregateRow } from "./leaderRanking";
+import { aggregateCategoryBreakdown, type CategoryAggregateRow } from "./categoryBreakdown";
 
 /**
  * モック用の仮の粗利率（実データではない。売上=粗利÷粗利率で逆算するために使用）。
@@ -125,6 +126,33 @@ function buildLeaderRows(crId: ConcreteCrId, crIndex: number, seedOffset: number
   return rows;
 }
 
+/**
+ * 商品区分別の仮データ用ラベル一覧（実際のshohinkubun__cピックリスト値、2026-09-01確認）。
+ * 一部レコードは区分未入力(null)にして、実データにある「未設定」の見え方も再現する。
+ */
+const CATEGORY_LABELS = [
+  "企業ブランディング",
+  "商品ブランディング",
+  "事業・サービスブランディング",
+  "パッケージ",
+  "グラフィック",
+  "Web・デジタル",
+  "ネーミング",
+  "空間・店舗",
+  "調査・戦略",
+];
+
+/** 区分別円グラフ用の仮データ（CRごとに区分の大小をばらつかせる） */
+function buildCategoryRows(crId: ConcreteCrId, crIndex: number, seedOffset: number): CategoryAggregateRow[] {
+  return CATEGORY_LABELS.map((category, i) => {
+    const seed = seedOffset + crIndex * 1000 + i * 23;
+    const grossProfit = Math.round((100_000 + seededRandom(seed) * 3_000_000) / 1000) * 1000;
+    // 1区分だけ未設定(null)にして「未設定」バケットの表示も確認できるようにする
+    const isUnspecified = i === crIndex % CATEGORY_LABELS.length;
+    return { crId, category: isUnspecified ? null : category, grossProfit };
+  });
+}
+
 export class MockSalesProgressDataSource implements SalesProgressDataSource {
   async getAvailableTerms(): Promise<number[]> {
     return getSelectableTerms();
@@ -169,6 +197,9 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
     const completedLeaderRows = crIds.flatMap((crId, i) =>
       buildLeaderRows(crId, i, termSeed + 8000)
     );
+    const orderCategoryRows = crIds.flatMap((crId, i) =>
+      buildCategoryRows(crId, i, termSeed + 9000)
+    );
 
     const perCr: CrProgress[] = crIds.map((crId, i) => ({
       crId,
@@ -180,6 +211,7 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
       topCompletedClients: rankClients(completedClientRows, crId, newClientMarker),
       topOrderLeaders: rankLeaders(orderLeaderRows, crId),
       topCompletedLeaders: rankLeaders(completedLeaderRows, crId),
+      orderByCategory: aggregateCategoryBreakdown(orderCategoryRows, crId),
     }));
 
     const all: CrProgress = {
@@ -192,6 +224,7 @@ export class MockSalesProgressDataSource implements SalesProgressDataSource {
       topCompletedClients: rankClients(completedClientRows, "ALL", newClientMarker),
       topOrderLeaders: rankLeaders(orderLeaderRows, "ALL"),
       topCompletedLeaders: rankLeaders(completedLeaderRows, "ALL"),
+      orderByCategory: aggregateCategoryBreakdown(orderCategoryRows, "ALL"),
     };
 
     return [all, ...perCr];

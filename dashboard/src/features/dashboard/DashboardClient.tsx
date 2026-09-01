@@ -9,8 +9,10 @@ import { CrossCrProgressTable } from "@/components/CrossCrProgressTable";
 import { ClientRankingTable } from "@/components/ClientRankingTable";
 import { LeaderRankingTable } from "@/components/LeaderRankingTable";
 import { PeriodSummarySection } from "@/components/PeriodSummarySection";
+import { CategoryPieChart } from "@/components/CategoryPieChart";
 import { PeriodComparisonChart } from "./charts/PeriodComparisonChart";
 import { summarizePeriod } from "@/features/sales-progress/aggregate";
+import { buildCategorySlices } from "@/features/sales-progress/categoryChart";
 import { FULL_YEAR, HALVES, QUARTERS } from "@/config/fiscalPeriods";
 import { getCrListForTerm } from "@/domain/types";
 import type { CrId, CrProgress } from "@/domain/types";
@@ -124,6 +126,32 @@ export function DashboardClient({
 
       {effectiveCr === "ALL" ? (
         <>
+          <div>
+            <h3 className="mb-4 text-sm font-medium text-[var(--text-secondary)]">
+              区分別（受注）
+            </h3>
+            <CategoryPieChart
+              title="全社"
+              slices={buildCategorySlices(current.orderByCategory, current.orderByCategory)}
+            />
+            <div className="mt-4 flex flex-wrap justify-center gap-6">
+              {crList
+                .filter((cr) => cr.id !== "ALL")
+                .map((cr) => {
+                  const crProgress = progressByCr.find((p) => p.crId === cr.id);
+                  if (!crProgress) return null;
+                  return (
+                    <CategoryPieChart
+                      key={cr.id}
+                      title={cr.label}
+                      slices={buildCategorySlices(current.orderByCategory, crProgress.orderByCategory)}
+                      compact
+                    />
+                  );
+                })}
+            </div>
+          </div>
+
           <div>
             <h3 className="mb-2 text-sm font-medium text-[var(--text-secondary)]">
               全社月別詳細

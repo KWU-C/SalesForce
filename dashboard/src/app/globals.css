@@ -17,6 +17,11 @@
   --series-3: #1baf7a; /* aqua: 目標 */
   --series-previous: #a4a19a; /* gray: 前期 */
 
+  --series-category-1: #008300; /* green: 区分別円グラフ 上位1 */
+  --series-category-2: #4a3aa7; /* violet: 区分別円グラフ 上位2 */
+  --series-category-3: #e34948; /* red: 区分別円グラフ 上位3 */
+  --series-other: #a4a19a; /* gray: 区分別円グラフ その他 */
+
   --status-good: #0ca30c;
   --status-warning: #ec835a;
   --status-serious: #d03b3b;
@@ -48,6 +53,11 @@
     --series-3: #199e70;
     --series-previous: #a4a19a;
 
+    --series-category-1: #008300;
+    --series-category-2: #9085e9;
+    --series-category-3: #e66767;
+    --series-other: #a4a19a;
+
     --status-good: #0ca30c;
     --status-warning: #ec835a;
     --status-serious: #d03b3b;
@@ -70,6 +80,11 @@
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
+
+  --series-category-1: #008300;
+  --series-category-2: #9085e9;
+  --series-category-3: #e66767;
+  --series-other: #a4a19a;
 }
 
 body {

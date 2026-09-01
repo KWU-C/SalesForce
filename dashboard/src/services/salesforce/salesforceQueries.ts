@@ -145,3 +145,22 @@ export function buildCompletedLeaderRankingQuery(
       AND seikyuubi__c >= ${dateRange.start} AND seikyuubi__c <= ${dateRange.end}
     GROUP BY bumonna__c, rida__c, rida__r.Name`;
 }
+
+/**
+ * 受注 商品区分別粗利集計（CR×商品区分ごと）。shohinkubun__c(商品区分)は通常の
+ * picklistでrida__cと同様ライセンス制約もエイリアス制約も受けないため、
+ * 通常の集計クエリで済む（クライアントランキングのような明細取得は不要）。
+ */
+export function buildOrderCategoryBreakdownQuery(
+  dateRange: { start: string; end: string },
+  crIds: readonly string[]
+): string {
+  return `SELECT bumonna__c crId, shohinkubun__c category, SUM(arari__c) grossProfit
+    FROM Process__c
+    WHERE bumonna__c IN (${crInClause(crIds)})
+      AND juchuubi__c != null
+      AND juchukakudo__c = 'A (80～100%)'
+      AND phase__c != '失注'
+      AND juchuubi__c >= ${dateRange.start} AND juchuubi__c <= ${dateRange.end}
+    GROUP BY bumonna__c, shohinkubun__c`;
+}

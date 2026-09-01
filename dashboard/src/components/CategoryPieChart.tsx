@@ -66,6 +66,12 @@ export function CategoryPieChart({ title, slices, compact = false }: CategoryPie
 
   const size = compact ? 140 : 240;
   const outerRadius = compact ? 60 : 100;
+  // 凡例(最大6項目、折り返しで2〜3行になる)がPie本体と重ならないよう、
+  // 非compact(凡例あり)の場合だけコンテナを高くして下に専用スペースを確保する。
+  // 円の直径・中心位置はそのまま(cyを上に詰めるだけ)にする
+  const legendReservedHeight = compact ? 0 : 72;
+  const containerHeight = size + legendReservedHeight;
+  const pieCy = compact ? "50%" : `${((size / 2) / containerHeight) * 100}%`;
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -81,17 +87,18 @@ export function CategoryPieChart({ title, slices, compact = false }: CategoryPie
       {total === 0 ? (
         <div
           className="flex items-center justify-center text-xs text-[var(--text-muted)]"
-          style={{ width: size, height: size }}
+          style={{ width: size, height: containerHeight }}
         >
           データなし
         </div>
       ) : (
-        <ResponsiveContainer width={size} height={size}>
+        <ResponsiveContainer width={size} height={containerHeight}>
           <PieChart>
             <Pie
               data={data}
               dataKey="value"
               nameKey="name"
+              cy={pieCy}
               outerRadius={outerRadius}
               stroke={surface}
               strokeWidth={2}

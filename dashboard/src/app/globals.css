@@ -17,10 +17,12 @@
   --series-3: #1baf7a; /* aqua: 目標 */
   --series-previous: #a4a19a; /* gray: 前期 */
 
-  --series-category-1: #008300; /* green: 区分別円グラフ 上位1 */
-  --series-category-2: #4a3aa7; /* violet: 区分別円グラフ 上位2 */
-  --series-category-3: #e34948; /* red: 区分別円グラフ 上位3 */
-  --series-other: #a4a19a; /* gray: 区分別円グラフ その他 */
+  --series-category-1: #00b5be; /* teal: 区分別円グラフ 上位1 */
+  --series-category-2: #a892f4; /* lavender: 区分別円グラフ 上位2 */
+  --series-category-3: #416e29; /* forest green: 区分別円グラフ 上位3 */
+  --series-category-4: #c4606c; /* dusty rose: 区分別円グラフ 上位4 */
+  --series-category-5: #c7ac41; /* mustard: 区分別円グラフ 上位5 */
+  --series-other: #c9c7bf; /* pale gray: 区分別円グラフ その他 */
 
   --status-good: #0ca30c;
   --status-warning: #ec835a;
@@ -53,10 +55,12 @@
     --series-3: #199e70;
     --series-previous: #a4a19a;
 
-    --series-category-1: #008300;
-    --series-category-2: #9085e9;
-    --series-category-3: #e66767;
-    --series-other: #a4a19a;
+    --series-category-1: #00a4ad;
+    --series-category-2: #917adb;
+    --series-category-3: #46732e;
+    --series-category-4: #c25f6b;
+    --series-category-5: #a58a0e;
+    --series-other: #66655f;
 
     --status-good: #0ca30c;
     --status-warning: #ec835a;
@@ -81,10 +85,12 @@
   --series-2: #d95926;
   --series-3: #199e70;
 
-  --series-category-1: #008300;
-  --series-category-2: #9085e9;
-  --series-category-3: #e66767;
-  --series-other: #a4a19a;
+  --series-category-1: #00a4ad;
+  --series-category-2: #917adb;
+  --series-category-3: #46732e;
+  --series-category-4: #c25f6b;
+  --series-category-5: #a58a0e;
+  --series-other: #66655f;
 }
 
 body {

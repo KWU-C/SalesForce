@@ -8,24 +8,28 @@ const COMPANY_WIDE: CategoryBreakdown[] = [
   { category: "パッケージ", grossProfit: 300 },
   { category: "商品ブランディング", grossProfit: 200 },
   { category: "Web・デジタル", grossProfit: 100 },
+  { category: "ネーミング", grossProfit: 50 },
+  { category: "グラフィック", grossProfit: 10 },
 ];
 
 describe("buildCategorySlices", () => {
-  it("keeps only the company-wide top 3 categories, folding the rest into その他", () => {
+  it("keeps only the company-wide top 5 categories, folding the rest into その他", () => {
     const slices = buildCategorySlices(COMPANY_WIDE, COMPANY_WIDE);
 
     expect(slices.map((s) => s.category)).toEqual([
       "未設定",
       "企業ブランディング",
       "パッケージ",
+      "商品ブランディング",
+      "Web・デジタル",
       OTHER_CATEGORY_LABEL,
     ]);
-    // 商品ブランディング(200) + Web・デジタル(100) = その他300
-    expect(slices.find((s) => s.category === OTHER_CATEGORY_LABEL)?.grossProfit).toBe(300);
+    // ネーミング(50) + グラフィック(10) = その他60
+    expect(slices.find((s) => s.category === OTHER_CATEGORY_LABEL)?.grossProfit).toBe(60);
   });
 
   it("assigns a fixed color slot per category name, even when a CR's own ranking differs from the company-wide ranking", () => {
-    // このCRでは「パッケージ」が最大だが、全社の上位3(未設定/企業ブランディング/パッケージ)は変わらない
+    // このCRでは「パッケージ」が最大だが、全社の上位5(未設定/企業ブランディング/パッケージ/商品ブランディング/Web・デジタル)は変わらない
     const crBreakdown: CategoryBreakdown[] = [
       { category: "パッケージ", grossProfit: 500 },
       { category: "企業ブランディング", grossProfit: 10 },
@@ -38,8 +42,8 @@ describe("buildCategorySlices", () => {
     expect(branding?.colorVar).toBe("--series-category-2"); // 全社基準で2番目の色のまま
   });
 
-  it("folds a category outside the company-wide top 3 into その他 even if it's large within this CR", () => {
-    const crBreakdown: CategoryBreakdown[] = [{ category: "Web・デジタル", grossProfit: 9_000_000 }];
+  it("folds a category outside the company-wide top 5 into その他 even if it's large within this CR", () => {
+    const crBreakdown: CategoryBreakdown[] = [{ category: "グラフィック", grossProfit: 9_000_000 }];
     const slices = buildCategorySlices(COMPANY_WIDE, crBreakdown);
 
     expect(slices).toEqual([

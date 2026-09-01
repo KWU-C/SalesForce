@@ -2,12 +2,14 @@ import type { CategoryBreakdown } from "@/domain/types";
 
 export const OTHER_CATEGORY_LABEL = "その他";
 
-const TOP_CATEGORY_COUNT = 3;
+const TOP_CATEGORY_COUNT = 5;
 
 const CATEGORY_COLOR_VARS = [
   "--series-category-1",
   "--series-category-2",
   "--series-category-3",
+  "--series-category-4",
+  "--series-category-5",
 ] as const;
 
 export interface CategorySlice {
@@ -17,12 +19,18 @@ export interface CategorySlice {
 }
 
 /**
- * 区分別円グラフ用に、全社上位3区分＋その他へ折りたたむ。
+ * 区分別円グラフ用に、全社上位5区分＋その他へ折りたたむ（ユーザー確定、2026-09-01）。
  *
- * 上位3区分は必ず全社(company-wide)の内訳を基準に決め、CR別グラフでも同じ区分が
- * 同じ色になるようにする（色はエンティティに従う、ランクに従わない）。全社上位3区分に
- * 入らない区分は、そのCR内での大小に関わらず「その他」にまとめる（実データでは
- * 商品区分が9種以上あり、円グラフでの識別可能な系列数の上限を大きく超えるため）。
+ * 上位5区分は必ず全社(company-wide)の内訳を基準に決め、CR別グラフでも同じ区分が
+ * 同じ色になるようにする（色はエンティティに従う、ランクに従わない）。全社上位5区分に
+ * 入らない区分は、そのCR内での大小に関わらず「その他」にまとめる。
+ *
+ * 色は5系列総当たり(all-pairs)でdataviz skillの検証をPASSする専用パレット
+ * (--series-category-1〜5、globals.css)を使う。8色の標準パレットでは全ペア比較で
+ * 5系列を安全に見分けられる組み合わせが数学的に存在しない（実測・全数探索で確認済み）
+ * ため、既存の受注/完了/目標色(--series-1〜3)と重ならない色相をOKLCH色空間で
+ * 別途探索し、ライト/ダーク両モードでCVD(色覚特性)・通常視ともに閾値をクリアする
+ * 組み合わせを採用している。
  */
 export function buildCategorySlices(
   companyWideBreakdown: CategoryBreakdown[],

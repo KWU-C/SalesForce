@@ -39,10 +39,12 @@ function CategoryPieTooltip({ active, payload }: { active?: boolean; payload?: P
 }
 
 export function CategoryPieChart({ title, slices, compact = false }: CategoryPieChartProps) {
-  const categoryColor1 = useCssVar("--series-category-1", "#008300");
-  const categoryColor2 = useCssVar("--series-category-2", "#4a3aa7");
-  const categoryColor3 = useCssVar("--series-category-3", "#e34948");
-  const otherColor = useCssVar("--series-other", "#a4a19a");
+  const categoryColor1 = useCssVar("--series-category-1", "#00b5be");
+  const categoryColor2 = useCssVar("--series-category-2", "#a892f4");
+  const categoryColor3 = useCssVar("--series-category-3", "#416e29");
+  const categoryColor4 = useCssVar("--series-category-4", "#c4606c");
+  const categoryColor5 = useCssVar("--series-category-5", "#c7ac41");
+  const otherColor = useCssVar("--series-other", "#c9c7bf");
   const surface = useCssVar("--surface-1", "#fcfcfb");
   const secondary = useCssVar("--text-secondary", "#52514e");
 
@@ -50,6 +52,8 @@ export function CategoryPieChart({ title, slices, compact = false }: CategoryPie
     "--series-category-1": categoryColor1,
     "--series-category-2": categoryColor2,
     "--series-category-3": categoryColor3,
+    "--series-category-4": categoryColor4,
+    "--series-category-5": categoryColor5,
     "--series-other": otherColor,
   };
 

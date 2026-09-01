@@ -152,6 +152,8 @@ export function DashboardClient({
             </div>
           </div>
 
+          <hr className="border-t-2 border-[var(--baseline)]" />
+
           <div>
             <h3 className="mb-2 text-sm font-medium text-[var(--text-secondary)]">
               全社月別詳細

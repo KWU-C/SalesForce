@@ -112,6 +112,8 @@ export interface PipelineDeal {
   clientName: string | null;
   dealName: string;
   grossProfit: number | null;
+  /** 売上合計金額(uriagegoukei__c) */
+  sales: number | null;
   /** Salesforce側の既存メモ(memo__c)。ダッシュボード独自メモとは別物 */
   salesforceMemo: string | null;
 }

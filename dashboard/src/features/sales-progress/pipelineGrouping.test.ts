@@ -9,6 +9,7 @@ function deal(overrides: Partial<PipelineDeal>): PipelineDeal {
     clientName: "クライアント",
     dealName: "案件",
     grossProfit: 100,
+    sales: 300,
     salesforceMemo: null,
     ...overrides,
   };
@@ -58,6 +59,22 @@ describe("groupPipelineDealsByConfidence", () => {
 
     const groups = groupPipelineDealsByConfidence(deals);
     expect(groups[0].grossProfitSubtotal).toBe(100);
+  });
+
+  it("adds a salesSubtotal for A and B groups only, treating null sales as 0", () => {
+    const deals = [
+      deal({ processId: "a1", confidence: "A (80～100%)", sales: 500 }),
+      deal({ processId: "a2", confidence: "A (80～100%)", sales: null }),
+      deal({ processId: "b1", confidence: "B (50～80%未満)", sales: 700 }),
+      deal({ processId: "c1", confidence: "C (新規問い合わせ)", sales: 999 }),
+    ];
+
+    const groups = groupPipelineDealsByConfidence(deals);
+    const byConfidence = Object.fromEntries(groups.map((g) => [g.confidence, g.salesSubtotal]));
+
+    expect(byConfidence["A (80～100%)"]).toBe(500);
+    expect(byConfidence["B (50～80%未満)"]).toBe(700);
+    expect(byConfidence["C (新規問い合わせ)"]).toBeNull();
   });
 
   it("returns an empty array for no deals", () => {

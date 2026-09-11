@@ -5,15 +5,17 @@ export interface PipelineDealGroup {
   deals: PipelineDeal[];
   /** 受注確度A・Bグループのみ粗利合計を持つ（ユーザー確定、それ以外はnull） */
   grossProfitSubtotal: number | null;
+  /** 受注確度A・Bグループのみ売上合計を持つ（粗利合計と同じ基準、それ以外はnull） */
+  salesSubtotal: number | null;
 }
 
-/** 受注確度ラベルが"A "または"B "で始まる場合のみ粗利合計行を追加する（ユーザー確定） */
-function hasGrossProfitSubtotal(confidence: string): boolean {
+/** 受注確度ラベルが"A "または"B "で始まる場合のみ合計行を追加する（ユーザー確定） */
+function hasSubtotal(confidence: string): boolean {
   return confidence.startsWith("A ") || confidence.startsWith("B ");
 }
 
 /**
- * パイプライン案件を受注確度ごとにグルーピングし、A・Bグループのみ粗利合計を付与する。
+ * パイプライン案件を受注確度ごとにグルーピングし、A・Bグループのみ粗利・売上合計を付与する。
  * グループの並び順は受注確度ラベルの文字列順（A, B, C, D...の順に自然に揃う）。
  */
 export function groupPipelineDealsByConfidence(deals: PipelineDeal[]): PipelineDealGroup[] {
@@ -32,8 +34,11 @@ export function groupPipelineDealsByConfidence(deals: PipelineDeal[]): PipelineD
     .map(([confidence, groupDeals]) => ({
       confidence,
       deals: groupDeals,
-      grossProfitSubtotal: hasGrossProfitSubtotal(confidence)
+      grossProfitSubtotal: hasSubtotal(confidence)
         ? groupDeals.reduce((sum, d) => sum + (d.grossProfit ?? 0), 0)
+        : null,
+      salesSubtotal: hasSubtotal(confidence)
+        ? groupDeals.reduce((sum, d) => sum + (d.sales ?? 0), 0)
         : null,
     }));
 }

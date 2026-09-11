@@ -10,6 +10,7 @@ describe("mapPipelineDealRows", () => {
         clientName__c: "クライアントA",
         juchukakudo__c: "A (80～100%)",
         arari__c: 1000,
+        uriagegoukei__c: 3000,
         memo__c: "既存メモ",
       },
     ];
@@ -21,6 +22,7 @@ describe("mapPipelineDealRows", () => {
         clientName: "クライアントA",
         dealName: "案件A",
         grossProfit: 1000,
+        sales: 3000,
         salesforceMemo: "既存メモ",
       },
     ]);
@@ -34,6 +36,7 @@ describe("mapPipelineDealRows", () => {
         clientName__c: null,
         juchukakudo__c: null,
         arari__c: null,
+        uriagegoukei__c: null,
         memo__c: null,
       },
     ];
@@ -50,6 +53,7 @@ describe("excludeLostExpectedDeals", () => {
       clientName__c: "クライアント",
       juchukakudo__c: "A (80～100%)",
       arari__c: 100,
+      uriagegoukei__c: 200,
       memo__c: null,
       ...overrides,
     };

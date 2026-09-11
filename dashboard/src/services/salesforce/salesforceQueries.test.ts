@@ -133,7 +133,9 @@ describe("buildPipelineDealsQuery", () => {
   it("selects the WOM_CR{n}相当 fields, filtered to 提案/見積 phase for the given CR", () => {
     const soql = buildPipelineDealsQuery("CR1");
 
-    expect(soql).toContain("SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, memo__c");
+    expect(soql).toContain(
+      "SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, uriagegoukei__c, memo__c"
+    );
     expect(soql).toContain("FROM Process__c");
     expect(soql).toContain("bumonna__c = 'CR1'");
     expect(soql).toContain("phase__c IN ('提案','見積')");

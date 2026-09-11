@@ -186,7 +186,7 @@ export function buildOrderCategoryBreakdownQuery(
 export function buildPipelineDealsQuery(crId: string): string {
   const exclusionFilter = crId === "CR3" ? null : `AND (NOT Name LIKE '%●%')`;
 
-  return `SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, memo__c
+  return `SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, uriagegoukei__c, memo__c
     FROM Process__c
     WHERE bumonna__c = '${crId}'
       AND phase__c IN ('提案','見積')

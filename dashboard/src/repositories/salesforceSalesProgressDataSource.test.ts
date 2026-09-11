@@ -308,6 +308,7 @@ describe("SalesforceSalesProgressDataSource", () => {
             clientName__c: "クライアントA",
             juchukakudo__c: "A (80～100%)",
             arari__c: 1_000_000,
+            uriagegoukei__c: 3_000_000,
             memo__c: "既存メモ",
           },
         ],
@@ -326,6 +327,7 @@ describe("SalesforceSalesProgressDataSource", () => {
         clientName: "クライアントA",
         dealName: "案件A",
         grossProfit: 1_000_000,
+        sales: 3_000_000,
         salesforceMemo: "既存メモ",
       },
     ]);
@@ -345,6 +347,7 @@ describe("SalesforceSalesProgressDataSource", () => {
             clientName__c: "クライアントB",
             juchukakudo__c: "B (50～80%未満)",
             arari__c: 500_000,
+            uriagegoukei__c: 1_500_000,
             memo__c: "失注予定",
           },
           {
@@ -353,6 +356,7 @@ describe("SalesforceSalesProgressDataSource", () => {
             clientName__c: "クライアントC",
             juchukakudo__c: "B (50～80%未満)",
             arari__c: 300_000,
+            uriagegoukei__c: 900_000,
             memo__c: null,
           },
         ],

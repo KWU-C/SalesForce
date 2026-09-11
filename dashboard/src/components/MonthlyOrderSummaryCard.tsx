@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { StatCard } from "@/components/StatCard";
 import { FISCAL_MONTH_ORDER, fiscalMonthIndex } from "@/config/fiscalPeriods";
 import type { MonthlyProgress } from "@/domain/types";
-import { formatThousandYen } from "@/utils/format";
+import { formatYen } from "@/utils/format";
 
 interface MonthlyOrderSummaryCardProps {
   /** 当該CRの月別受注データ(12ヶ月分、未到来月はnull) */
@@ -13,16 +13,30 @@ interface MonthlyOrderSummaryCardProps {
   currentMonth: number;
   /** 受注確度A(80〜100%)のパイプライン粗利合計（案件一覧の粗利合計行と同じ値）。対象なしはnull */
   confidenceAGrossProfit: number | null;
+  /** 受注確度A(80〜100%)のパイプライン売上合計。対象なしはnull */
+  confidenceASales: number | null;
 }
 
-function ConfidenceAStat({ grossProfit }: { grossProfit: number | null }) {
+function ConfidenceAStat({
+  grossProfit,
+  sales,
+}: {
+  grossProfit: number | null;
+  sales: number | null;
+}) {
   return (
-    <div className="shrink-0 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-      <p className="text-sm text-[var(--text-secondary)]">A (80～100%)</p>
+    <div className="flex-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
+      <p className="text-sm text-[var(--text-secondary)]">受注確度A (80～100%)</p>
       <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
-        {grossProfit === null ? "—" : formatThousandYen(grossProfit)}
+        {grossProfit === null ? "—" : formatYen(grossProfit)}
       </p>
       <p className="text-xs text-[var(--text-muted)]">粗利</p>
+      <div className="mt-3 border-t border-[var(--gridline)] pt-2 text-left">
+        <p className="text-lg font-medium text-[var(--text-primary)]">
+          {sales === null ? "—" : formatYen(sales)}
+        </p>
+        <p className="text-xs text-[var(--text-muted)]">売上</p>
+      </div>
     </div>
   );
 }
@@ -36,6 +50,7 @@ export function MonthlyOrderSummaryCard({
   monthlyOrders,
   currentMonth,
   confidenceAGrossProfit,
+  confidenceASales,
 }: MonthlyOrderSummaryCardProps) {
   const selectableMonths = useMemo(() => {
     const currentIndex = fiscalMonthIndex(currentMonth);
@@ -62,7 +77,7 @@ export function MonthlyOrderSummaryCard({
           ))}
         </select>
       </div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
         <div className="flex-1">
           <StatCard
             title={`${selectedMonth}月の受注`}
@@ -72,7 +87,7 @@ export function MonthlyOrderSummaryCard({
             achievementRate={selected?.achievementRate ?? null}
           />
         </div>
-        <ConfidenceAStat grossProfit={confidenceAGrossProfit} />
+        <ConfidenceAStat grossProfit={confidenceAGrossProfit} sales={confidenceASales} />
       </div>
     </div>
   );

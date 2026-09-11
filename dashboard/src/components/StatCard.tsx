@@ -21,7 +21,7 @@ export function StatCard({
   achievementRate,
 }: StatCardProps) {
   return (
-    <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
+    <div className="h-full rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
       <p className="text-sm text-[var(--text-secondary)]">{title}</p>
       <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
         {grossProfit === null ? "—" : formatYen(grossProfit)}

@@ -7,6 +7,7 @@ export interface PipelineDealRow {
   clientName__c: string | null;
   juchukakudo__c: string | null;
   arari__c: number | null;
+  uriagegoukei__c: number | null;
   memo__c: string | null;
 }
 
@@ -32,6 +33,7 @@ export function mapPipelineDealRows(rows: PipelineDealRow[]): PipelineDeal[] {
     clientName: row.clientName__c,
     dealName: row.Name,
     grossProfit: row.arari__c,
+    sales: row.uriagegoukei__c,
     salesforceMemo: row.memo__c,
   }));
 }

@@ -35,13 +35,13 @@ export function PipelineDealsSection({ crId, deals, memosByProcessId }: Pipeline
               <div className="border-b border-[var(--border-hairline)] px-4 py-2">
                 <h4 className="text-sm font-medium text-[var(--text-primary)]">{group.confidence}</h4>
               </div>
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-[var(--gridline)] text-left text-xs text-[var(--text-muted)]">
-                    <th className="px-4 py-1.5 font-normal">クライアント名</th>
-                    <th className="px-2 py-1.5 font-normal">案件名</th>
-                    <th className="px-2 py-1.5 text-right font-normal">粗利</th>
-                    <th className="px-2 py-1.5 font-normal">メモ</th>
+                    <th className="w-[15%] px-4 py-1.5 font-normal">クライアント名</th>
+                    <th className="w-[25%] px-2 py-1.5 font-normal">案件名</th>
+                    <th className="w-[10%] px-2 py-1.5 text-right font-normal">粗利</th>
+                    <th className="w-1/2 px-2 py-1.5 font-normal">メモ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -55,7 +55,7 @@ export function PipelineDealsSection({ crId, deals, memosByProcessId }: Pipeline
                       <td className="px-2 py-2 text-right font-medium tabular-nums text-[var(--text-primary)]">
                         {deal.grossProfit === null ? "—" : formatThousandYen(deal.grossProfit)}
                       </td>
-                      <td className="min-w-[16rem] px-2 py-2">
+                      <td className="px-2 py-2">
                         <div className="flex flex-col gap-2">
                           <p className="whitespace-pre-wrap text-[var(--text-primary)]">
                             {deal.salesforceMemo || "—"}

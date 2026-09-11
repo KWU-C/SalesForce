@@ -148,9 +148,10 @@ describe("buildPipelineDealsQuery", () => {
     }
   });
 
-  it("excludes '失注予定' rows by memo__c for CR3 instead (CR3固有の除外フィルタ、レポート原本通り)", () => {
+  it("adds no SOQL exclusion filter for CR3 (memo__c is a non-filterable textarea field; excluded in pipelineDeals.ts instead)", () => {
     const soql = buildPipelineDealsQuery("CR3");
-    expect(soql).toContain("memo__c != '失注予定'");
     expect(soql).not.toContain("Name LIKE");
+    expect(soql).not.toContain("memo__c !=");
+    expect(soql).not.toContain("失注予定");
   });
 });

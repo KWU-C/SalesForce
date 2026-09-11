@@ -175,18 +175,21 @@ export function buildOrderCategoryBreakdownQuery(
  *
  * 除外フィルタのみCRごとに異なる（レポート原本の設定通り）:
  * - CR1/CR2/CR4: 案件名(Name)に'●'を含む行を除外（テスト・ダミー行の除外と推測）
- * - CR3: メモ(memo__c)が'失注予定'の行を除外
- *   （SOQLの`!=`はnull値を含む＝メモ未入力の行は除外されない。標準SQLと異なる
- *   Salesforce特有の挙動で、レポート原本と同じ結果になるよう意図的に踏襲する）
+ * - CR3: メモ(memo__c)が'失注予定'の行を除外。ただし`memo__c`はtextarea型で
+ *   `filterable: false`（`sf sobject describe`で確認済み。レポート原本はレポート
+ *   エンジン独自のフィルタ機構で実現しているが、生のSOQLのWHERE句には使えない
+ *   ＝実際に本番相当データで試して`INVALID_FIELD: field 'memo__c' can not be
+ *   filtered in a query call`エラーを確認した、2026-09-11）。そのためCR3だけ
+ *   SOQL側では絞り込まず、取得後にアプリ側(`pipelineDeals.ts`の
+ *   `excludeLostExpectedDeals`)で除外する
  */
 export function buildPipelineDealsQuery(crId: string): string {
-  const exclusionFilter =
-    crId === "CR3" ? `memo__c != '失注予定'` : `(NOT Name LIKE '%●%')`;
+  const exclusionFilter = crId === "CR3" ? null : `AND (NOT Name LIKE '%●%')`;
 
   return `SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, memo__c
     FROM Process__c
     WHERE bumonna__c = '${crId}'
       AND phase__c IN ('提案','見積')
-      AND ${exclusionFilter}
+      ${exclusionFilter ?? ""}
     ORDER BY juchukakudo__c ASC, clientName__c ASC`;
 }

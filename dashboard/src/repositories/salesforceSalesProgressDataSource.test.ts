@@ -332,6 +332,40 @@ describe("SalesforceSalesProgressDataSource", () => {
     expect(cr2?.pipelineDeals).toEqual([]);
   });
 
+  it("excludes CR3 rows whose memo__c is '失注予定' after fetching (memo__c can't be filtered in SOQL, unlike CR1/2/4's Name filter)", async () => {
+    const client = new FakeSalesforceQueryClient({
+      order: [],
+      completed: [],
+      target: TARGET_ROW,
+      pipelineDealsByCr: {
+        CR3: [
+          {
+            Id: "b001",
+            Name: "案件B",
+            clientName__c: "クライアントB",
+            juchukakudo__c: "B (50～80%未満)",
+            arari__c: 500_000,
+            memo__c: "失注予定",
+          },
+          {
+            Id: "b002",
+            Name: "案件C",
+            clientName__c: "クライアントC",
+            juchukakudo__c: "B (50～80%未満)",
+            arari__c: 300_000,
+            memo__c: null,
+          },
+        ],
+      },
+    });
+    const dataSource = new SalesforceSalesProgressDataSource(client);
+
+    const result = await dataSource.getCrProgress(49);
+    const cr3 = result.find((p) => p.crId === "CR3");
+
+    expect(cr3?.pipelineDeals?.map((d) => d.processId)).toEqual(["b002"]);
+  });
+
   it("classifies a 401/403 query error as AUTH_ERROR and never logs the raw message", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const client = new FakeSalesforceQueryClient({

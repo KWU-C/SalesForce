@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapPipelineDealRows, type PipelineDealRow } from "./pipelineDeals";
+import { excludeLostExpectedDeals, mapPipelineDealRows, type PipelineDealRow } from "./pipelineDeals";
 
 describe("mapPipelineDealRows", () => {
   it("maps raw SOQL fields to PipelineDeal", () => {
@@ -39,5 +39,29 @@ describe("mapPipelineDealRows", () => {
     ];
 
     expect(mapPipelineDealRows(rows)[0].confidence).toBe("未設定");
+  });
+});
+
+describe("excludeLostExpectedDeals", () => {
+  function row(overrides: Partial<PipelineDealRow>): PipelineDealRow {
+    return {
+      Id: "id",
+      Name: "案件",
+      clientName__c: "クライアント",
+      juchukakudo__c: "A (80～100%)",
+      arari__c: 100,
+      memo__c: null,
+      ...overrides,
+    };
+  }
+
+  it("excludes rows whose memo__c is exactly '失注予定'", () => {
+    const rows = [row({ Id: "a", memo__c: "失注予定" }), row({ Id: "b", memo__c: "通常のメモ" })];
+    expect(excludeLostExpectedDeals(rows).map((r) => r.Id)).toEqual(["b"]);
+  });
+
+  it("keeps rows with a null memo__c (matches SOQL's != semantics, which also includes nulls)", () => {
+    const rows = [row({ Id: "a", memo__c: null })];
+    expect(excludeLostExpectedDeals(rows).map((r) => r.Id)).toEqual(["a"]);
   });
 });

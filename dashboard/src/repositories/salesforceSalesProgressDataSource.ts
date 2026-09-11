@@ -27,7 +27,7 @@ import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
 import { rankClients, type ClientDetailRow } from "./clientRanking";
 import { rankLeaders, type LeaderAggregateRow } from "./leaderRanking";
 import { aggregateCategoryBreakdown, type CategoryAggregateRow } from "./categoryBreakdown";
-import { mapPipelineDealRows, type PipelineDealRow } from "./pipelineDeals";
+import { excludeLostExpectedDeals, mapPipelineDealRows, type PipelineDealRow } from "./pipelineDeals";
 
 /**
  * クライアントランキングSOQLの生レスポンス1行。
@@ -189,7 +189,12 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
       const orderClientRows = rawOrderClientRows.map(toClientDetailRow);
       const completedClientRows = rawCompletedClientRows.map(toClientDetailRow);
       const pipelineDealsByCr = new Map(
-        pipelineDealRowsByCr.map(([crId, rows]) => [crId, mapPipelineDealRows(rows)])
+        pipelineDealRowsByCr.map(([crId, rows]) => [
+          crId,
+          // CR3だけはmemo__cがSOQLでフィルタできないため、取得後にここで除外する
+          // (buildPipelineDealsQuery/pipelineDeals.tsのコメント参照)
+          mapPipelineDealRows(crId === "CR3" ? excludeLostExpectedDeals(rows) : rows),
+        ])
       );
       // 「◯◯期新規」のラベルは事業期ごとに更新される想定のため、期数はハードコードしない
       const newClientMarker = `${selectedTerm}期新規`;

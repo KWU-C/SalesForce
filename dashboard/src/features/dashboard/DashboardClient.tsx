@@ -15,6 +15,7 @@ import { PipelineDealsSection } from "@/components/PipelineDealsSection";
 import { PeriodComparisonChart } from "./charts/PeriodComparisonChart";
 import { summarizePeriod } from "@/features/sales-progress/aggregate";
 import { buildCategorySlices } from "@/features/sales-progress/categoryChart";
+import { groupPipelineDealsByConfidence } from "@/features/sales-progress/pipelineGrouping";
 import { FULL_YEAR, HALVES, QUARTERS } from "@/config/fiscalPeriods";
 import { getCrListForTerm } from "@/domain/types";
 import type { CrId, CrProgress, ProcessMemo } from "@/domain/types";
@@ -77,6 +78,11 @@ export function DashboardClient({
   const completedHalfSummaries = HALVES.map((h) =>
     summarizePeriod(h.label, h.months, current.completed)
   );
+
+  // 月別受注サマリー横の「A確度」ミニ表示用。パイプライン一覧の粗利合計行と同じ値を再利用する
+  const pipelineGroups = groupPipelineDealsByConfidence(current.pipelineDeals ?? []);
+  const confidenceAGrossProfit =
+    pipelineGroups.find((g) => g.confidence.startsWith("A "))?.grossProfitSubtotal ?? null;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6">
@@ -204,8 +210,14 @@ export function DashboardClient({
             />
           </div>
 
+          <hr className="mt-[100px] border-t-2 border-[var(--baseline)]" />
+
           <div className="flex flex-col gap-6 rounded-lg bg-[var(--surface-sunken)] p-4">
-            <MonthlyOrderSummaryCard monthlyOrders={current.order} currentMonth={currentMonth} />
+            <MonthlyOrderSummaryCard
+              monthlyOrders={current.order}
+              currentMonth={currentMonth}
+              confidenceAGrossProfit={confidenceAGrossProfit}
+            />
             <PipelineDealsSection
               crId={effectiveCr}
               deals={current.pipelineDeals ?? []}

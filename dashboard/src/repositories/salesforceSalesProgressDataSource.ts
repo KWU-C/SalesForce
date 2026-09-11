@@ -16,6 +16,7 @@ import {
   buildOrderClientRankingQuery,
   buildOrderLeaderRankingQuery,
   buildOrderProgressQuery,
+  buildPipelineDealsQuery,
   buildSalesTargetQuery,
 } from "@/services/salesforce/salesforceQueries";
 import type { AnnualSalesTarget, ProgressAggregateRow } from "./salesforceRecordMapper";
@@ -26,6 +27,7 @@ import { sumMonthlyProgressAcrossCr } from "./sumMonthlyProgressAcrossCr";
 import { rankClients, type ClientDetailRow } from "./clientRanking";
 import { rankLeaders, type LeaderAggregateRow } from "./leaderRanking";
 import { aggregateCategoryBreakdown, type CategoryAggregateRow } from "./categoryBreakdown";
+import { mapPipelineDealRows, type PipelineDealRow } from "./pipelineDeals";
 
 /**
  * クライアントランキングSOQLの生レスポンス1行。
@@ -166,6 +168,7 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         orderLeaderRows,
         completedLeaderRows,
         orderCategoryRows,
+        pipelineDealRowsByCr,
       ] = await Promise.all([
         client.query<ProgressAggregateRow>(buildOrderProgressQuery(dateRange, crIds)),
         client.query<ProgressAggregateRow>(buildCompletedProgressQuery(dateRange, crIds)),
@@ -177,9 +180,17 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         client.query<LeaderAggregateRow>(buildOrderLeaderRankingQuery(dateRange, crIds)),
         client.query<LeaderAggregateRow>(buildCompletedLeaderRankingQuery(dateRange, crIds)),
         client.query<CategoryAggregateRow>(buildOrderCategoryBreakdownQuery(dateRange, crIds)),
+        // パイプライン一覧(WOM_CR1〜4相当)はCRごとに除外フィルタが異なる別クエリのため、
+        // 集計クエリ群と違いCRごとに個別実行する(日付・事業期には依存しない、salesforceQueries.ts参照)
+        Promise.all(
+          crIds.map(async (crId) => [crId, await client.query<PipelineDealRow>(buildPipelineDealsQuery(crId))] as const)
+        ),
       ]);
       const orderClientRows = rawOrderClientRows.map(toClientDetailRow);
       const completedClientRows = rawCompletedClientRows.map(toClientDetailRow);
+      const pipelineDealsByCr = new Map(
+        pipelineDealRowsByCr.map(([crId, rows]) => [crId, mapPipelineDealRows(rows)])
+      );
       // 「◯◯期新規」のラベルは事業期ごとに更新される想定のため、期数はハードコードしない
       const newClientMarker = `${selectedTerm}期新規`;
 
@@ -228,6 +239,7 @@ export class SalesforceSalesProgressDataSource implements SalesProgressDataSourc
         topOrderLeaders: rankLeaders(orderLeaderRows, crId),
         topCompletedLeaders: rankLeaders(completedLeaderRows, crId),
         orderByCategory: aggregateCategoryBreakdown(orderCategoryRows, crId),
+        pipelineDeals: pipelineDealsByCr.get(crId) ?? [],
       }));
 
       const all: CrProgress = {

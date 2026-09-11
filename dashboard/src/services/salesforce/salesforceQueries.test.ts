@@ -6,6 +6,7 @@ import {
   buildOrderClientRankingQuery,
   buildOrderLeaderRankingQuery,
   buildOrderProgressQuery,
+  buildPipelineDealsQuery,
   buildSalesTargetQuery,
 } from "./salesforceQueries";
 
@@ -125,5 +126,31 @@ describe("buildCompletedLeaderRankingQuery", () => {
       "SELECT bumonna__c crId, rida__c leaderId, rida__r.Name leaderName, SUM(arari__c) grossProfit"
     );
     expect(soql).toContain("GROUP BY bumonna__c, rida__c, rida__r.Name");
+  });
+});
+
+describe("buildPipelineDealsQuery", () => {
+  it("selects the WOM_CR{n}相当 fields, filtered to 提案/見積 phase for the given CR", () => {
+    const soql = buildPipelineDealsQuery("CR1");
+
+    expect(soql).toContain("SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, memo__c");
+    expect(soql).toContain("FROM Process__c");
+    expect(soql).toContain("bumonna__c = 'CR1'");
+    expect(soql).toContain("phase__c IN ('提案','見積')");
+    expect(soql).toContain("ORDER BY juchukakudo__c ASC, clientName__c ASC");
+  });
+
+  it("excludes dummy rows by Name for CR1/CR2/CR4 (matches the report definition)", () => {
+    for (const crId of ["CR1", "CR2", "CR4"]) {
+      const soql = buildPipelineDealsQuery(crId);
+      expect(soql).toContain("(NOT Name LIKE '%●%')");
+      expect(soql).not.toContain("失注予定");
+    }
+  });
+
+  it("excludes '失注予定' rows by memo__c for CR3 instead (CR3固有の除外フィルタ、レポート原本通り)", () => {
+    const soql = buildPipelineDealsQuery("CR3");
+    expect(soql).toContain("memo__c != '失注予定'");
+    expect(soql).not.toContain("Name LIKE");
   });
 });

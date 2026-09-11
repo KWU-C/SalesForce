@@ -164,3 +164,29 @@ export function buildOrderCategoryBreakdownQuery(
       AND juchuubi__c >= ${dateRange.start} AND juchuubi__c <= ${dateRange.end}
     GROUP BY bumonna__c, shohinkubun__c`;
 }
+
+/**
+ * パイプライン案件一覧（Salesforceの実レポート WOM_CR1〜4 の内容を再現する、
+ * 2026-09-11にsf CLIでreportDescribeを実際に取得し確認済み）。
+ *
+ * 4レポートとも共通: フェーズ「提案」「見積」（＝まだ受注確定していない案件）を
+ * bumonna__c(CR)ごとに抽出。日付フィルタは持たない（レポート側もstandardDateFilterが
+ * CUSTOM×start/end未設定＝常に全期間）ため、事業期・対象月の引数は取らない。
+ *
+ * 除外フィルタのみCRごとに異なる（レポート原本の設定通り）:
+ * - CR1/CR2/CR4: 案件名(Name)に'●'を含む行を除外（テスト・ダミー行の除外と推測）
+ * - CR3: メモ(memo__c)が'失注予定'の行を除外
+ *   （SOQLの`!=`はnull値を含む＝メモ未入力の行は除外されない。標準SQLと異なる
+ *   Salesforce特有の挙動で、レポート原本と同じ結果になるよう意図的に踏襲する）
+ */
+export function buildPipelineDealsQuery(crId: string): string {
+  const exclusionFilter =
+    crId === "CR3" ? `memo__c != '失注予定'` : `(NOT Name LIKE '%●%')`;
+
+  return `SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, memo__c
+    FROM Process__c
+    WHERE bumonna__c = '${crId}'
+      AND phase__c IN ('提案','見積')
+      AND ${exclusionFilter}
+    ORDER BY juchukakudo__c ASC, clientName__c ASC`;
+}

@@ -5,6 +5,8 @@
   --foreground: #0b0b0b;
 
   --surface-1: #fcfcfb;
+  /* --backgroundより一段グレー。CR別タブ下部のダッシュボード独自セクション区別用 */
+  --surface-sunken: #f0efe8;
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
   --text-muted: #898781;
@@ -43,6 +45,7 @@
     --foreground: #ffffff;
 
     --surface-1: #1a1a19;
+    --surface-sunken: #141412;
     --text-primary: #ffffff;
     --text-secondary: #c3c2b7;
     --text-muted: #898781;
@@ -74,6 +77,7 @@
   --foreground: #ffffff;
 
   --surface-1: #1a1a19;
+  --surface-sunken: #141412;
   --text-primary: #ffffff;
   --text-secondary: #c3c2b7;
   --text-muted: #898781;

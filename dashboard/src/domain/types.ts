@@ -27,6 +27,13 @@ export function getCrListForTerm(term: number): { id: CrId; label: string }[] {
   ];
 }
 
+const CONCRETE_CR_IDS: readonly ConcreteCrId[] = ["CR1", "CR2", "CR3", "CR4"];
+
+/** 外部入力（APIリクエストボディ等）がConcreteCrIdかどうかを判定する */
+export function isConcreteCrId(value: unknown): value is ConcreteCrId {
+  return typeof value === "string" && (CONCRETE_CR_IDS as readonly string[]).includes(value);
+}
+
 /** 受注 or 完了 */
 export type ProgressKind = "order" | "completed";
 
@@ -93,6 +100,35 @@ export interface CategoryBreakdown {
   grossProfit: number;
 }
 
+/**
+ * パイプライン案件1件分（Salesforceレポート WOM_CR1〜4 相当。
+ * フェーズが「提案」「見積」の未受注案件一覧、期間フィルタは持たない現在時点のスナップショット）。
+ */
+export interface PipelineDeal {
+  /** Process__cのSalesforce Id。ダッシュボード独自メモのキーにも使う */
+  processId: string;
+  /** 受注確度（juchukakudo__c）の生の値。例: "A (80～100%)" */
+  confidence: string;
+  clientName: string | null;
+  dealName: string;
+  grossProfit: number | null;
+  /** Salesforce側の既存メモ(memo__c)。ダッシュボード独自メモとは別物 */
+  salesforceMemo: string | null;
+}
+
+/**
+ * ダッシュボード独自メモ（Firestore `processMemos` コレクション1件分）。
+ * Salesforceのmemo__cとは完全に分離した別データ（ユーザー確定）。
+ */
+export interface ProcessMemo {
+  processId: string;
+  crId: ConcreteCrId;
+  memo: string;
+  updatedBy: string;
+  /** ISO8601文字列 */
+  updatedAt: string;
+}
+
 /** CRごとの進捗まとめ（受注・完了の月別データ） */
 export interface CrProgress {
   crId: CrId;
@@ -112,6 +148,12 @@ export interface CrProgress {
   topCompletedLeaders: LeaderRanking[];
   /** 受注 商品区分別粗利内訳（当該事業期・当該crIdのみ、粗利降順。ALLは全CR横断で再集計） */
   orderByCategory: CategoryBreakdown[];
+  /**
+   * パイプライン案件一覧（WOM_CR1〜4相当）。事業期・対象月に依存しない現在時点の
+   * スナップショットのため、取得元がSalesforce以外（モック・Google Sheets）の場合は
+   * 未設定のままにする。ALLタブでは表示しない（CR別タブ専用、ユーザー確定）
+   */
+  pipelineDeals?: PipelineDeal[];
 }
 
 /** 対象事業期・対象月の情報 */

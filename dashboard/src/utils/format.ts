@@ -25,3 +25,14 @@ export function formatPercentInt(rate: number): string {
 export function formatTime(date: Date): string {
   return date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
+
+/** 日付をまたぐ可能性がある更新日時表示用（例: 2026/09/11 08:45） */
+export function formatDateTime(date: Date): string {
+  return date.toLocaleString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}

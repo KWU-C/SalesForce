@@ -7,6 +7,14 @@ substitutions:
   # このデフォルトは、トリガーを介さず手動でgcloud builds submitする場合の
   # 安全弁として残す。
   _SALES_DATA_SOURCE: mock
+  # ダッシュボード独自メモ保存API(/api/process-memos)がIAP JWT検証に使う期待aud。
+  # コードでは組み立てない（Cloud Runネイティブ統合時のaud書式は情報源により食い違いが
+  # あり、自力で組み立てると誤った書式を検証に使うリスクがあるため）。Google Cloud
+  # Console → セキュリティ → Identity-Aware Proxy → 対象Cloud Runサービスの行 → ⋮ →
+  # 「Get JWT Audience Code」で取得した値を、dev/prodそれぞれのビルドトリガー側の
+  # 置換変数として設定する（SALES_DATA_SOURCEと同じ運用）。未設定のままだと
+  # メモ保存APIのみ常時403になる(fail-closed)。ダッシュボード本体の閲覧には影響しない。
+  _IAP_EXPECTED_AUDIENCE: ""
 
 steps:
   # 依存関係インストール（以降のstepはワークスペース共有のためnode_modulesを再利用）
@@ -62,7 +70,7 @@ steps:
       - "${_SERVICE_NAME}"
       - --source=dashboard
       - --region=${_REGION}
-      - --set-env-vars=SALES_DATA_SOURCE=${_SALES_DATA_SOURCE},SALESFORCE_LOGIN_URL=https://tcd-company.my.salesforce.com,SALESFORCE_USERNAME=sf-dashboard-integration@tcd.jp
+      - --set-env-vars=SALES_DATA_SOURCE=${_SALES_DATA_SOURCE},SALESFORCE_LOGIN_URL=https://tcd-company.my.salesforce.com,SALESFORCE_USERNAME=sf-dashboard-integration@tcd.jp,IAP_EXPECTED_AUDIENCE=${_IAP_EXPECTED_AUDIENCE}
       - --set-secrets=SALESFORCE_CONSUMER_KEY=salesforce-consumer-key:latest,SALESFORCE_PRIVATE_KEY=salesforce-jwt-private-key:latest
       - --quiet
 

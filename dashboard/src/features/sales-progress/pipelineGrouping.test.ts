@@ -1,0 +1,66 @@
+import { describe, expect, it } from "vitest";
+import type { PipelineDeal } from "@/domain/types";
+import { groupPipelineDealsByConfidence } from "./pipelineGrouping";
+
+function deal(overrides: Partial<PipelineDeal>): PipelineDeal {
+  return {
+    processId: "id",
+    confidence: "A (80～100%)",
+    clientName: "クライアント",
+    dealName: "案件",
+    grossProfit: 100,
+    salesforceMemo: null,
+    ...overrides,
+  };
+}
+
+describe("groupPipelineDealsByConfidence", () => {
+  it("groups by confidence and orders groups A, B, C, D", () => {
+    const deals = [
+      deal({ processId: "d", confidence: "D (引き合い)" }),
+      deal({ processId: "b", confidence: "B (50～80%未満)" }),
+      deal({ processId: "a", confidence: "A (80～100%)" }),
+      deal({ processId: "c", confidence: "C (新規問い合わせ)" }),
+    ];
+
+    const groups = groupPipelineDealsByConfidence(deals);
+    expect(groups.map((g) => g.confidence)).toEqual([
+      "A (80～100%)",
+      "B (50～80%未満)",
+      "C (新規問い合わせ)",
+      "D (引き合い)",
+    ]);
+  });
+
+  it("adds a grossProfitSubtotal for A and B groups only", () => {
+    const deals = [
+      deal({ processId: "a1", confidence: "A (80～100%)", grossProfit: 100 }),
+      deal({ processId: "a2", confidence: "A (80～100%)", grossProfit: 200 }),
+      deal({ processId: "b1", confidence: "B (50～80%未満)", grossProfit: 50 }),
+      deal({ processId: "c1", confidence: "C (新規問い合わせ)", grossProfit: 999 }),
+      deal({ processId: "d1", confidence: "D (引き合い)", grossProfit: 999 }),
+    ];
+
+    const groups = groupPipelineDealsByConfidence(deals);
+    const byConfidence = Object.fromEntries(groups.map((g) => [g.confidence, g.grossProfitSubtotal]));
+
+    expect(byConfidence["A (80～100%)"]).toBe(300);
+    expect(byConfidence["B (50～80%未満)"]).toBe(50);
+    expect(byConfidence["C (新規問い合わせ)"]).toBeNull();
+    expect(byConfidence["D (引き合い)"]).toBeNull();
+  });
+
+  it("treats a null grossProfit as 0 within the subtotal", () => {
+    const deals = [
+      deal({ processId: "a1", confidence: "A (80～100%)", grossProfit: 100 }),
+      deal({ processId: "a2", confidence: "A (80～100%)", grossProfit: null }),
+    ];
+
+    const groups = groupPipelineDealsByConfidence(deals);
+    expect(groups[0].grossProfitSubtotal).toBe(100);
+  });
+
+  it("returns an empty array for no deals", () => {
+    expect(groupPipelineDealsByConfidence([])).toEqual([]);
+  });
+});

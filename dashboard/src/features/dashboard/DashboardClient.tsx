@@ -10,12 +10,14 @@ import { ClientRankingTable } from "@/components/ClientRankingTable";
 import { LeaderRankingTable } from "@/components/LeaderRankingTable";
 import { PeriodSummarySection } from "@/components/PeriodSummarySection";
 import { CategoryPieChart } from "@/components/CategoryPieChart";
+import { MonthlyOrderSummaryCard } from "@/components/MonthlyOrderSummaryCard";
+import { PipelineDealsSection } from "@/components/PipelineDealsSection";
 import { PeriodComparisonChart } from "./charts/PeriodComparisonChart";
 import { summarizePeriod } from "@/features/sales-progress/aggregate";
 import { buildCategorySlices } from "@/features/sales-progress/categoryChart";
 import { FULL_YEAR, HALVES, QUARTERS } from "@/config/fiscalPeriods";
 import { getCrListForTerm } from "@/domain/types";
-import type { CrId, CrProgress } from "@/domain/types";
+import type { CrId, CrProgress, ProcessMemo } from "@/domain/types";
 import { formatTime } from "@/utils/format";
 
 interface DashboardClientProps {
@@ -26,6 +28,8 @@ interface DashboardClientProps {
   fetchedAt: Date;
   /** "Salesforce"/"モックデータ"等、取得元を示す短いラベル */
   dataSourceLabel: string;
+  /** ダッシュボード独自メモ（Firestore、processId基準）。CR別タブ下部の案件一覧でのみ使う */
+  processMemosByProcessId: Record<string, ProcessMemo>;
 }
 
 export function DashboardClient({
@@ -34,6 +38,7 @@ export function DashboardClient({
   term,
   fetchedAt,
   dataSourceLabel,
+  processMemosByProcessId,
 }: DashboardClientProps) {
   const [selectedCr, setSelectedCr] = useState<CrId>("ALL");
   const crList = useMemo(() => getCrListForTerm(term), [term]);
@@ -185,18 +190,29 @@ export function DashboardClient({
           </div>
         </>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LeaderRankingTable
-            title="受注（粗利）リーダー別"
-            leaders={current.topOrderLeaders}
-            accentColorVar="--series-1"
-          />
-          <LeaderRankingTable
-            title="完了（粗利）リーダー別"
-            leaders={current.topCompletedLeaders}
-            accentColorVar="--series-2"
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <LeaderRankingTable
+              title="受注（粗利）リーダー別"
+              leaders={current.topOrderLeaders}
+              accentColorVar="--series-1"
+            />
+            <LeaderRankingTable
+              title="完了（粗利）リーダー別"
+              leaders={current.topCompletedLeaders}
+              accentColorVar="--series-2"
+            />
+          </div>
+
+          <div className="flex flex-col gap-6 rounded-lg bg-[var(--surface-sunken)] p-4">
+            <MonthlyOrderSummaryCard monthlyOrders={current.order} currentMonth={currentMonth} />
+            <PipelineDealsSection
+              crId={effectiveCr}
+              deals={current.pipelineDeals ?? []}
+              memosByProcessId={processMemosByProcessId}
+            />
+          </div>
+        </>
       )}
 
       <p className="pb-2 text-center text-xs text-[var(--text-muted)]">

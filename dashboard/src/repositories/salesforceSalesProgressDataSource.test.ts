@@ -20,12 +20,20 @@ class FakeSalesforceQueryClient implements SalesforceQueryClient {
       completedClients?: unknown[];
       orderLeaders?: unknown[];
       completedLeaders?: unknown[];
+      /** CRごとのパイプライン一覧(WOM_CR1〜4相当)。未指定のCRは[]を返す */
+      pipelineDealsByCr?: Record<string, unknown[]>;
     }
   ) {}
 
   async query<T>(soql: string): Promise<T[]> {
     if (this.responses.target instanceof Error) throw this.responses.target;
     if (soql.includes("SalesTarget__c")) return this.responses.target as T[];
+    // パイプライン一覧クエリもclientName__cを選択するため、クライアントランキングの
+    // 判別より先に固有のマーカー(phase__c IN)で判定する
+    if (soql.includes("phase__c IN")) {
+      const crId = soql.match(/bumonna__c = '(\w+)'/)?.[1];
+      return ((crId && this.responses.pipelineDealsByCr?.[crId]) ?? []) as T[];
+    }
     // クライアントランキングクエリ(clientName__c選択、GROUP BY無し)は月別集計との判別が必要
     if (soql.includes("clientName__c")) {
       if (soql.includes("juchuubi__c")) return (this.responses.orderClients ?? []) as T[];
@@ -285,6 +293,43 @@ describe("SalesforceSalesProgressDataSource", () => {
     expect(cr1.topOrderLeaders.map((l) => l.leaderName)).toEqual(["青木 睦", "山田 太郎"]);
     // ALLはCR1〜3横断で再集計されるため、CR2の完了ランキングもここに含まれる
     expect(all.topCompletedLeaders.map((l) => l.leaderName)).toEqual(["佐藤 花子"]);
+  });
+
+  it("attaches per-CR pipeline deals (WOM_CR1〜4相当) and defaults to [] for a CR with no rows", async () => {
+    const client = new FakeSalesforceQueryClient({
+      order: [],
+      completed: [],
+      target: TARGET_ROW,
+      pipelineDealsByCr: {
+        CR1: [
+          {
+            Id: "a001",
+            Name: "案件A",
+            clientName__c: "クライアントA",
+            juchukakudo__c: "A (80～100%)",
+            arari__c: 1_000_000,
+            memo__c: "既存メモ",
+          },
+        ],
+      },
+    });
+    const dataSource = new SalesforceSalesProgressDataSource(client);
+
+    const result = await dataSource.getCrProgress(49);
+    const cr1 = result.find((p) => p.crId === "CR1");
+    const cr2 = result.find((p) => p.crId === "CR2");
+
+    expect(cr1?.pipelineDeals).toEqual([
+      {
+        processId: "a001",
+        confidence: "A (80～100%)",
+        clientName: "クライアントA",
+        dealName: "案件A",
+        grossProfit: 1_000_000,
+        salesforceMemo: "既存メモ",
+      },
+    ]);
+    expect(cr2?.pipelineDeals).toEqual([]);
   });
 
   it("classifies a 401/403 query error as AUTH_ERROR and never logs the raw message", async () => {

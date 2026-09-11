@@ -5,8 +5,9 @@ import {
   getActiveSalesDataSourceLabel,
   getSalesProgressDataSource,
 } from "@/repositories/salesProgressRepository";
+import { getAllProcessMemos } from "@/repositories/processMemoRepository";
 import { FISCAL_MONTH_ORDER, FISCAL_YEAR_END_MONTH, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
-import type { CrProgress } from "@/domain/types";
+import type { CrProgress, ProcessMemo } from "@/domain/types";
 
 // 営業データは毎リクエスト取得する（ビルド時に静的化しない）。
 // 更新ボタン（router.refresh()）や将来のSalesforce/Sheets接続で
@@ -54,6 +55,15 @@ export default async function Page({ searchParams }: PageProps) {
   const fetchedAt = new Date();
   const dataSourceLabel = getActiveSalesDataSourceLabel();
 
+  // ダッシュボード独自メモ(Firestore)はSalesforceデータとは独立した別ソースのため、
+  // ここが失敗してもダッシュボード本体の閲覧は止めない(ユーザー確定)。空メモとして続行する
+  let processMemosByProcessId: Record<string, ProcessMemo> = {};
+  try {
+    processMemosByProcessId = await getAllProcessMemos();
+  } catch {
+    console.error("[page] ダッシュボード独自メモの取得に失敗しました");
+  }
+
   return (
     <>
       <Header
@@ -70,6 +80,7 @@ export default async function Page({ searchParams }: PageProps) {
             term={selectedTerm}
             fetchedAt={fetchedAt}
             dataSourceLabel={dataSourceLabel}
+            processMemosByProcessId={processMemosByProcessId}
           />
         ) : (
           <DataFetchErrorState />

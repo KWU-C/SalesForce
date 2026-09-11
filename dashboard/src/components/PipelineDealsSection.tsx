@@ -57,7 +57,7 @@ export function PipelineDealsSection({ crId, deals, memosByProcessId }: Pipeline
                       </td>
                       <td className="min-w-[16rem] px-2 py-2">
                         <div className="flex flex-col gap-2">
-                          <p className="whitespace-pre-wrap text-xs text-[var(--text-secondary)]">
+                          <p className="whitespace-pre-wrap text-[var(--text-primary)]">
                             {deal.salesforceMemo || "—"}
                           </p>
                           <ProcessMemoEditor

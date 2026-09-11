@@ -38,11 +38,11 @@ export function StatCard({
           粗利達成率 {achievementRate === null ? "—" : formatPercent(achievementRate)}
         </span>
       </div>
-      <div className="mt-3 flex items-center justify-between border-t border-[var(--gridline)] pt-2 text-sm">
-        <span className="text-[var(--text-secondary)]">売上</span>
-        <span className="font-medium text-[var(--text-primary)]">
+      <div className="mt-3 border-t border-[var(--gridline)] pt-2 text-left">
+        <p className="text-lg font-medium text-[var(--text-primary)]">
           {sales === null ? "—" : formatYen(sales)}
-        </span>
+        </p>
+        <p className="text-xs text-[var(--text-muted)]">売上</p>
       </div>
     </div>
   );

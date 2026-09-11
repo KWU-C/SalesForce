@@ -31,6 +31,11 @@ function ConfidenceAStat({
         {grossProfit === null ? "—" : formatYen(grossProfit)}
       </p>
       <p className="text-xs text-[var(--text-muted)]">粗利</p>
+      {/* StatCardの目標粗利・達成率の行と天地を揃えるための不可視スペーサー(内容は同じ高さのダミー) */}
+      <div className="invisible mt-2 flex items-center justify-between text-sm" aria-hidden="true">
+        <span>目標粗利 —</span>
+        <span className="font-medium">粗利達成率 —</span>
+      </div>
       <div className="mt-3 border-t border-[var(--gridline)] pt-2 text-left">
         <p className="text-lg font-medium text-[var(--text-primary)]">
           {sales === null ? "—" : formatYen(sales)}

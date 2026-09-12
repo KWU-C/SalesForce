@@ -26,7 +26,7 @@ function ConfidenceAStat({
 }) {
   return (
     <div className="flex-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-      <p className="text-sm text-[var(--text-secondary)]">受注確度A (80～100%)</p>
+      <p className="text-sm text-[var(--text-secondary)]">その他、受注確度A (80～100%)</p>
       <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
         {grossProfit === null ? "—" : formatYen(grossProfit)}
       </p>

@@ -121,14 +121,14 @@ export function DashboardClient({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <StatCard
-          title="受注（当月時点累計）"
+          title="累計（通年受注）"
           sales={orderYearSummary.sales}
           grossProfit={orderYearSummary.grossProfit}
           targetGrossProfit={orderYearSummary.targetGrossProfit}
           achievementRate={orderYearSummary.achievementRate}
         />
         <StatCard
-          title="完了（当月時点累計）"
+          title="累計（通年完了）"
           sales={completedYearSummary.sales}
           grossProfit={completedYearSummary.grossProfit}
           targetGrossProfit={completedYearSummary.targetGrossProfit}

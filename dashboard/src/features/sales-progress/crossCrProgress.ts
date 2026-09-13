@@ -18,7 +18,7 @@ export interface CrossCrColumn {
   orderGrossProfit: number | null;
   /** 当月粗利÷当月目標×100（未丸め）。合計行では意味を持たないためnull */
   orderMonthlyRate: number | null;
-  /** 9月〜当該月までの累積粗利÷累積目標×100（summarizePeriod由来） */
+  /** 9月〜当該月までの累積粗利÷年間フル目標(12ヶ月分)×100（ユーザー確定、2026-09-13） */
   orderCumulativeRate: number | null;
   completedGrossProfit: number | null;
   completedMonthlyRate: number | null;
@@ -60,6 +60,9 @@ function buildMonthColumn(
 
   const orderCumulative = summarizePeriod("", cumulativeMonths, progress.order);
   const completedCumulative = summarizePeriod("", cumulativeMonths, progress.completed);
+  // 累計%は月行・合計行とも常に年間フル目標(12ヶ月分)に対する達成率にする
+  // （ユーザー確定、2026-09-13。目標(1ヶ月分、経過月按分ではない)自体は従来通り）
+  const annualTarget = summarizePeriod("", FISCAL_MONTH_ORDER, progress.order).targetGrossProfit;
 
   return {
     crId,
@@ -67,16 +70,17 @@ function buildMonthColumn(
     targetGrossProfit: target,
     orderGrossProfit: orderRow?.grossProfit ?? null,
     orderMonthlyRate: rate(orderRow?.grossProfit ?? null, target),
-    orderCumulativeRate: orderCumulative.achievementRate,
+    orderCumulativeRate: rate(orderCumulative.grossProfit, annualTarget),
     completedGrossProfit: completedRow?.grossProfit ?? null,
     completedMonthlyRate: rate(completedRow?.grossProfit ?? null, target),
-    completedCumulativeRate: completedCumulative.achievementRate,
+    completedCumulativeRate: rate(completedCumulative.grossProfit, annualTarget),
   };
 }
 
 /**
- * 合計行だけは、各月行の「累計」(経過月按分の目標に対する達成率)とは違い、
- * 目標を年間フル目標(12ヶ月分、按分しない)に固定する（ユーザー確定、2026-09-13）。
+ * 合計行の目標は、各月行の「目標」(1ヶ月分)とは違い、年間フル目標(12ヶ月分、
+ * 按分しない)を使う（ユーザー確定、2026-09-13）。累計%の考え方はbuildMonthColumnと
+ * 統一されている(どちらも分母は常に年間フル目標)。
  * 「経過月までの実績の積み上げが、年間目標に対してどこまで来ているか」を表す。
  */
 function buildTotalColumn(
@@ -107,11 +111,12 @@ function buildTotalColumn(
  * 表専用のSalesforce取得・集計は行わず、既存のprogressByCr(グラフ・月次表と
  * 同じ配列)とsummarizePeriod(既存の累積計算ロジック)だけを再利用する。
  *
- * 各月行の累積列は「9月〜その行の月」までの範囲で計算する(FULL_YEARを使うと
- * 未到来月の目標まで分母に混ざってしまうため、必ず月ごとにスライスした範囲を渡す)。
- * 合計行の実績は「9月〜現在月」までの累積(途中期なら年度末までではなく現在月まで)だが、
- * 目標だけは月行の累積(経過月按分)と違い年間フル目標(12ヶ月分)を使う
- * （ユーザー確定、2026-09-13。「経過月までの実績が年間目標に対してどこまで来ているか」を表す）。
+ * 各月行の累積実績は「9月〜その行の月」までの範囲で計算し(FULL_YEARを使うと
+ * 未到来月の実績まで0扱いで混ざってしまうため、必ず月ごとにスライスした範囲を渡す)、
+ * 合計行の実績は「9月〜現在月」までの累積(途中期なら年度末までではなく現在月まで)。
+ * 累計%の分母は月行・合計行とも常に年間フル目標(12ヶ月分、按分しない)で統一する
+ * （ユーザー確定、2026-09-13。「経過月までの実績の積み上げが、年間目標に対して
+ * どこまで来ているか」を月行・合計行問わず一貫して表す）。
  */
 export function buildCrossCrProgress(
   progressByCr: CrProgress[],

@@ -122,12 +122,12 @@ describe("buildCrossCrProgress — 通年(currentMonth=8月)", () => {
     expect(col(9, "CR1").orderMonthlyRate).toBeCloseTo(100, 5);
   });
 
-  it("CR1の10月受注累積達成率が正しい(9〜10月の累積 ÷ 目標2ヶ月分)", () => {
+  it("CR1の10月受注累積達成率が正しい(9〜10月の累積 ÷ 年間フル目標12ヶ月分)", () => {
     const gpSum = sumRange(CR1_ORDER, [9, 10]);
-    const targetSum = 15_000 * 2;
+    const targetSum = 15_000 * 12;
     expect(col(10, "CR1").orderCumulativeRate).toBeCloseTo(expectedRate(gpSum, targetSum), 5);
-    // 手計算でも105%
-    expect(Math.round(col(10, "CR1").orderCumulativeRate!)).toBe(105);
+    // 手計算でも17.5%
+    expect(col(10, "CR1").orderCumulativeRate).toBeCloseTo(17.5, 5);
   });
 
   it("CR1の8月完了累積達成率が正しい(9〜8月・通期の累積)", () => {
@@ -136,9 +136,9 @@ describe("buildCrossCrProgress — 通年(currentMonth=8月)", () => {
     expect(col(8, "CR1").completedCumulativeRate).toBeCloseTo(expectedRate(gpSum, targetSum), 5);
   });
 
-  it("CR2も同じ計算式になる(9〜11月の受注累積達成率)", () => {
+  it("CR2も同じ計算式になる(9〜11月の受注累積 ÷ 年間フル目標12ヶ月分)", () => {
     const gpSum = sumRange(CR2_ORDER, [9, 10, 11]);
-    const targetSum = 20_000 * 3;
+    const targetSum = 20_000 * 12;
     expect(col(11, "CR2").orderCumulativeRate).toBeCloseTo(expectedRate(gpSum, targetSum), 5);
   });
 
@@ -189,23 +189,23 @@ describe("buildCrossCrProgress — 期中(currentMonth=11月、12月以降は未
 
   it("8月行(未到来)の累積は、実績が入っている9〜11月分だけを合算する(0扱いしない)", () => {
     const gpSum = sumRange(CR1_ORDER, [9, 10, 11]); // 12月以降は元データがnullなので寄与しない
-    // 目標は月が未入力でも常に積み上げる(既存summarizePeriodの仕様を踏襲)
+    // 累積%の分母は常に年間フル目標(12ヶ月分)
     const targetSum = 15_000 * 12;
     expect(col(8).orderCumulativeRate).toBeCloseTo(expectedRate(gpSum, targetSum), 5);
   });
 
-  it("合計行の実績は「現在月(11月)まで」の累積だが、目標は経過月按分ではなく年間フル目標(12ヶ月分)を使う", () => {
+  it("合計行の実績は「現在月(11月)まで」の累積で、目標(表示欄)は月行の1ヶ月分と違い年間フル目標(12ヶ月分)を使う", () => {
     const total = totalRow[0];
     const nov = col(11);
 
     const gpSumThroughNov = sumRange(CR1_ORDER, [9, 10, 11]);
     expect(total.orderGrossProfit).toBe(gpSumThroughNov);
-    // 目標は経過月(9〜11月=3ヶ月分)ではなく年間フル(12ヶ月分)
+    // 「目標」表示欄は経過月(9〜11月=3ヶ月分)ではなく年間フル(12ヶ月分)
     expect(total.targetGrossProfit).toBe(15_000 * 12);
     expect(total.targetGrossProfit).not.toBe(nov.targetGrossProfit);
 
-    // 分母が違うため、11月行(経過月按分)の累積達成率とは一致しない
-    expect(total.orderCumulativeRate).not.toBeCloseTo(nov.orderCumulativeRate!, 5);
+    // 累計%は月行・合計行とも常に年間フル目標が分母のため、11月行と合計行は一致する
+    expect(total.orderCumulativeRate).toBeCloseTo(nov.orderCumulativeRate!, 5);
     expect(total.orderCumulativeRate).toBeCloseTo(expectedRate(gpSumThroughNov, 15_000 * 12), 5);
   });
 });

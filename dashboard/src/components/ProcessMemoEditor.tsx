@@ -47,7 +47,7 @@ export function ProcessMemoEditor({ processId, crId, initialMemo }: ProcessMemoE
         onChange={(e) => setMemo(e.target.value)}
         rows={2}
         placeholder="このダッシュボード独自のメモ"
-        className="w-full resize-y rounded border border-[var(--border-hairline)] bg-[var(--surface-1)] px-2 py-1 text-xs text-[var(--text-primary)]"
+        className="w-full resize-y rounded border border-[var(--border-hairline)] bg-[var(--surface-1)] px-2 py-1 text-[var(--text-primary)]"
       />
       <div className="flex items-center justify-between gap-2 text-[10px] text-[var(--text-muted)]">
         <span>

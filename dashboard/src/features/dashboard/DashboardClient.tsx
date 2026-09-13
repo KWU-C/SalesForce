@@ -94,9 +94,30 @@ export function DashboardClient({
   const confidenceAGrossProfit = confidenceAGroup?.grossProfitSubtotal ?? null;
   const confidenceASales = confidenceAGroup?.salesSubtotal ?? null;
 
+  // 当月単月の受注・完了（全タブ共通、ユーザー確定2026-09-14）。累計ではなくその月単体の実績
+  const currentMonthOrder = current.order.find((m) => m.month === currentMonth) ?? null;
+  const currentMonthCompleted = current.completed.find((m) => m.month === currentMonth) ?? null;
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6">
       <CrTabs crList={crList} selected={effectiveCr} onSelect={setSelectedCr} />
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <StatCard
+          title={`${currentMonth}月の受注`}
+          sales={currentMonthOrder?.sales ?? null}
+          grossProfit={currentMonthOrder?.grossProfit ?? null}
+          targetGrossProfit={currentMonthOrder?.targetGrossProfit ?? 0}
+          achievementRate={currentMonthOrder?.achievementRate ?? null}
+        />
+        <StatCard
+          title={`${currentMonth}月の完了`}
+          sales={currentMonthCompleted?.sales ?? null}
+          grossProfit={currentMonthCompleted?.grossProfit ?? null}
+          targetGrossProfit={currentMonthCompleted?.targetGrossProfit ?? 0}
+          achievementRate={currentMonthCompleted?.achievementRate ?? null}
+        />
+      </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <StatCard

@@ -21,12 +21,21 @@ export function formatPercentInt(rate: number): string {
   return `${Math.round(rate)}%`;
 }
 
-/** データ取得日時表示用（例: 08:45:43） */
+/**
+ * データ取得日時表示用（例: 08:45:43）。
+ * timeZoneを明示しないとCloud Run実行環境のシステムタイムゾーン(通常UTC)が使われ、
+ * ja-JPロケールの見た目のまま9時間ずれて表示されるため、常に日本時間(Asia/Tokyo)を指定する。
+ */
 export function formatTime(date: Date): string {
-  return date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return date.toLocaleTimeString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "Asia/Tokyo",
+  });
 }
 
-/** 日付をまたぐ可能性がある更新日時表示用（例: 2026/09/11 08:45） */
+/** 日付をまたぐ可能性がある更新日時表示用（例: 2026/09/11 08:45）。常に日本時間で表示する */
 export function formatDateTime(date: Date): string {
   return date.toLocaleString("ja-JP", {
     year: "numeric",
@@ -34,5 +43,6 @@ export function formatDateTime(date: Date): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Tokyo",
   });
 }

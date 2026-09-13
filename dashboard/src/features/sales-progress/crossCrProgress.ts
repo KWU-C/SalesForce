@@ -36,10 +36,11 @@ export interface CrossCrProgress {
   totalRow: CrossCrColumn[];
 }
 
-function monthlyRate(grossProfit: number | null, target: number): number | null {
+/** 達成率の丸め方はsummarizePeriod(aggregate.ts)のachievementRateと揃える(小数点1桁) */
+function rate(grossProfit: number | null, target: number): number | null {
   if (grossProfit === null) return null;
   if (target === 0) return 0;
-  return (grossProfit / target) * 100;
+  return Math.round((grossProfit / target) * 1000) / 10;
 }
 
 function findRow(rows: MonthlyProgress[], month: number): MonthlyProgress | undefined {
@@ -65,14 +66,19 @@ function buildMonthColumn(
     crLabel,
     targetGrossProfit: target,
     orderGrossProfit: orderRow?.grossProfit ?? null,
-    orderMonthlyRate: monthlyRate(orderRow?.grossProfit ?? null, target),
+    orderMonthlyRate: rate(orderRow?.grossProfit ?? null, target),
     orderCumulativeRate: orderCumulative.achievementRate,
     completedGrossProfit: completedRow?.grossProfit ?? null,
-    completedMonthlyRate: monthlyRate(completedRow?.grossProfit ?? null, target),
+    completedMonthlyRate: rate(completedRow?.grossProfit ?? null, target),
     completedCumulativeRate: completedCumulative.achievementRate,
   };
 }
 
+/**
+ * 合計行だけは、各月行の「累計」(経過月按分の目標に対する達成率)とは違い、
+ * 目標を年間フル目標(12ヶ月分、按分しない)に固定する（ユーザー確定、2026-09-13）。
+ * 「経過月までの実績の積み上げが、年間目標に対してどこまで来ているか」を表す。
+ */
 function buildTotalColumn(
   crId: string,
   crLabel: string,
@@ -81,17 +87,18 @@ function buildTotalColumn(
 ): CrossCrColumn {
   const orderCumulative = summarizePeriod("", cumulativeMonths, progress.order);
   const completedCumulative = summarizePeriod("", cumulativeMonths, progress.completed);
+  const annualTarget = summarizePeriod("", FISCAL_MONTH_ORDER, progress.order).targetGrossProfit;
 
   return {
     crId,
     crLabel,
-    targetGrossProfit: orderCumulative.targetGrossProfit,
+    targetGrossProfit: annualTarget,
     orderGrossProfit: orderCumulative.grossProfit,
     orderMonthlyRate: null,
-    orderCumulativeRate: orderCumulative.achievementRate,
+    orderCumulativeRate: rate(orderCumulative.grossProfit, annualTarget),
     completedGrossProfit: completedCumulative.grossProfit,
     completedMonthlyRate: null,
-    completedCumulativeRate: completedCumulative.achievementRate,
+    completedCumulativeRate: rate(completedCumulative.grossProfit, annualTarget),
   };
 }
 
@@ -100,9 +107,11 @@ function buildTotalColumn(
  * 表専用のSalesforce取得・集計は行わず、既存のprogressByCr(グラフ・月次表と
  * 同じ配列)とsummarizePeriod(既存の累積計算ロジック)だけを再利用する。
  *
- * 累積列は行ごとに「9月〜その行の月」までの範囲で計算する(FULL_YEARを使うと
+ * 各月行の累積列は「9月〜その行の月」までの範囲で計算する(FULL_YEARを使うと
  * 未到来月の目標まで分母に混ざってしまうため、必ず月ごとにスライスした範囲を渡す)。
- * 合計行は「9月〜現在月」までの累積(途中期なら年度末までではなく現在月まで)。
+ * 合計行の実績は「9月〜現在月」までの累積(途中期なら年度末までではなく現在月まで)だが、
+ * 目標だけは月行の累積(経過月按分)と違い年間フル目標(12ヶ月分)を使う
+ * （ユーザー確定、2026-09-13。「経過月までの実績が年間目標に対してどこまで来ているか」を表す）。
  */
 export function buildCrossCrProgress(
   progressByCr: CrProgress[],

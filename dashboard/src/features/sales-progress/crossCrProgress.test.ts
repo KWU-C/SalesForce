@@ -148,10 +148,12 @@ describe("buildCrossCrProgress — 通年(currentMonth=8月)", () => {
     expect(col(8, "CR3").completedCumulativeRate).toBeCloseTo(expectedRate(gpSum, targetSum), 5);
   });
 
-  it("合計行は通期(9〜8月)の受注/完了粗利合計と、通期目標に対する達成率になる(通年なので8月行の累積と一致)", () => {
+  it("合計行は通期(9〜8月)の受注/完了粗利合計と、年間フル目標に対する達成率になる(通年なので8月行の累積と一致)", () => {
     const total = totalRow.find((c) => c.crId === "CR1")!;
     const aug = col(8, "CR1");
     expect(total.orderGrossProfit).toBe(aug.orderGrossProfit === null ? null : sumRange(CR1_ORDER, FISCAL_MONTH_ORDER));
+    expect(total.targetGrossProfit).toBe(15_000 * 12);
+    // 通年(8月)なので8月行の累積(9〜8月=12ヶ月分)と分母が一致し、達成率も一致する
     expect(total.orderCumulativeRate).toBeCloseTo(aug.orderCumulativeRate!, 5);
     expect(total.completedCumulativeRate).toBeCloseTo(aug.completedCumulativeRate!, 5);
     // 合計行に月次達成率は存在しない
@@ -192,14 +194,19 @@ describe("buildCrossCrProgress — 期中(currentMonth=11月、12月以降は未
     expect(col(8).orderCumulativeRate).toBeCloseTo(expectedRate(gpSum, targetSum), 5);
   });
 
-  it("合計行は「現在月(11月)まで」の累積であり、通期(8月まで)の累積とは異なる", () => {
+  it("合計行の実績は「現在月(11月)まで」の累積だが、目標は経過月按分ではなく年間フル目標(12ヶ月分)を使う", () => {
     const total = totalRow[0];
     const nov = col(11);
-    expect(total.orderCumulativeRate).toBeCloseTo(nov.orderCumulativeRate!, 5);
-    expect(total.orderCumulativeRate).not.toBeCloseTo(col(8).orderCumulativeRate!, 5);
 
     const gpSumThroughNov = sumRange(CR1_ORDER, [9, 10, 11]);
     expect(total.orderGrossProfit).toBe(gpSumThroughNov);
+    // 目標は経過月(9〜11月=3ヶ月分)ではなく年間フル(12ヶ月分)
+    expect(total.targetGrossProfit).toBe(15_000 * 12);
+    expect(total.targetGrossProfit).not.toBe(nov.targetGrossProfit);
+
+    // 分母が違うため、11月行(経過月按分)の累積達成率とは一致しない
+    expect(total.orderCumulativeRate).not.toBeCloseTo(nov.orderCumulativeRate!, 5);
+    expect(total.orderCumulativeRate).toBeCloseTo(expectedRate(gpSumThroughNov, 15_000 * 12), 5);
   });
 });
 

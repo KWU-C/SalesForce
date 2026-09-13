@@ -22,13 +22,13 @@ export function ProcessMemoEditor({ processId, crId, initialMemo }: ProcessMemoE
 
   const isDirty = memo !== (saved?.memo ?? "");
 
-  async function handleSave() {
+  async function saveMemo(nextMemo: string) {
     setStatus("saving");
     try {
       const response = await fetch(`/api/process-memos/${encodeURIComponent(processId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ crId, memo }),
+        body: JSON.stringify({ crId, memo: nextMemo }),
       });
       if (!response.ok) throw new Error("save failed");
       const data = (await response.json()) as ProcessMemo;
@@ -38,6 +38,14 @@ export function ProcessMemoEditor({ processId, crId, initialMemo }: ProcessMemoE
     } catch {
       setStatus("error");
     }
+  }
+
+  function handleSave() {
+    return saveMemo(memo);
+  }
+
+  function handleDelete() {
+    return saveMemo("");
   }
 
   return (
@@ -53,14 +61,24 @@ export function ProcessMemoEditor({ processId, crId, initialMemo }: ProcessMemoE
         <span>
           {saved ? `最終更新: ${saved.updatedBy} ${formatDateTime(new Date(saved.updatedAt))}` : "未保存"}
         </span>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!isDirty || status === "saving"}
-          className="shrink-0 rounded border border-[var(--border-hairline)] px-2 py-0.5 font-medium text-[var(--text-secondary)] disabled:opacity-50"
-        >
-          {status === "saving" ? "保存中…" : "保存"}
-        </button>
+        <div className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={!saved?.memo || status === "saving"}
+            className="rounded border border-[var(--border-hairline)] px-2 py-0.5 font-medium text-[var(--text-secondary)] disabled:opacity-50"
+          >
+            削除
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!isDirty || status === "saving"}
+            className="rounded border border-[var(--border-hairline)] px-2 py-0.5 font-medium text-[var(--text-secondary)] disabled:opacity-50"
+          >
+            {status === "saving" ? "保存中…" : "保存"}
+          </button>
+        </div>
       </div>
       {status === "error" && (
         <span className="text-[10px] text-[var(--status-serious)]">保存に失敗しました</span>

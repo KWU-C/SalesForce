@@ -126,6 +126,8 @@ export interface ProcessMemo {
   processId: string;
   crId: ConcreteCrId;
   memo: string;
+  /** 行をハイライト表示するかどうか（クライアント名頭のチェックボックス、ユーザー確定） */
+  highlighted: boolean;
   updatedBy: string;
   /** ISO8601文字列 */
   updatedAt: string;

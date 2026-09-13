@@ -11,15 +11,23 @@ const MEMO_MAX_LENGTH = 2000;
 
 interface SaveMemoRequestBody {
   crId: ConcreteCrId;
-  memo: string;
+  memo?: string;
+  highlighted?: boolean;
 }
 
+/**
+ * memo/highlightedはどちらも省略可能（片方だけの更新に対応、
+ * processMemoRepository.tsのマージ書き込み参照）だが、少なくとも
+ * 一方は指定されている必要がある（何も更新しない要求は拒否する）。
+ */
 function parseRequestBody(body: unknown): SaveMemoRequestBody | null {
   if (typeof body !== "object" || body === null) return null;
-  const { crId, memo } = body as Record<string, unknown>;
+  const { crId, memo, highlighted } = body as Record<string, unknown>;
   if (!isConcreteCrId(crId)) return null;
-  if (typeof memo !== "string" || memo.length > MEMO_MAX_LENGTH) return null;
-  return { crId, memo };
+  if (memo !== undefined && (typeof memo !== "string" || memo.length > MEMO_MAX_LENGTH)) return null;
+  if (highlighted !== undefined && typeof highlighted !== "boolean") return null;
+  if (memo === undefined && highlighted === undefined) return null;
+  return { crId, memo, highlighted };
 }
 
 /**
@@ -61,6 +69,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       processId,
       crId: parsed.crId,
       memo: parsed.memo,
+      highlighted: parsed.highlighted,
       updatedBy: verification.email,
     });
     return NextResponse.json(saved);

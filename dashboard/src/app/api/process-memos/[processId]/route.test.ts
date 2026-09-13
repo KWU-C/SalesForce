@@ -25,6 +25,8 @@ function makeRequest(processId: string, body: unknown): NextRequest {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  verifyIapJwtMock.mockReset();
+  saveProcessMemoMock.mockReset();
 });
 
 describe("PUT /api/process-memos/[processId]", () => {
@@ -90,6 +92,47 @@ describe("PUT /api/process-memos/[processId]", () => {
     });
     const body = await response.json();
     expect(body.updatedBy).toBe("kawauchi@tcd.jp");
+  });
+
+  it("saves a highlighted-only update (checkbox toggle), with no memo field required", async () => {
+    verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
+    saveProcessMemoMock.mockResolvedValue({
+      processId: VALID_PROCESS_ID,
+      crId: "CR1",
+      memo: "既存メモ",
+      highlighted: true,
+      updatedBy: "kawauchi@tcd.jp",
+      updatedAt: "2026-09-11T00:00:00.000Z",
+    });
+
+    const response = await PUT(makeRequest(VALID_PROCESS_ID, { crId: "CR1", highlighted: true }), {
+      params: Promise.resolve({ processId: VALID_PROCESS_ID }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(saveProcessMemoMock).toHaveBeenCalledWith({
+      processId: VALID_PROCESS_ID,
+      crId: "CR1",
+      memo: undefined,
+      highlighted: true,
+      updatedBy: "kawauchi@tcd.jp",
+    });
+  });
+
+  it("returns 400 when neither memo nor highlighted is provided, and when highlighted has the wrong type", async () => {
+    verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
+
+    const neither = await PUT(makeRequest(VALID_PROCESS_ID, { crId: "CR1" }), {
+      params: Promise.resolve({ processId: VALID_PROCESS_ID }),
+    });
+    expect(neither.status).toBe(400);
+
+    const wrongType = await PUT(
+      makeRequest(VALID_PROCESS_ID, { crId: "CR1", highlighted: "true" }),
+      { params: Promise.resolve({ processId: VALID_PROCESS_ID }) }
+    );
+    expect(wrongType.status).toBe(400);
+    expect(saveProcessMemoMock).not.toHaveBeenCalled();
   });
 
   it("returns 500 without leaking details when the Firestore write fails", async () => {

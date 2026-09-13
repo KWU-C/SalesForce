@@ -1,6 +1,6 @@
 "use client";
 
-import { ProcessMemoEditor } from "@/components/ProcessMemoEditor";
+import { PipelineDealRow } from "@/components/PipelineDealRow";
 import type { ConcreteCrId, PipelineDeal, ProcessMemo } from "@/domain/types";
 import { groupPipelineDealsByConfidence } from "@/features/sales-progress/pipelineGrouping";
 import { formatThousandYen } from "@/utils/format";
@@ -46,28 +46,12 @@ export function PipelineDealsSection({ crId, deals, memosByProcessId }: Pipeline
                 </thead>
                 <tbody>
                   {group.deals.map((deal) => (
-                    <tr
+                    <PipelineDealRow
                       key={deal.processId}
-                      className="border-b border-[var(--gridline)] align-top last:border-b-0"
-                    >
-                      <td className="px-4 py-2 text-[var(--text-primary)]">{deal.clientName ?? "—"}</td>
-                      <td className="px-2 py-2 text-[var(--text-primary)]">{deal.dealName}</td>
-                      <td className="px-2 py-2 text-right font-medium tabular-nums text-[var(--text-primary)]">
-                        {deal.grossProfit === null ? "—" : formatThousandYen(deal.grossProfit)}
-                      </td>
-                      <td className="px-2 py-2">
-                        <div className="flex flex-col gap-2">
-                          <p className="whitespace-pre-wrap text-[var(--text-primary)]">
-                            {deal.salesforceMemo || "—"}
-                          </p>
-                          <ProcessMemoEditor
-                            processId={deal.processId}
-                            crId={crId}
-                            initialMemo={memosByProcessId[deal.processId]}
-                          />
-                        </div>
-                      </td>
-                    </tr>
+                      deal={deal}
+                      crId={crId}
+                      initialMemo={memosByProcessId[deal.processId]}
+                    />
                   ))}
                   {group.grossProfitSubtotal !== null && (
                     <tr className="bg-[var(--surface-sunken)] font-medium">

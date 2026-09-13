@@ -135,8 +135,6 @@ export function DashboardClient({
         <MonthlyCumulativeTable title="完了" data={current.completed} />
       </div>
 
-      <CrossCrProgressTable progressByCr={progressByCr} currentMonth={currentMonth} term={term} />
-
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ClientRankingTable
           title="受注額（粗利）トップ20クライアント"
@@ -154,6 +152,8 @@ export function DashboardClient({
 
       {effectiveCr === "ALL" ? (
         <>
+          <CrossCrProgressTable progressByCr={progressByCr} currentMonth={currentMonth} term={term} />
+
           <div>
             <h3 className="mb-4 text-sm font-medium text-[var(--text-secondary)]">
               区分別（受注）

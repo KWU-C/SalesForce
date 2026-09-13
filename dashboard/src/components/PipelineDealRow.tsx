@@ -36,7 +36,7 @@ export function PipelineDealRow({ deal, crId, initialMemo }: PipelineDealRowProp
   return (
     <tr
       className={`border-b border-[var(--gridline)] align-top last:border-b-0 ${
-        highlighted ? "bg-[#ffff00]" : ""
+        highlighted ? "bg-[#ffff66]" : ""
       }`}
     >
       <td className="px-4 py-2 text-[var(--text-primary)]">

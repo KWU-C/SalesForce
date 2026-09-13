@@ -10,9 +10,16 @@ interface PipelineDealsSectionProps {
   /** WOM_CR1〜4相当のパイプライン案件一覧（提案・見積フェーズ、現在時点のスナップショット） */
   deals: PipelineDeal[];
   memosByProcessId: Record<string, ProcessMemo>;
+  /** 保存成功時にDashboardClient側の状態へ反映するコールバック（CRタブ切替対策） */
+  onMemoSaved: (processId: string, memo: ProcessMemo) => void;
 }
 
-export function PipelineDealsSection({ crId, deals, memosByProcessId }: PipelineDealsSectionProps) {
+export function PipelineDealsSection({
+  crId,
+  deals,
+  memosByProcessId,
+  onMemoSaved,
+}: PipelineDealsSectionProps) {
   const groups = groupPipelineDealsByConfidence(deals);
 
   return (
@@ -51,6 +58,7 @@ export function PipelineDealsSection({ crId, deals, memosByProcessId }: Pipeline
                       deal={deal}
                       crId={crId}
                       initialMemo={memosByProcessId[deal.processId]}
+                      onMemoSaved={onMemoSaved}
                     />
                   ))}
                   {group.grossProfitSubtotal !== null && (

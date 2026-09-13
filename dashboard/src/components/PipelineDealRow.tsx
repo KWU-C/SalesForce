@@ -9,6 +9,12 @@ interface PipelineDealRowProps {
   deal: PipelineDeal;
   crId: ConcreteCrId;
   initialMemo: ProcessMemo | undefined;
+  /**
+   * 保存成功時にDashboardClient側の状態へ反映するコールバック。
+   * CRタブ切替でこの行(processIdをkeyに持つ)がアンマウント→再マウントされても
+   * 保存済みの値を失わないようにするため（ユーザー報告により追加、2026-09-13）。
+   */
+  onMemoSaved: (processId: string, memo: ProcessMemo) => void;
 }
 
 /**
@@ -16,7 +22,7 @@ interface PipelineDealRowProps {
  * （ユーザー確定）。チェックのon/offはボタン無しでその場で保存される
  * （メモ本文の保存とは独立、processMemoRepository.tsのマージ書き込み参照）。
  */
-export function PipelineDealRow({ deal, crId, initialMemo }: PipelineDealRowProps) {
+export function PipelineDealRow({ deal, crId, initialMemo, onMemoSaved }: PipelineDealRowProps) {
   const [highlighted, setHighlighted] = useState(initialMemo?.highlighted ?? false);
 
   async function handleToggle(nextHighlighted: boolean) {
@@ -28,6 +34,9 @@ export function PipelineDealRow({ deal, crId, initialMemo }: PipelineDealRowProp
         body: JSON.stringify({ crId, highlighted: nextHighlighted }),
       });
       if (!response.ok) throw new Error("save failed");
+      const data = (await response.json()) as ProcessMemo;
+      setHighlighted(data.highlighted);
+      onMemoSaved(deal.processId, data);
     } catch {
       setHighlighted(!nextHighlighted);
     }
@@ -36,7 +45,7 @@ export function PipelineDealRow({ deal, crId, initialMemo }: PipelineDealRowProp
   return (
     <tr
       className={`border-b border-[var(--gridline)] align-top last:border-b-0 ${
-        highlighted ? "bg-[#ffff66]" : ""
+        highlighted ? "bg-[#fdf3d0]" : ""
       }`}
     >
       <td className="px-4 py-2 text-[var(--text-primary)]">
@@ -59,7 +68,12 @@ export function PipelineDealRow({ deal, crId, initialMemo }: PipelineDealRowProp
           <p className="whitespace-pre-wrap text-[var(--text-primary)]">
             {deal.salesforceMemo || "—"}
           </p>
-          <ProcessMemoEditor processId={deal.processId} crId={crId} initialMemo={initialMemo} />
+          <ProcessMemoEditor
+            processId={deal.processId}
+            crId={crId}
+            initialMemo={initialMemo}
+            onSaved={onMemoSaved}
+          />
         </div>
       </td>
     </tr>

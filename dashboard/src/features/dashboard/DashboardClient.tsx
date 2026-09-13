@@ -39,9 +39,18 @@ export function DashboardClient({
   term,
   fetchedAt,
   dataSourceLabel,
-  processMemosByProcessId,
+  processMemosByProcessId: initialProcessMemosByProcessId,
 }: DashboardClientProps) {
   const [selectedCr, setSelectedCr] = useState<CrId>("ALL");
+  // SSR取得時点のスナップショットをそのまま子へ渡すと、CRタブ切替でその行が
+  // アンマウント→再マウントされた際に保存直後の値が失われる(ユーザー報告、
+  // 2026-09-13)。保存成功のたびにここへ反映し、以後はこの状態を正とする
+  const [processMemosByProcessId, setProcessMemosByProcessId] = useState(
+    initialProcessMemosByProcessId
+  );
+  function handleMemoSaved(processId: string, memo: ProcessMemo) {
+    setProcessMemosByProcessId((prev) => ({ ...prev, [processId]: memo }));
+  }
   const crList = useMemo(() => getCrListForTerm(term), [term]);
   // CR一覧は事業期によって変わる(48・49期はCR1〜3、50期以降はCR1〜4、
   // ユーザー確定2026-09-01)。CR4選択中に48/49期へ切り替えるなど、選択中のCRが
@@ -224,6 +233,7 @@ export function DashboardClient({
               crId={effectiveCr}
               deals={current.pipelineDeals ?? []}
               memosByProcessId={processMemosByProcessId}
+              onMemoSaved={handleMemoSaved}
             />
           </div>
         </>

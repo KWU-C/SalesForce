@@ -8,6 +8,13 @@ interface ProcessMemoEditorProps {
   processId: string;
   crId: ConcreteCrId;
   initialMemo: ProcessMemo | undefined;
+  /**
+   * 保存成功時にDashboardClient側の状態へ反映するコールバック。
+   * CRタブ切替でこのエディタ(processIdをkeyに持つ)がアンマウント→再マウント
+   * されても保存済みの値を失わないようにするため（ユーザー報告により追加、
+   * 2026-09-13）。
+   */
+  onSaved: (processId: string, memo: ProcessMemo) => void;
 }
 
 /**
@@ -15,7 +22,7 @@ interface ProcessMemoEditorProps {
  * 保存はCloud Run上のAPIルート(/api/process-memos/[processId])経由のみ
  * （ブラウザからFirestoreへ直接アクセスしない、ユーザー確定）。
  */
-export function ProcessMemoEditor({ processId, crId, initialMemo }: ProcessMemoEditorProps) {
+export function ProcessMemoEditor({ processId, crId, initialMemo, onSaved }: ProcessMemoEditorProps) {
   const [memo, setMemo] = useState(initialMemo?.memo ?? "");
   const [saved, setSaved] = useState(initialMemo);
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
@@ -35,6 +42,7 @@ export function ProcessMemoEditor({ processId, crId, initialMemo }: ProcessMemoE
       setSaved(data);
       setMemo(data.memo);
       setStatus("idle");
+      onSaved(processId, data);
     } catch {
       setStatus("error");
     }

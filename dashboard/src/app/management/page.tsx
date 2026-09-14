@@ -5,12 +5,9 @@ import { FinancialSummaryCards } from "@/features/management-dashboard/Financial
 import { getFinancialSummary } from "@/features/management-dashboard/financialSummary";
 import type { FinancialSummary } from "@/features/management-dashboard/financialSummary";
 import { MonthSelector } from "@/features/management-dashboard/MonthSelector";
-import { MonthlyFinanceDashboard } from "@/features/management-dashboard/MonthlyFinanceDashboard";
-import { MonthlyTrendTable } from "@/features/management-dashboard/MonthlyTrendTable";
-import { getOrFetchMonthlyFinance, getFiscalYearTrend } from "@/features/management-dashboard/monthlyFinanceService";
-import { getSalesInputSummary } from "@/features/management-dashboard/salesInputSummary";
-import type { MonthlyFinanceSnapshot } from "@/features/management-dashboard/types";
-import type { SalesInputSummary } from "@/features/management-dashboard/salesInputSummary";
+import { MonthlyCashFlowTable } from "@/features/management-dashboard/MonthlyCashFlowTable";
+import { getOrFetchMonthlyCashFlow } from "@/features/management-dashboard/monthlyCashFlowService";
+import type { MonthlyCashFlow } from "@/features/management-dashboard/types";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { getFreeeConnectionStatus } from "@/repositories/freeeAuthRepository";
@@ -44,10 +41,10 @@ function resolveSelectedMonth(requestedMonthRaw: string | undefined, currentMont
  * （ユーザー確定、2026-09-14）。ナビのタブ非表示だけでなく、URLを直接知っていても
  * 本文は表示しない。
  *
- * 月次経営ダッシュボードとして、INPUT→OUTPUT→PROFIT→CASHの流れで選択した1ヶ月の
- * 経営状態を一画面で把握できることを主目的とする（ユーザー確定、2026-09-14。
- * freeeの試算表をそのまま複製しない）。KPIは実データから取得できたものだけを表示し、
- * 取得できない項目は「データ未設定」と表示する（推測値・仮の値は一切出さない）。
+ * 「会社版家計簿」として、会計上の利益ではなく実際の現金の動き(入金・支出・現金増減)を
+ * 主役とする月次資金収支表を表示する(ユーザー確定、2026-09-14。freeeの試算表を
+ * そのまま複製しない)。値は実データから取得できたものだけを表示し、取得できない項目は
+ * 「データ未設定」と表示する（推測値・仮の値は一切出さない）。
  */
 export default async function ManagementPage({ searchParams }: PageProps) {
   const iapEmail = await getRequestIapEmail();
@@ -57,10 +54,8 @@ export default async function ManagementPage({ searchParams }: PageProps) {
   let authorizeUrl: string | null = null;
   let financialSummary: FinancialSummary | null = null;
   let financialSummaryError = false;
-  let monthlyFinance: MonthlyFinanceSnapshot | null = null;
-  let monthlyFinanceError = false;
-  let salesInput: SalesInputSummary = { orderGrossProfit: null, orderSales: null };
-  let trend: MonthlyFinanceSnapshot[] = [];
+  let cashFlow: MonthlyCashFlow | null = null;
+  let cashFlowError = false;
 
   const { term, currentMonth } = getCurrentFiscalPeriod();
   const selectedMonth = resolveSelectedMonth((await searchParams).month, currentMonth);
@@ -80,27 +75,13 @@ export default async function ManagementPage({ searchParams }: PageProps) {
       console.error("[management page] FREEE_CLIENT_ID/SECRET未設定のため連携フォームを表示しません");
     }
 
-    // Salesforceの当月受注/受注粗利は、freee未接続でも表示できるため接続有無に関わらず取得する
-    try {
-      salesInput = await getSalesInputSummary(term, selectedMonth);
-    } catch {
-      console.error("[management page] Salesforceの当月受注取得に失敗しました");
-    }
-
     if (connectionStatus?.connected) {
       const isCurrentMonth = selectedMonth === currentMonth;
       try {
-        monthlyFinance = await getOrFetchMonthlyFinance(fiscalYear, selectedMonth, {
-          forceRefresh: isCurrentMonth,
-        });
+        cashFlow = await getOrFetchMonthlyCashFlow(fiscalYear, selectedMonth, { forceRefresh: isCurrentMonth });
       } catch {
-        console.error("[management page] freeeからの月次経営データ取得に失敗しました");
-        monthlyFinanceError = true;
-      }
-      try {
-        trend = await getFiscalYearTrend(term);
-      } catch {
-        console.error("[management page] freeeからの月次推移取得に失敗しました");
+        console.error("[management page] freeeからの月次資金収支取得に失敗しました");
+        cashFlowError = true;
       }
       try {
         financialSummary = await getFinancialSummary();
@@ -133,24 +114,16 @@ export default async function ManagementPage({ searchParams }: PageProps) {
               <>
                 <MonthSelector term={term} selectedMonth={selectedMonth} currentMonth={currentMonth} />
 
-                {monthlyFinanceError && (
+                {cashFlowError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">
                     freeeからのデータ取得に失敗しました（権限不足の場合、freeeアプリの権限設定を
                     変更した後は再接続が必要です。下記から再度お試しください）。
                   </p>
                 )}
 
-                <MonthlyFinanceDashboard
-                  fiscalYear={fiscalYear}
-                  month={selectedMonth}
-                  salesInput={salesInput}
-                  finance={monthlyFinance}
-                />
-
-                <div>
-                  <h3 className="mb-2 text-sm font-medium text-[var(--text-secondary)]">月次推移（当期）</h3>
-                  <MonthlyTrendTable snapshots={trend} />
-                </div>
+                {cashFlow && (
+                  <MonthlyCashFlowTable fiscalYear={fiscalYear} month={selectedMonth} cashFlow={cashFlow} />
+                )}
 
                 {financialSummary && <FinancialSummaryCards summary={financialSummary} />}
                 {financialSummaryError && (

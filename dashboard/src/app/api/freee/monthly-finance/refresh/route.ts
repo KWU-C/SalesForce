@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getOrFetchMonthlyFinance } from "@/features/management-dashboard/monthlyFinanceService";
+import { getOrFetchMonthlyCashFlow } from "@/features/management-dashboard/monthlyCashFlowService";
 import { verifyIapJwt } from "@/services/iap/verifyIapJwt";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const snapshot = await getOrFetchMonthlyFinance(parsed.fiscalYear, parsed.month, { forceRefresh: true });
+    const snapshot = await getOrFetchMonthlyCashFlow(parsed.fiscalYear, parsed.month, { forceRefresh: true });
     if (!snapshot) {
       return NextResponse.json({ error: "freee_not_connected" }, { status: 409 });
     }

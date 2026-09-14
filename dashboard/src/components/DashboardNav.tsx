@@ -7,6 +7,8 @@ const NAV_ITEMS = [
 
 interface DashboardNavProps {
   active: (typeof NAV_ITEMS)[number]["href"];
+  /** 経営タブを表示するか。IAP検証済みメールが許可リストに無い場合はfalseにする(ユーザー確定、2026-09-14) */
+  showManagementTab: boolean;
 }
 
 /**
@@ -14,11 +16,12 @@ interface DashboardNavProps {
  * （ユーザー確定、2026-09-14）。既存Headerコンポーネントの中身(期セレクター等)は
  * 営業進捗専用のため変更せず、その上に独立した帯として重ねる構成にしている。
  */
-export function DashboardNav({ active }: DashboardNavProps) {
+export function DashboardNav({ active, showManagementTab }: DashboardNavProps) {
+  const items = NAV_ITEMS.filter((item) => item.href !== "/management" || showManagementTab);
   return (
     <nav className="border-b border-[var(--border-hairline)] bg-[var(--surface-sunken)]">
       <div className="mx-auto flex max-w-6xl gap-1 px-4 sm:px-6">
-        {NAV_ITEMS.map((item) => (
+        {items.map((item) => (
           <Link
             key={item.href}
             href={item.href}

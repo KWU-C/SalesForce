@@ -65,29 +65,36 @@ export default async function ManagementPage() {
           <>
             <h1 className="text-xl font-semibold text-[var(--text-primary)]">経営ダッシュボード</h1>
 
-            {connectionStatus?.connected ? (
-              <>
-                <p className="text-xs text-[var(--text-muted)]">
-                  freee連携済み
-                  {connectionStatus.connectedBy ? `（接続者: ${connectionStatus.connectedBy}）` : ""}
-                  {connectionStatus.updatedAt
-                    ? `／最終更新: ${formatDateTime(connectionStatus.updatedAt)}`
-                    : ""}
-                </p>
-                {financialSummary ? (
-                  <FinancialSummaryCards summary={financialSummary} />
-                ) : financialSummaryError ? (
-                  <p className="text-center text-sm text-[var(--text-muted)]">
-                    freeeからのデータ取得に失敗しました。時間をおいて再度お試しください。
-                  </p>
-                ) : null}
-              </>
-            ) : authorizeUrl ? (
-              <FreeeConnectForm authorizeUrl={authorizeUrl} />
-            ) : (
-              <p className="text-center text-sm text-[var(--text-muted)]">
-                freee連携の設定が未完了です（Secret Manager未接続）。
+            {connectionStatus?.connected && (
+              <p className="text-xs text-[var(--text-muted)]">
+                freee連携済み
+                {connectionStatus.connectedBy ? `（接続者: ${connectionStatus.connectedBy}）` : ""}
+                {connectionStatus.updatedAt
+                  ? `／最終更新: ${formatDateTime(connectionStatus.updatedAt)}`
+                  : ""}
               </p>
+            )}
+
+            {financialSummary && <FinancialSummaryCards summary={financialSummary} />}
+
+            {financialSummaryError && (
+              <p className="text-center text-sm text-[var(--text-muted)]">
+                freeeからのデータ取得に失敗しました（権限不足の場合、freeeアプリの権限設定を
+                変更した後は再接続が必要です。下記から再度お試しください）。
+              </p>
+            )}
+
+            {authorizeUrl ? (
+              <FreeeConnectForm
+                authorizeUrl={authorizeUrl}
+                mode={connectionStatus?.connected ? "reconnect" : "connect"}
+              />
+            ) : (
+              !connectionStatus?.connected && (
+                <p className="text-center text-sm text-[var(--text-muted)]">
+                  freee連携の設定が未完了です（Secret Manager未接続）。
+                </p>
+              )
             )}
           </>
         ) : (

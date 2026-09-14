@@ -5,17 +5,20 @@ import { useRouter } from "next/navigation";
 
 interface FreeeConnectFormProps {
   authorizeUrl: string;
+  /**
+   * "connect": 未接続時の初回接続フォーム(常に表示)。
+   * "reconnect": 接続済みだが、freeeアプリの権限変更後などに再接続が必要な場合用。
+   * 通常時に画面を圧迫しないよう、リンクをクリックするまでフォームを畳んでおく
+   * (ユーザー報告のバグ対応: 接続済み表示のままだと再接続する手段が無かった、2026-09-14)。
+   */
+  mode?: "connect" | "reconnect";
 }
 
-/**
- * freeeのOOB(urn:ietf:wg:oauth:2.0:oob)認可フロー用フォーム。
- * 自動リダイレクトではなく、freeeの認可画面に表示されたコードをユーザーが
- * 手動で貼り付ける方式(既存の社内freee連携アプリと同じ、redirect_uri登録不要のため)。
- */
-export function FreeeConnectForm({ authorizeUrl }: FreeeConnectFormProps) {
+export function FreeeConnectForm({ authorizeUrl, mode = "connect" }: FreeeConnectFormProps) {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "error">("idle");
+  const [expanded, setExpanded] = useState(mode === "connect");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,6 +40,18 @@ export function FreeeConnectForm({ authorizeUrl }: FreeeConnectFormProps) {
     } catch {
       setStatus("error");
     }
+  }
+
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="self-start text-xs text-[var(--text-muted)] underline"
+      >
+        freeeの権限設定を変更した場合は、ここから再接続
+      </button>
+    );
   }
 
   return (

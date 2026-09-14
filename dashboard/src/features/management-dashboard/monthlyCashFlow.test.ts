@@ -84,6 +84,24 @@ describe("computeMonthlyCashFlow", () => {
     expect(result.externalExpenseTotal).toBe(0);
   });
 
+  it("skips deals with no payments field at all (regression guard: 未決済dealsでpaymentsキー自体が無いケース)", async () => {
+    setupCommonMocks();
+    getWalletTxnsMock.mockResolvedValue([]);
+    getExpenseDealsMock.mockResolvedValue([
+      {
+        id: 1,
+        type: "expense",
+        issue_date: "2026-08-20",
+        details: [{ account_item_id: 1, amount: 900 }],
+        // payments未定義(未決済dealsで実際に発生するケース)
+      },
+    ]);
+
+    const result = await computeMonthlyCashFlow(1, 2025, 8);
+
+    expect(result.expenseByCategory.labor).toBe(0);
+  });
+
   it("classifies each deal by its largest detail line and only counts payments within the target month", async () => {
     setupCommonMocks();
     getWalletTxnsMock.mockResolvedValue([]);

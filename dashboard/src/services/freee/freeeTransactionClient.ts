@@ -36,7 +36,8 @@ export interface FreeeDeal {
   type: "income" | "expense";
   issue_date: string;
   details: FreeeDealDetail[];
-  payments: FreeeDealPayment[];
+  // 未決済(status=unsettled)のdealはこのキー自体が存在しないことがある(実データで確認済み)
+  payments?: FreeeDealPayment[];
 }
 
 export interface FreeeAccountItem {

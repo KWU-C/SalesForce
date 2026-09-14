@@ -94,7 +94,8 @@ export async function computeMonthlyCashFlow(
 
   const expenseByCategory: Record<ExpenseCategory, number> = { ...EMPTY_CATEGORY_TOTALS };
   for (const deal of expenseDeals) {
-    for (const payment of deal.payments) {
+    // 未決済(status=unsettled)のdealはpaymentsキー自体が存在しないことがある(実データで確認)
+    for (const payment of deal.payments ?? []) {
       if (payment.date < start || payment.date > end) continue;
       if (payment.from_walletable_id === null || !cashWalletableIds.has(payment.from_walletable_id)) continue;
       const category = representativeCategory(deal, idToName);

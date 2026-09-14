@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FreeeTrialBalanceResponse, FreeeTrialBalanceRow, FreeeWalletable } from "@/services/freee/freeeAccountingClient";
 import { extractBsSummary, extractPlSummary, sumCashAndDeposits } from "./financialSummary";
 
+// freeeの小計行はaccount_item_id/account_item_nameのキー自体が存在しない(undefined、
+// nullではない)。row()のデフォルトでもそれを再現し、leafのテストケースだけ明示的に
+// account_item_nameを指定する(実際のレスポンス形と食い違うfixtureで通ってしまう
+// 回帰を防ぐため、null値をデフォルトにはしない)
 function row(overrides: Partial<FreeeTrialBalanceRow>): FreeeTrialBalanceRow {
   return {
-    account_item_id: null,
-    account_item_name: null,
     hierarchy_level: 1,
     account_category_name: "",
     opening_balance: 0,
@@ -23,24 +25,24 @@ function trialPlFixture(): FreeeTrialBalanceResponse {
     fiscal_year: 2025,
     balances: [
       row({ hierarchy_level: 2, account_item_name: "売上高", account_category_name: "売上高", closing_balance: 1000 }),
-      row({ hierarchy_level: 1, account_item_name: null, account_category_name: "売上高", closing_balance: 1000 }),
+      row({ hierarchy_level: 1, total_line: true, account_category_name: "売上高", closing_balance: 1000 }),
       row({
         hierarchy_level: 1,
-        account_item_name: null,
+        total_line: true,
         account_category_name: "売上総損益金額",
         closing_balance: 600,
         composition_ratio: 60.0,
       }),
       row({
         hierarchy_level: 1,
-        account_item_name: null,
+        total_line: true,
         account_category_name: "営業損益金額",
         closing_balance: 200,
         composition_ratio: 20.0,
       }),
       row({
         hierarchy_level: 1,
-        account_item_name: null,
+        total_line: true,
         account_category_name: "経常損益金額",
         closing_balance: 210,
       }),
@@ -82,12 +84,24 @@ describe("extractPlSummary", () => {
     expect(summary.grossProfit).toBeNull();
   });
 
-  it("does not mistake a level-2 leaf row sharing the same category name for the level-1 subtotal", () => {
+  it("keys off total_line rather than hierarchy_level, so a leaf row sharing the same category name is never mistaken for the subtotal", () => {
     const trialPl = trialPlFixture();
-    // 売上高のlevel=2行(leaf)とlevel=1行(subtotal)で値が異なるケースを模倣
+    // 売上高のleaf行(total_line無し)とsubtotal行(total_line: true)で値が異なるケースを模倣
     trialPl.balances[0].closing_balance = 999;
     const summary = extractPlSummary(trialPl);
-    expect(summary.revenue).toBe(1000); // level=1の値を使う、level=2のleafではない
+    expect(summary.revenue).toBe(1000); // total_line:trueの行の値を使う、leafではない
+  });
+
+  it("does not match a same-named row that lacks total_line (regression guard for the undefined-vs-null bug)", () => {
+    const trialPl: FreeeTrialBalanceResponse = {
+      company_id: 1,
+      fiscal_year: 2025,
+      // hierarchy_level=1だがtotal_lineが無い行。実データでは存在しないはずだが、
+      // 万一あってもsubtotalとして誤検出しないことを保証する
+      balances: [row({ hierarchy_level: 1, account_category_name: "売上総損益金額", closing_balance: 999 })],
+    };
+    const summary = extractPlSummary(trialPl);
+    expect(summary.grossProfit).toBeNull();
   });
 });
 

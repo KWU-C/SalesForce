@@ -29,18 +29,15 @@ export interface FinancialSummary {
   borrowings: number | null;
 }
 
-// trial_pl/trial_bsの小計行はaccount_item_nameがnullで、hierarchy_level=1・
-// account_category_nameがラベルになる(freee実データで確認済み、2026-09-14)。
-// 例: 売上総損益金額=粗利益、営業損益金額=営業利益、経常損益金額=経常利益
+// trial_pl/trial_bsの小計行は total_line: true で、account_category_nameがラベルになる
+// (freee実データで確認済み、2026-09-14)。例: 売上総損益金額=粗利益、営業損益金額=営業利益、
+// 経常損益金額=経常利益。この行にはaccount_item_nameのキー自体が存在しない(undefinedで
+// あり、nullではない。当初これを見誤り、小計行が一つも取得できないバグを作っていた)
 function findSubtotalRow(
   balances: FreeeTrialBalanceRow[],
   categoryName: string
 ): FreeeTrialBalanceRow | null {
-  return (
-    balances.find(
-      (b) => b.hierarchy_level === 1 && b.account_item_name === null && b.account_category_name === categoryName
-    ) ?? null
-  );
+  return balances.find((b) => b.total_line === true && b.account_category_name === categoryName) ?? null;
 }
 
 function findLeafRow(balances: FreeeTrialBalanceRow[], accountItemName: string): FreeeTrialBalanceRow | null {

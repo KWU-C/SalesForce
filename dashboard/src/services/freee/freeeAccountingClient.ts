@@ -3,10 +3,14 @@ import { getValidFreeeAccessToken } from "@/repositories/freeeAuthRepository";
 const BASE_URL = "https://api.freee.co.jp";
 
 export interface FreeeTrialBalanceRow {
-  account_item_id: number | null;
-  account_item_name: string | null;
+  // 小計行(売上総損益金額等)ではaccount_item_id/account_item_nameのキー自体が
+  // レスポンスに存在しない(null値ではなく欠落。実データで確認済み、2026-09-14)
+  account_item_id?: number;
+  account_item_name?: string;
   hierarchy_level: number;
   account_category_name: string;
+  /** true の行が売上総損益金額・営業損益金額等の小計行(実データで確認済み) */
+  total_line?: boolean;
   opening_balance: number;
   debit_amount: number;
   credit_amount: number;

@@ -132,6 +132,17 @@ export async function getFreeeConnectionStatus(
 }
 
 /**
+ * 接続済みのfreee事業所ID。KPI取得APIの呼び出しに必要(company_idパラメータ)。
+ * 未接続の場合はnull(推測で決め打ちしない)。
+ */
+export async function getFreeeCompanyId(
+  store: FreeeAuthStore = createFirestoreFreeeAuthStore()
+): Promise<number | null> {
+  const record = await store.get();
+  return record?.companyId ?? null;
+}
+
+/**
  * freeeの認可コードを引き換え、初回接続(または再接続)としてトークンを保存する。
  * connectedByは呼び出し元(APIルート)がIAP検証済みJWTから取り出した値を渡す前提で、
  * ここでは検証しない(クライアント入力のemailを混入させないのは呼び出し側の責務)。

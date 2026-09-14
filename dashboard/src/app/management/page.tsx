@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { DashboardNav } from "@/components/DashboardNav";
 import { FreeeConnectForm } from "@/features/management-dashboard/FreeeConnectForm";
+import { FinancialSummaryCards } from "@/features/management-dashboard/FinancialSummaryCards";
+import { getFinancialSummary } from "@/features/management-dashboard/financialSummary";
+import type { FinancialSummary } from "@/features/management-dashboard/financialSummary";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { getFreeeConnectionStatus } from "@/repositories/freeeAuthRepository";
@@ -15,13 +18,13 @@ export const metadata: Metadata = {
 };
 
 /**
- * 経営ダッシュボード（freeeベース）のプレースホルダー。
- * freee OAuth認証基盤の実装、および実データでのKPIマッピング確定まで、
- * 推測値・仮のKPI表示は行わない（ユーザー確定、2026-09-14）。
- *
+ * 経営ダッシュボード（freeeベース）。
  * 閲覧は許可リスト(managementDashboardAccess)に載ったIAP検証済みメールのみに限定する
  * （ユーザー確定、2026-09-14）。ナビのタブ非表示だけでなく、URLを直接知っていても
  * 本文は表示しない。
+ *
+ * KPIは実データから取得できたものだけを表示し、取得できない項目は「データ未設定」と
+ * 表示する(推測値・仮の値は一切出さない、ユーザー確定の方針)。
  */
 export default async function ManagementPage() {
   const iapEmail = await getRequestIapEmail();
@@ -29,6 +32,8 @@ export default async function ManagementPage() {
 
   let connectionStatus: Awaited<ReturnType<typeof getFreeeConnectionStatus>> | null = null;
   let authorizeUrl: string | null = null;
+  let financialSummary: FinancialSummary | null = null;
+  let financialSummaryError = false;
   if (authorized) {
     try {
       connectionStatus = await getFreeeConnectionStatus();
@@ -42,30 +47,41 @@ export default async function ManagementPage() {
     } catch {
       console.error("[management page] FREEE_CLIENT_ID/SECRET未設定のため連携フォームを表示しません");
     }
+    if (connectionStatus?.connected) {
+      try {
+        financialSummary = await getFinancialSummary();
+      } catch {
+        console.error("[management page] freeeからの経営サマリー取得に失敗しました");
+        financialSummaryError = true;
+      }
+    }
   }
 
   return (
     <>
       <DashboardNav active="/management" showManagementTab={authorized} />
-      <main className="mx-auto flex max-w-3xl flex-1 flex-col gap-6 px-4 py-16 sm:px-6">
+      <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-6 px-4 py-10 sm:px-6">
         {authorized ? (
           <>
-            <div className="flex flex-col gap-2 text-center">
-              <h1 className="text-xl font-semibold text-[var(--text-primary)]">経営ダッシュボード</h1>
-              <p className="text-sm text-[var(--text-secondary)]">
-                freee連携準備中です。認証基盤の実装とTCDの実データ（勘定科目・部門構成）の確認が
-                完了次第、経営KPIを順次追加していきます。
-              </p>
-            </div>
+            <h1 className="text-xl font-semibold text-[var(--text-primary)]">経営ダッシュボード</h1>
 
             {connectionStatus?.connected ? (
-              <div className="rounded-lg bg-[var(--surface-sunken)] p-4 text-center text-sm text-[var(--text-secondary)]">
-                freee連携済み
-                {connectionStatus.connectedBy ? `（接続者: ${connectionStatus.connectedBy}）` : ""}
-                {connectionStatus.updatedAt
-                  ? `／最終更新: ${formatDateTime(connectionStatus.updatedAt)}`
-                  : ""}
-              </div>
+              <>
+                <p className="text-xs text-[var(--text-muted)]">
+                  freee連携済み
+                  {connectionStatus.connectedBy ? `（接続者: ${connectionStatus.connectedBy}）` : ""}
+                  {connectionStatus.updatedAt
+                    ? `／最終更新: ${formatDateTime(connectionStatus.updatedAt)}`
+                    : ""}
+                </p>
+                {financialSummary ? (
+                  <FinancialSummaryCards summary={financialSummary} />
+                ) : financialSummaryError ? (
+                  <p className="text-center text-sm text-[var(--text-muted)]">
+                    freeeからのデータ取得に失敗しました。時間をおいて再度お試しください。
+                  </p>
+                ) : null}
+              </>
             ) : authorizeUrl ? (
               <FreeeConnectForm authorizeUrl={authorizeUrl} />
             ) : (

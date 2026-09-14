@@ -79,8 +79,11 @@ export default async function ManagementPage({ searchParams }: PageProps) {
       const isCurrentMonth = selectedMonth === currentMonth;
       try {
         cashFlow = await getOrFetchMonthlyCashFlow(fiscalYear, selectedMonth, { forceRefresh: isCurrentMonth });
-      } catch {
-        console.error("[management page] freeeからの月次資金収支取得に失敗しました");
+      } catch (error) {
+        // ここで出すのは自前でthrowしているエラーメッセージのみ(freee_api_error等の固定文言、
+        // トークン等の機微情報は含まない)。原因切り分けのための一時的な診断ログ
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`[management page] freeeからの月次資金収支取得に失敗しました: ${detail}`);
         cashFlowError = true;
       }
       try {

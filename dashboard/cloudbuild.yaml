@@ -70,8 +70,15 @@ steps:
       - "${_SERVICE_NAME}"
       - --source=dashboard
       - --region=${_REGION}
-      - --set-env-vars=SALES_DATA_SOURCE=${_SALES_DATA_SOURCE},SALESFORCE_LOGIN_URL=https://tcd-company.my.salesforce.com,SALESFORCE_USERNAME=sf-dashboard-integration@tcd.jp,IAP_EXPECTED_AUDIENCE=${_IAP_EXPECTED_AUDIENCE}
+      - --set-env-vars=SALES_DATA_SOURCE=${_SALES_DATA_SOURCE},SALESFORCE_LOGIN_URL=https://tcd-company.my.salesforce.com,SALESFORCE_USERNAME=sf-dashboard-integration@tcd.jp,IAP_EXPECTED_AUDIENCE=${_IAP_EXPECTED_AUDIENCE},FREEE_TOKEN_DOC_ID=${_SERVICE_NAME}
       - --set-secrets=SALESFORCE_CONSUMER_KEY=salesforce-consumer-key:latest,SALESFORCE_PRIVATE_KEY=salesforce-jwt-private-key:latest
+      # freee連携用のFREEE_CLIENT_ID/FREEE_CLIENT_SECRETは、Secret Manager側に
+      # freee-client-id/freee-client-secretシークレットを作成し、Cloud Runの
+      # サービスアカウント(807402889038-compute@developer.gserviceaccount.com)に
+      # secretAccessorを付与した後、ここに以下を追記する(ユーザー確定、2026-09-14。
+      # 未作成のシークレットを参照するとdeploy stepがrevision作成に失敗するため、
+      # 作成前にここへ追記しない):
+      # --set-secrets=...,FREEE_CLIENT_ID=freee-client-id:latest,FREEE_CLIENT_SECRET=freee-client-secret:latest
       - --quiet
 
   # デプロイ後の稼働確認（ユーザー確定方針、2026-08-20）。

@@ -55,9 +55,9 @@ export function FreeeConnectForm({ authorizeUrl, mode = "connect" }: FreeeConnec
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg bg-[var(--surface-sunken)] p-4">
-      <p className="text-sm text-[var(--text-secondary)]">
-        1.{" "}
+    <div className="flex flex-col gap-3 rounded-lg bg-[var(--surface-sunken)] p-4">
+      <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+        <span className="font-medium">1.</span>
         <a
           href={authorizeUrl}
           target="_blank"
@@ -65,24 +65,30 @@ export function FreeeConnectForm({ authorizeUrl, mode = "connect" }: FreeeConnec
           className="text-[var(--series-1)] underline"
         >
           freeeで連携を許可する
-        </a>{" "}
-        → 画面に表示された認可コードを下に貼り付けて送信してください。
-      </p>
-      <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2">
-        <input
-          type="text"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="認可コードを貼り付け"
-          className="min-w-64 flex-1 rounded border border-[var(--border-hairline)] px-2 py-1 text-sm"
-        />
-        <button
-          type="submit"
-          disabled={status === "submitting" || !code.trim()}
-          className="rounded bg-[var(--series-1)] px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
-        >
-          接続
-        </button>
+        </a>
+        <span className="text-[var(--text-muted)]">←こちらをクリック</span>
+      </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+          <span className="font-medium">2.</span>
+          <span>認可コードをペースト</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="認可コードを貼り付け"
+            className="min-w-64 flex-1 rounded border border-[var(--border-hairline)] px-2 py-1 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={status === "submitting" || !code.trim()}
+            className="rounded bg-[var(--series-1)] px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
+          >
+            接続
+          </button>
+        </div>
       </form>
       {status === "error" && (
         <p className="text-sm text-red-600">

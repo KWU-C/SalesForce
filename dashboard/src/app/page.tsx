@@ -1,4 +1,5 @@
 import { Header } from "@/components/Header";
+import { DashboardNav } from "@/components/DashboardNav";
 import { DataFetchErrorState } from "@/components/DataFetchErrorState";
 import { DashboardClient } from "@/features/dashboard/DashboardClient";
 import {
@@ -66,6 +67,7 @@ export default async function Page({ searchParams }: PageProps) {
 
   return (
     <>
+      <DashboardNav active="/" />
       <Header
         fiscalPeriod={{ term: selectedTerm, currentMonth: displayMonth }}
         availableTerms={availableTerms}

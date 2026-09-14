@@ -12,7 +12,12 @@ import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { getFreeeConnectionStatus } from "@/repositories/freeeAuthRepository";
 import { buildFreeeAuthorizeUrl } from "@/services/freee/freeeTokenClient";
-import { FISCAL_MONTH_ORDER, freeeFiscalYearForTerm, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
+import {
+  FISCAL_MONTH_ORDER,
+  freeeFiscalYearForTerm,
+  getCurrentFiscalPeriod,
+  getSelectableTerms,
+} from "@/config/fiscalPeriods";
 import { formatDateTime } from "@/utils/format";
 
 export const dynamic = "force-dynamic";
@@ -23,16 +28,38 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ term?: string; month?: string }>;
 }
 
-/** ?month=の値を今期の期首月〜当月の範囲にクランプする。範囲外・不正値は当月にフォールバック */
-function resolveSelectedMonth(requestedMonthRaw: string | undefined, currentMonth: number): number {
-  const requested = requestedMonthRaw ? Number(requestedMonthRaw) : currentMonth;
-  const requestedIndex = FISCAL_MONTH_ORDER.indexOf(requested);
-  const currentIndex = FISCAL_MONTH_ORDER.indexOf(currentMonth);
-  if (requestedIndex === -1 || requestedIndex > currentIndex) return currentMonth;
-  return requested;
+/**
+ * ?term=/?month=を選択可能な範囲(現在・前期・前々期 × 各期の期首月〜当月/期末月)へ
+ * クランプする。期の変わり目直後は当期の経過月が1ヶ月だけになるため、前期以前へも
+ * 移動できるようにする(ユーザー確定、2026-09-14)。範囲外・不正値は当期・当月へ
+ * フォールバックする。
+ */
+function resolveSelectedPeriod(
+  requestedTermRaw: string | undefined,
+  requestedMonthRaw: string | undefined,
+  currentTerm: number,
+  currentMonth: number,
+  minTerm: number
+): { term: number; month: number } {
+  const fallback = { term: currentTerm, month: currentMonth };
+  const requestedTerm = requestedTermRaw ? Number(requestedTermRaw) : currentTerm;
+  const requestedMonth = requestedMonthRaw ? Number(requestedMonthRaw) : currentMonth;
+
+  if (!Number.isInteger(requestedTerm) || requestedTerm < minTerm || requestedTerm > currentTerm) {
+    return fallback;
+  }
+  const monthIndex = FISCAL_MONTH_ORDER.indexOf(requestedMonth);
+  if (monthIndex === -1) {
+    return fallback;
+  }
+  if (requestedTerm === currentTerm) {
+    const currentIndex = FISCAL_MONTH_ORDER.indexOf(currentMonth);
+    if (monthIndex > currentIndex) return fallback;
+  }
+  return { term: requestedTerm, month: requestedMonth };
 }
 
 /**
@@ -57,9 +84,16 @@ export default async function ManagementPage({ searchParams }: PageProps) {
   let cashFlow: MonthlyCashFlow | null = null;
   let cashFlowError = false;
 
-  const { term, currentMonth } = getCurrentFiscalPeriod();
-  const selectedMonth = resolveSelectedMonth((await searchParams).month, currentMonth);
-  const fiscalYear = freeeFiscalYearForTerm(term);
+  const { term: currentTerm, currentMonth } = getCurrentFiscalPeriod();
+  const minTerm = Math.min(...getSelectableTerms());
+  const { term: selectedTerm, month: selectedMonth } = resolveSelectedPeriod(
+    (await searchParams).term,
+    (await searchParams).month,
+    currentTerm,
+    currentMonth,
+    minTerm
+  );
+  const fiscalYear = freeeFiscalYearForTerm(selectedTerm);
 
   if (authorized) {
     try {
@@ -76,7 +110,7 @@ export default async function ManagementPage({ searchParams }: PageProps) {
     }
 
     if (connectionStatus?.connected) {
-      const isCurrentMonth = selectedMonth === currentMonth;
+      const isCurrentMonth = selectedTerm === currentTerm && selectedMonth === currentMonth;
       try {
         cashFlow = await getOrFetchMonthlyCashFlow(fiscalYear, selectedMonth, { forceRefresh: isCurrentMonth });
       } catch (error) {
@@ -115,7 +149,13 @@ export default async function ManagementPage({ searchParams }: PageProps) {
 
             {connectionStatus?.connected ? (
               <>
-                <MonthSelector term={term} selectedMonth={selectedMonth} currentMonth={currentMonth} />
+                <MonthSelector
+                  selectedTerm={selectedTerm}
+                  selectedMonth={selectedMonth}
+                  currentTerm={currentTerm}
+                  currentMonth={currentMonth}
+                  minTerm={minTerm}
+                />
 
                 {cashFlowError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">

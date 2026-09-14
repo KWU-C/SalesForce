@@ -64,6 +64,21 @@ export function getSelectableTerms(now: Date = new Date()): number[] {
   return [term, term - 1, term - 2];
 }
 
+/**
+ * TCDの事業期番号から、freee API(fiscal_yearパラメータ)が要求する
+ * 「会計年度開始年」を求める。fiscalTermDateRangeと同じ起算点を使う
+ * (経営ダッシュボード用の追加、既存エクスポートへの変更なし、2026-09-14)。
+ */
+export function freeeFiscalYearForTerm(term: number): number {
+  return FISCAL_TERM_ANCHOR.year + (term - FISCAL_TERM_ANCHOR.term);
+}
+
+/** 指定した事業期・暦月の実際の西暦年（9〜12月は期首年、1〜8月は期首年+1）。表示用 */
+export function calendarYearForTermMonth(term: number, calendarMonth: number): number {
+  const startYear = FISCAL_TERM_ANCHOR.year + (term - FISCAL_TERM_ANCHOR.term);
+  return calendarMonth >= 9 ? startYear : startYear + 1;
+}
+
 /** 事業期の期首・期末（暦日、YYYY-MM-DD）。SOQLの日付リテラルに使う */
 export function fiscalTermDateRange(term: number): { start: string; end: string } {
   const startYear = FISCAL_TERM_ANCHOR.year + (term - FISCAL_TERM_ANCHOR.term);

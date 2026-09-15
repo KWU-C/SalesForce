@@ -45,13 +45,24 @@ describe("buildFundReserve", () => {
 
     expect(reserve.bonusReserveConfigured).toBe(false);
     expect(reserve.bonusReserve).toBe(0);
-    expect(reserve.insuranceReserve).toBe(300);
     expect(reserve.otherPurposeLines).toEqual([
       { label: "その他目的資金（定期預金_尼信1012積立）", balance: 500 },
     ]);
-    expect(reserve.purposeReserveTotal).toBe(800); // bonus0 + insurance300 + other500
+    expect(reserve.cashRestrictedTotal).toBe(500); // 保険積立金(300)は現金・預金カテゴリ外なので含めない
+    expect(reserve.insuranceAssetReserve).toBe(300);
     expect(reserve.cash).toBe(2000);
-    expect(reserve.freeCash).toBe(1200); // 2000 - 800
+    expect(reserve.freeCash).toBe(1500); // 2000 - 500 (保険積立金は控除しない、二重控除防止)
+  });
+
+  it("does not subtract 保険積立金 from freeCash even when it is large (regression guard for the double-subtraction bug)", () => {
+    // 実データ(2026-09-15)を模したケース: 現預金には保険積立金が一切含まれていないため、
+    // freeCashの計算から保険積立金を除外しても現預金の全額はそのまま残るべき
+    const walletables: FreeeWalletable[] = [];
+    const reserve = buildFundReserve({ trialBs: trialBsFixture(19_567_068), walletables, cash: 95_107_184 });
+
+    expect(reserve.insuranceAssetReserve).toBe(19_567_068);
+    expect(reserve.cashRestrictedTotal).toBe(0);
+    expect(reserve.freeCash).toBe(95_107_184); // 保険積立金分を誤って引かない
   });
 
   it("keeps an other-purpose line's balance null (not 0) when the walletable is missing from the response", () => {
@@ -59,7 +70,7 @@ describe("buildFundReserve", () => {
     expect(reserve.otherPurposeLines).toEqual([
       { label: "その他目的資金（定期預金_尼信1012積立）", balance: null },
     ]);
-    expect(reserve.purposeReserveTotal).toBe(0); // nullは合計に0として寄与(未検出≠マイナス残高)
+    expect(reserve.cashRestrictedTotal).toBe(0); // nullは合計に0として寄与(未検出≠マイナス残高)
   });
 
   it("returns null free cash when cash itself is unknown", () => {

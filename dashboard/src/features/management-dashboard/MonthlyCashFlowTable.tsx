@@ -41,12 +41,14 @@ interface MonthlyCashFlowTableProps {
  */
 export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCashFlowTableProps) {
   const operatingExpenseTotal = OPERATING_CATEGORIES.reduce((sum, c) => sum + cashFlow.expenseByCategory[c], 0);
-  // trial_bs実績の当月現金増減(cashChange)と、区分集計から積み上げた増減には
-  // 集計方法の違いによる残差が生じ得る(8月実データ検証で約101.7%相当の一致を確認済み)。
-  // 実績値(cashChange)を正としつつ、集計ベースの内訳も併記し差異を隠さない
-  const computedChange = cashFlow.operatingCashFlow + cashFlow.financingCashFlow + cashFlow.assetTransferCashFlow;
-  const reconciliationGap =
-    cashFlow.cashChange !== null ? cashFlow.cashChange - computedChange : null;
+
+  // 当月現金増減の真値(canonical value)はtrial_bsの月末現預金-月初現預金とする
+  // (ユーザー確定、2026-09-15)。外部入金・外部支出はこの真値への「説明内訳」に過ぎず、
+  // wallet_txns等だけで説明しきれない部分を無理に入金・支出や区分へ押し込まず、
+  // 「調整・未分類差額」として明示する:
+  //   月初現預金 + 外部入金 - 外部支出 + 調整差額 = 月末現預金
+  const walletBasedChange = cashFlow.externalIncome - cashFlow.externalExpenseTotal;
+  const adjustmentGap = cashFlow.cashChange !== null ? cashFlow.cashChange - walletBasedChange : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -64,11 +66,11 @@ export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCas
         </div>
 
         <div className="mt-2 border-t border-[var(--gridline)] pt-2">
-          <p className="text-xs font-medium text-[var(--text-muted)]">支出</p>
+          <p className="text-xs font-medium text-[var(--text-muted)]">支出（区分集計、参考内訳）</p>
           {OPERATING_CATEGORIES.map((c) => (
             <Line key={c} label={CATEGORY_LABEL[c]} value={cashFlow.expenseByCategory[c]} indent />
           ))}
-          <Line label="支出計" value={operatingExpenseTotal} bold />
+          <Line label="内訳合計（区分集計）" value={operatingExpenseTotal} bold />
         </div>
 
         <div className="mt-2 border-t border-[var(--gridline)] pt-2">
@@ -76,19 +78,18 @@ export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCas
         </div>
 
         <div className="mt-3 border-t-2 border-[var(--baseline)] pt-2">
-          <p className="text-xs font-medium text-[var(--text-muted)]">財務・将来準備</p>
+          <p className="text-xs font-medium text-[var(--text-muted)]">財務・将来準備（区分集計、参考内訳）</p>
           {FINANCING_AND_RESERVE_CATEGORIES.map((c) => (
             <Line key={c} label={CATEGORY_LABEL[c]} value={-cashFlow.expenseByCategory[c]} indent />
           ))}
         </div>
 
         <div className="mt-3 border-t-2 border-[var(--baseline)] pt-2">
-          <Line label="当月現金増減（実績）" value={cashFlow.cashChange ?? computedChange} bold />
-          {reconciliationGap !== null && Math.abs(reconciliationGap) > 0 && (
-            <p className="pl-4 text-xs text-[var(--text-muted)]">
-              （区分集計との差異: {formatYen(reconciliationGap)}）
-            </p>
-          )}
+          <Line label="外部支出（実績）" value={cashFlow.externalExpenseTotal} bold />
+          <p className="pl-4 text-xs text-[var(--text-muted)]">
+            調整・未分類差額: {adjustmentGap === null ? "データ未設定" : formatYen(adjustmentGap)}
+          </p>
+          <Line label="当月現金増減（実績）" value={cashFlow.cashChange ?? walletBasedChange} bold />
           <Line label="月末現預金" value={cashFlow.cashClosing ?? 0} bold />
         </div>
       </div>

@@ -22,15 +22,26 @@ export interface FundReserve {
   /** WALLETABLE_PURPOSE_MAPに賞与用の口座が設定されているか。falseの間はUI側で常に「未設定」表示 */
   bonusReserveConfigured: boolean;
   bonusReserve: number;
-  /** 保険積立金(freee勘定科目)の現在残高 + purpose="insurance"指定の口座残高 */
-  insuranceReserve: number;
-  /** purpose="other"の口座ごとの内訳 */
+  /** purpose="other"の口座ごとの内訳(いずれも現金・預金カテゴリ内のwalletable残高) */
   otherPurposeLines: OtherPurposeLine[];
-  /** 目的準備資金合計 = bonusReserve + insuranceReserve + otherPurposeLinesの合計 */
-  purposeReserveTotal: number;
+  /**
+   * 現預金内の目的別拘束資金合計 = bonusReserve + otherPurposeLinesの合計
+   * (将来purpose="insurance"の口座が追加されればそれも含む)。
+   * WALLETABLE_PURPOSE_MAPの対象はすべてfreeeのwalletable(銀行口座等)であり、
+   * 構造的に必ず「現金・預金」カテゴリに含まれるため、自由資金の控除対象にできる
+   * (ユーザー確定、2026-09-15)。
+   */
+  cashRestrictedTotal: number;
+  /**
+   * 保険積立金(freee勘定科目「保険積立金」、account_category_name="投資その他の資産")の
+   * 現在残高。実データで確認済みの通り、trial_bsの「現金・預金」カテゴリには一切含まれない
+   * ため、現預金からは控除しない「資産としての備え」として別表示する(二重控除防止、
+   * ユーザー確定、2026-09-15)。
+   */
+  insuranceAssetReserve: number;
   /** 現預金(呼び出し側から渡される。月次資金収支の月末現預金と同じ値を使う想定) */
   cash: number | null;
-  /** 自由資金 = 現預金 - 目的準備資金合計 */
+  /** 自由に使える現預金 = 現預金 - 現預金内の目的別拘束資金(保険積立金は含めない) */
   freeCash: number | null;
 }
 
@@ -69,21 +80,25 @@ export function buildFundReserve(params: {
   walletables: FreeeWalletable[];
   cash: number | null;
 }): FundReserve {
-  const insuranceAccount = extractInsuranceAccountBalance(params.trialBs);
-  const insurancePurpose = sumPurposeWalletables(params.walletables, "insurance");
-  const bonusPurpose = sumPurposeWalletables(params.walletables, "bonus");
-  const otherPurpose = sumPurposeWalletables(params.walletables, "other");
+  // 保険積立金は勘定科目(資産)であり現金・預金カテゴリには含まれないため、
+  // 現預金内拘束資金(cashRestrictedTotal)には絶対に混ぜない(二重控除防止)
+  const insuranceAssetReserve = extractInsuranceAccountBalance(params.trialBs);
 
-  const insuranceReserve = insuranceAccount + insurancePurpose.total;
-  const purposeReserveTotal = bonusPurpose.total + insuranceReserve + otherPurpose.total;
-  const freeCash = params.cash === null ? null : params.cash - purposeReserveTotal;
+  // WALLETABLE_PURPOSE_MAPの対象はすべてfreeeのwalletableであり、構造的に必ず
+  // 現金・預金カテゴリに含まれるため、purposeを問わずまとめて現預金内拘束資金とする
+  const bonusPurpose = sumPurposeWalletables(params.walletables, "bonus");
+  const insurancePurposeWalletables = sumPurposeWalletables(params.walletables, "insurance");
+  const otherPurpose = sumPurposeWalletables(params.walletables, "other");
+  const cashRestrictedTotal = bonusPurpose.total + insurancePurposeWalletables.total + otherPurpose.total;
+
+  const freeCash = params.cash === null ? null : params.cash - cashRestrictedTotal;
 
   return {
     bonusReserveConfigured: BONUS_RESERVE_CONFIGURED,
     bonusReserve: bonusPurpose.total,
-    insuranceReserve,
     otherPurposeLines: otherPurpose.lines,
-    purposeReserveTotal,
+    cashRestrictedTotal,
+    insuranceAssetReserve,
     cash: params.cash,
     freeCash,
   };

@@ -69,7 +69,7 @@ describe("computeMonthlyCashFlow", () => {
     expect(result.externalExpenseTotal).toBe(300);
   });
 
-  it("subtracts inter-account transfer totals from both income and expense sides", async () => {
+  it("subtracts inter-account transfer totals from both income and expense sides (暫定実装、2026-09-15: 片側マッチングは実データ検証で差額が悪化したため差し戻し)", async () => {
     setupCommonMocks();
     getWalletTxnsMock.mockResolvedValue([
       { id: 1, date: "2026-08-15", amount: 1000, entry_side: "income", walletable_type: "bank_account", walletable_id: 100 },

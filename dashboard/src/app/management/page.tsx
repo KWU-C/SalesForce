@@ -14,6 +14,7 @@ import type { LoanStatus } from "@/features/management-dashboard/loanStatus";
 import { FundReserveSection } from "@/features/management-dashboard/FundReserveSection";
 import { getFundReserve } from "@/features/management-dashboard/fundReserve";
 import type { FundReserve } from "@/features/management-dashboard/fundReserve";
+import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { getFreeeConnectionStatus } from "@/repositories/freeeAuthRepository";
@@ -151,6 +152,13 @@ export default async function ManagementPage({ searchParams }: PageProps) {
     }
   }
 
+  // ネットキャッシュ(現預金－借入残高)は経営サマリー・資金の備えの両方で使うため、
+  // ページ側で一度だけ合成する(同じデータソース・値をUI側で再計算しない、ユーザー確定)
+  const netCash =
+    fundReserve?.cash === null || fundReserve?.cash === undefined || loanStatus === null
+      ? null
+      : fundReserve.cash - loanStatus.totalCurrent;
+
   return (
     <>
       <DashboardNav active="/management" showManagementTab={authorized} />
@@ -179,6 +187,13 @@ export default async function ManagementPage({ searchParams }: PageProps) {
                   minTerm={minTerm}
                 />
 
+                <ManagementSummary
+                  cashFlow={cashFlow}
+                  loanStatus={loanStatus}
+                  fundReserve={fundReserve}
+                  netCash={netCash}
+                />
+
                 {cashFlowError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">
                     freeeからのデータ取得に失敗しました（権限不足の場合、freeeアプリの権限設定を
@@ -202,6 +217,7 @@ export default async function ManagementPage({ searchParams }: PageProps) {
                   <FundReserveSection
                     fundReserve={fundReserve}
                     loanTotalCurrent={loanStatus?.totalCurrent ?? null}
+                    netCash={netCash}
                   />
                 )}
 

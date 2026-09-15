@@ -37,6 +37,30 @@ export const metadata: Metadata = {
 };
 
 /**
+ * 月次資金収支の横スクロール表の起点(検証開始時の基準月＝49期8月)。ここから当月まで、
+ * 月が進むごとに列が自動的に1つずつ増えていく(2ヶ月表示のレビュー後にユーザー確定、
+ * 2026-09-15)。列を増やす仕組み自体はMonthlyCashFlowScrollTable側の変更を必要としない
+ * (columnsの長さにそのまま追従する設計のため)。
+ */
+const CASH_FLOW_TABLE_ANCHOR = { term: 49, month: 8 };
+
+/** 基準月から当月まで、事業期・暦月のペアを古い順に並べて返す(previousFiscalTermMonthを
+ * 遡って辿るだけ。無限ループ防止に60ヶ月=5年分で打ち切る) */
+function monthsFromAnchorToCurrent(
+  anchor: { term: number; month: number },
+  current: { term: number; month: number }
+): { term: number; month: number }[] {
+  const result: { term: number; month: number }[] = [];
+  let cursor = current;
+  for (let i = 0; i < 60; i++) {
+    result.unshift(cursor);
+    if (cursor.term === anchor.term && cursor.month === anchor.month) break;
+    cursor = previousFiscalTermMonth(cursor.term, cursor.month);
+  }
+  return result;
+}
+
+/**
  * 経営ダッシュボード（freeeベース）。
  * 閲覧は許可リスト(managementDashboardAccess)に載ったIAP検証済みメールのみに限定する
  * （ユーザー確定、2026-09-14）。ナビのタブ非表示だけでなく、URLを直接知っていても
@@ -49,9 +73,10 @@ export const metadata: Metadata = {
  *
  * ページ全体の月切替UIは廃止し、当月は現在日付から自動判定する(ユーザー確定、2026-09-15)。
  * 経営サマリー・支出構成・借入状況・資金の備えは常に当月/現在時点を表示する
- * （月選択機能は持たせない）。月次資金収支のみ、前月・当月の2列を横スクロール表で
- * 表示する(前月=Firestoreスナップショット優先、当月=アクセスごとにfreeeライブ取得。
- * 10月以降の自動追加は次フェーズ)。
+ * （月選択機能は持たせない）。月次資金収支のみ、CASH_FLOW_TABLE_ANCHOR(49期8月)〜
+ * 当月までの月を横スクロール表で表示する(過去月=Firestoreスナップショット優先、
+ * 当月=アクセスごとにfreeeライブ取得)。月が進むごとに列が自動で1つずつ増える
+ * (2ヶ月表示のレビューを経てユーザー確定、2026-09-15)。
  */
 export default async function ManagementPage() {
   const iapEmail = await getRequestIapEmail();
@@ -61,8 +86,7 @@ export default async function ManagementPage() {
   let authorizeUrl: string | null = null;
   let financialSummary: FinancialSummary | null = null;
   let financialSummaryError = false;
-  let currentCashFlow: MonthlyCashFlow | null = null;
-  let previousCashFlow: MonthlyCashFlow | null = null;
+  let cashFlowByMonth: (MonthlyCashFlow | null)[] = [];
   let cashFlowError = false;
   let loanStatus: LoanStatusSnapshot | null = null;
   let loanStatusError = false;
@@ -71,8 +95,7 @@ export default async function ManagementPage() {
 
   const { term: currentTerm, currentMonth } = getCurrentFiscalPeriod();
   const currentFiscalYear = freeeFiscalYearForTerm(currentTerm);
-  const { term: prevTerm, month: prevMonth } = previousFiscalTermMonth(currentTerm, currentMonth);
-  const prevFiscalYear = freeeFiscalYearForTerm(prevTerm);
+  const monthList = monthsFromAnchorToCurrent(CASH_FLOW_TABLE_ANCHOR, { term: currentTerm, month: currentMonth });
 
   if (authorized) {
     try {
@@ -89,23 +112,33 @@ export default async function ManagementPage() {
     }
 
     if (connectionStatus?.connected) {
-      // 当月: アクセスごとにfreeeライブ取得(ユーザー確定、2026-09-15)
-      try {
-        currentCashFlow = await getOrFetchMonthlyCashFlow(currentFiscalYear, currentMonth, { forceRefresh: true });
-      } catch (error) {
-        // ここで出すのは自前でthrowしているエラーメッセージのみ(freee_api_error等の固定文言、
-        // トークン等の機微情報は含まない)。原因切り分けのための一時的な診断ログ
-        const detail = error instanceof Error ? error.message : String(error);
-        console.error(`[management page] freeeからの月次資金収支取得に失敗しました: ${detail}`);
-        cashFlowError = true;
-      }
-      // 前月: 常に過去月なのでforceRefreshせずFirestore優先(遅延バックフィル)で取得する
-      // (ユーザー確定、2026-09-15)。失敗しても当月表示は継続する
-      try {
-        previousCashFlow = await getOrFetchMonthlyCashFlow(prevFiscalYear, prevMonth, { forceRefresh: false });
-      } catch {
-        console.error("[management page] freeeからの前月データ取得に失敗しました");
-      }
+      // 基準月〜当月の各列を並行取得。過去月はforceRefreshせずFirestore優先
+      // (遅延バックフィル)、当月のみアクセスごとにfreeeライブ取得する(ユーザー確定、
+      // 2026-09-15)。1列の失敗が他列の表示を止めないよう、列ごとに個別にcatchする。
+      // エラーフラグはPromise.all解決後にまとめて反映する(非同期コールバック内での
+      // 外側変数の再代入はNext.jsのlintルールで禁止されているため)
+      const cashFlowResults = await Promise.all(
+        monthList.map(async (m, idx) => {
+          const isCurrentMonth = idx === monthList.length - 1;
+          const fy = freeeFiscalYearForTerm(m.term);
+          try {
+            const cashFlow = await getOrFetchMonthlyCashFlow(fy, m.month, { forceRefresh: isCurrentMonth });
+            return { cashFlow, failed: false };
+          } catch (error) {
+            if (isCurrentMonth) {
+              // ここで出すのは自前でthrowしているエラーメッセージのみ(freee_api_error等の
+              // 固定文言、トークン等の機微情報は含まない)。原因切り分けのための診断ログ
+              const detail = error instanceof Error ? error.message : String(error);
+              console.error(`[management page] freeeからの月次資金収支取得に失敗しました: ${detail}`);
+            } else {
+              console.error(`[management page] freeeからの月次資金収支取得に失敗しました(${m.term}期${m.month}月)`);
+            }
+            return { cashFlow: null, failed: true };
+          }
+        })
+      );
+      cashFlowByMonth = cashFlowResults.map((r) => r.cashFlow);
+      cashFlowError = cashFlowResults[cashFlowResults.length - 1]?.failed ?? false;
       try {
         loanStatus = await getOrFetchLoanStatus(currentFiscalYear, currentMonth, { forceRefresh: true });
       } catch {
@@ -116,7 +149,8 @@ export default async function ManagementPage() {
         const fundReserveCore = await getOrFetchFundReserveCore(currentFiscalYear, currentMonth, {
           forceRefresh: true,
         });
-        fundReserve = fundReserveCore ? composeFundReserve(fundReserveCore, currentCashFlow?.cashClosing ?? null) : null;
+        const currentCashClosing = cashFlowByMonth[cashFlowByMonth.length - 1]?.cashClosing ?? null;
+        fundReserve = fundReserveCore ? composeFundReserve(fundReserveCore, currentCashClosing) : null;
       } catch {
         console.error("[management page] freeeからの資金の備え取得に失敗しました");
         fundReserveError = true;
@@ -130,25 +164,17 @@ export default async function ManagementPage() {
     }
   }
 
-  // 横スクロール表(前月・当月の2列)。10月以降の自動追加は次フェーズ(ユーザー確定、2026-09-15)
-  const cashFlowColumns: MonthColumn[] = [
-    {
-      fiscalYear: prevFiscalYear,
-      term: prevTerm,
-      month: prevMonth,
-      calendarYear: calendarYearForTermMonth(prevTerm, prevMonth),
-      isCurrent: false,
-      cashFlow: previousCashFlow,
-    },
-    {
-      fiscalYear: currentFiscalYear,
-      term: currentTerm,
-      month: currentMonth,
-      calendarYear: calendarYearForTermMonth(currentTerm, currentMonth),
-      isCurrent: true,
-      cashFlow: currentCashFlow,
-    },
-  ];
+  // 横スクロール表(基準月〜当月)。月が進むごとに列が自動で増える(ユーザー確定、2026-09-15)
+  const cashFlowColumns: MonthColumn[] = monthList.map((m, idx) => ({
+    fiscalYear: freeeFiscalYearForTerm(m.term),
+    term: m.term,
+    month: m.month,
+    calendarYear: calendarYearForTermMonth(m.term, m.month),
+    isCurrent: idx === monthList.length - 1,
+    cashFlow: cashFlowByMonth[idx] ?? null,
+  }));
+  const currentCashFlow = cashFlowByMonth[cashFlowByMonth.length - 1] ?? null;
+  const previousCashFlow = cashFlowByMonth.length > 1 ? cashFlowByMonth[cashFlowByMonth.length - 2] : null;
 
   // ネットキャッシュ(現預金－借入残高)は経営サマリー・資金の備えの両方で使うため、
   // ページ側で一度だけ合成する(同じデータソース・値をUI側で再計算しない、ユーザー確定)

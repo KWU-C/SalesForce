@@ -79,10 +79,13 @@ function SummaryBox({ title, children }: { title: string; children: React.ReactN
  * 1段目: 手元資金(全幅)。月末現預金をラベル左・金額右、当期累計と同じ大きさの
  *   見出し数字で表示(自由に使える現預金は経営サマリーでは非表示、資金の備え
  *   セクションの詳細に譲る)
- * 2段目: 今月の資金収支・財務ポジションを半分ずつ。今月の資金収支の当月現金増減、
- *   財務ポジションの借入残高も同じ大きさの見出し数字にする。財務ポジションは
- *   借入残高のみ(ネットキャッシュは非表示、ユーザー確定、2026-09-15)。不可視の
- *   スペーサーで、線とBigRowの縦位置を今月の資金収支ボックスと揃えている
+ * 2段目: 今月の資金収支・借入状況を半分ずつ。今月の資金収支の当月現金増減、
+ *   借入状況の借入残高も同じ大きさの見出し数字にする。
+ *   「財務ポジション」は「借入状況」に改称し、ネットキャッシュは削除。代わりに
+ *   借入残高・当月元本返済(単月フロー、cashFlowと同じ値)・今期借入純増減
+ *   (年度累計ストック、loanStatus.netChangeと同じ値)を置き、今月の資金収支
+ *   (どう動いたか)と役割を分ける。ネットキャッシュ(現預金－借入残高)は資金の備え
+ *   セクションでのみ総合評価として表示する(ユーザー確定、2026-09-15)
  * 月末現預金の下には前月比を小さく表示し、マイナスの場合は赤字にする
  * (cashClosingDiffFromPreviousMonthはページ側で前月のスナップショット(常にFirestore
  * 優先、過去月のため)と合成済み。UI側で別計算はしない、ユーザー確定、2026-09-15)
@@ -131,17 +134,14 @@ export function ManagementSummary({
             </div>
           </SummaryBox>
 
-          <SummaryBox title="財務ポジション">
-            {/* 左の「今月の資金収支」ボックスの4行分と高さを揃え、線とBigRowの位置を
-                縦に一致させるための不可視スペーサー(ユーザー確定、2026-09-15) */}
-            <div aria-hidden="true" className="invisible">
-              <Row label="_" value={null} />
-              <Row label="_" value={null} />
-              <Row label="_" value={null} />
-              <Row label="_" value={null} />
-            </div>
+          <SummaryBox title="借入状況">
+            <BigRow label="借入残高" value={loanStatus?.totalCurrent ?? null} />
             <div className="mt-3 border-t border-[var(--gridline)] pt-2">
-              <BigRow label="借入残高" value={loanStatus?.totalCurrent ?? null} />
+              <Row
+                label="当月元本返済"
+                value={cashFlow?.financingCashFlow == null ? null : Math.abs(cashFlow.financingCashFlow)}
+              />
+              <Row label="今期借入純増減" value={loanStatus?.netChange ?? null} signed bold />
             </div>
           </SummaryBox>
         </div>

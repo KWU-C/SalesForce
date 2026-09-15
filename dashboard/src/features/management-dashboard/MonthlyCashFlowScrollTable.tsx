@@ -94,11 +94,14 @@ function formatCell(value: number | null): string {
 /**
  * 月次資金収支の横スクロール表(ユーザー確定、2026-09-15)。項目を縦に、月を横に並べる。
  * 左端の項目列はsticky、各月列は幅固定(桁数が変わってもレイアウトが崩れないように)。
- * 初期実装では前月・当月の2列のみ(10月以降の自動追加は次フェーズ)。
+ * 列数はcolumnsの長さに追従するだけで、ここに列数の上限は無い(基準月〜当月まで
+ * 月が進むごとに自動で列が増える設計。列の組み立てはpage.tsx側で行う、
+ * ユーザー確定、2026-09-15)。
  *
  * 列ごとのデータソースは呼び出し側(page.tsx)が決める: 過去月はFirestore優先、
  * 当月はアクセスごとにfreeeライブ取得(既存のgetOrFetchMonthlyCashFlowをそのまま利用、
- * 計算ロジック自体は変更していない)。
+ * 計算ロジック自体は変更していない)。「この月をfreeeから更新」ボタンは、当月は
+ * 毎アクセスで自動取得されるため過去月列にのみ表示する(ユーザー確定、2026-09-15)。
  */
 export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[] }) {
   return (
@@ -129,9 +132,13 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 flex justify-end">
-                    <RefreshMonthButton fiscalYear={col.fiscalYear} month={col.month} />
-                  </div>
+                  {/* 当月はアクセスごとに自動でfreeeライブ取得するため、再取得ボタンは
+                      過去月列にのみ置く(ユーザー確定、2026-09-15) */}
+                  {!col.isCurrent && (
+                    <div className="mt-1 flex justify-end">
+                      <RefreshMonthButton fiscalYear={col.fiscalYear} month={col.month} />
+                    </div>
+                  )}
                 </th>
               ))}
             </tr>

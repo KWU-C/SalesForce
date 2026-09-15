@@ -130,21 +130,21 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
             </tr>
           </thead>
           <tbody>
-            {ROWS.map((row) => {
+            {ROWS.map((row, rowIndex) => {
               const rowBorder = row.groupStart ? "border-t-2 border-[var(--baseline)]" : "border-t border-[var(--gridline)]";
+              // 項目・各月列すべてに、行単位で交互に背景色を入れる(ユーザー確定、2026-09-15)
+              const zebraBg = rowIndex % 2 === 0 ? "bg-[var(--surface-1)]" : "bg-[var(--surface-sunken)]";
+
               if (row.kind === "section") {
                 return (
                   <tr key={row.label}>
                     <td
-                      className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} bg-[var(--surface-1)] px-3 py-1.5 text-xs font-medium text-[var(--text-muted)]`}
+                      className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} ${zebraBg} px-3 py-1.5 text-xs font-medium text-[var(--text-muted)]`}
                     >
                       {row.label}
                     </td>
                     {columns.map((col) => (
-                      <td
-                        key={`${col.fiscalYear}-${col.month}`}
-                        className={`${MONTH_COL_WIDTH} ${rowBorder} ${col.isCurrent ? "bg-[var(--surface-sunken)]" : ""}`}
-                      />
+                      <td key={`${col.fiscalYear}-${col.month}`} className={`${MONTH_COL_WIDTH} ${rowBorder} ${zebraBg}`} />
                     ))}
                   </tr>
                 );
@@ -164,14 +164,14 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
               return (
                 <tr key={row.label}>
                   <td
-                    className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} bg-[var(--surface-1)] px-3 py-1.5 ${row.indent ? "pl-6" : ""} ${textClass}`}
+                    className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} ${zebraBg} px-3 py-1.5 ${row.indent ? "pl-6" : ""} ${textClass}`}
                   >
                     {row.label}
                   </td>
                   {columns.map((col) => (
                     <td
                       key={`${col.fiscalYear}-${col.month}`}
-                      className={`${MONTH_COL_WIDTH} ${rowBorder} ${col.isCurrent ? "bg-[var(--surface-sunken)]" : ""} px-3 py-1.5 text-right tabular-nums ${valueClass}`}
+                      className={`${MONTH_COL_WIDTH} ${rowBorder} ${zebraBg} px-3 py-1.5 text-right tabular-nums ${valueClass}`}
                     >
                       {col.cashFlow ? formatCell(row.get(col.cashFlow)) : "データ未設定"}
                     </td>

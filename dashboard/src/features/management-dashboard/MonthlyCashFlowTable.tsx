@@ -29,6 +29,22 @@ function Line({ label, value, indent = false, bold = false }: { label: string; v
   );
 }
 
+/** 各ブロックの節目(月初現預金・営業キャッシュ収支・当月現金増減・月末現預金)用の大きい表示(ユーザー確定、2026-09-15) */
+function BigLine({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-[var(--text-secondary)]">{label}</span>
+      <span className="text-2xl font-semibold tabular-nums text-[var(--text-primary)]">{formatYen(value)}</span>
+    </div>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">{children}</div>
+  );
+}
+
 interface MonthlyCashFlowTableProps {
   fiscalYear: number;
   month: number;
@@ -37,8 +53,9 @@ interface MonthlyCashFlowTableProps {
 
 /**
  * 月次資金収支表(会社版家計簿)。会計上の利益ではなく実際の現金の動きを主役とする
- * (ユーザー確定、2026-09-14)。月初現預金→入金→支出→営業CF→財務→当月増減→月末現預金
- * という流れで、その月の資金状態を一つの流れとして把握できるようにする。
+ * (ユーザー確定、2026-09-14)。月初現預金→入金・支出→営業キャッシュ収支→
+ * 財務・将来準備→当月現金増減→月末現預金という流れを、節目ごとに独立したブロックへ
+ * 分け、各節目の金額を大きく表示する(ユーザー確定、2026-09-15)。
  */
 export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCashFlowTableProps) {
   const operatingExpenseTotal = OPERATING_CATEGORIES.reduce((sum, c) => sum + cashFlow.expenseByCategory[c], 0);
@@ -57,10 +74,14 @@ export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCas
         月次資金収支（会社版家計簿）
       </SectionBanner>
 
-      <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-        <Line label="月初現預金" value={cashFlow.cashOpening ?? 0} bold />
+      {/* ブロック1: 月初現預金 */}
+      <Card>
+        <BigLine label="月初現預金" value={cashFlow.cashOpening ?? 0} />
+      </Card>
 
-        <div className="mt-3 border-t border-[var(--gridline)] pt-2">
+      {/* ブロック2: 入金〜営業キャッシュ収支 */}
+      <Card>
+        <div>
           <p className="text-xs font-medium text-[var(--text-muted)]">入金</p>
           <Line label="外部入金" value={cashFlow.externalIncome} indent />
         </div>
@@ -73,11 +94,14 @@ export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCas
           <Line label="内訳合計（区分集計）" value={operatingExpenseTotal} bold />
         </div>
 
-        <div className="mt-2 border-t border-[var(--gridline)] pt-2">
-          <Line label="営業キャッシュ収支" value={cashFlow.operatingCashFlow} bold />
+        <div className="mt-3 border-t border-[var(--gridline)] pt-2">
+          <BigLine label="営業キャッシュ収支" value={cashFlow.operatingCashFlow} />
         </div>
+      </Card>
 
-        <div className="mt-3 border-t-2 border-[var(--baseline)] pt-2">
+      {/* ブロック3: 財務・将来準備〜当月現金増減（実績） */}
+      <Card>
+        <div>
           <p className="text-xs font-medium text-[var(--text-muted)]">財務・将来準備（区分集計、参考内訳）</p>
           <Line label={CATEGORY_LABEL.financing} value={cashFlow.financingCashFlow} indent />
           <Line label={CATEGORY_LABEL.interest} value={cashFlow.interestCashFlow} indent />
@@ -90,15 +114,22 @@ export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCas
           <Line label={CATEGORY_LABEL.assetTransfer} value={cashFlow.assetTransferCashFlow} indent />
         </div>
 
-        <div className="mt-3 border-t-2 border-[var(--baseline)] pt-2">
+        <div className="mt-3 border-t border-[var(--gridline)] pt-2">
           <Line label="外部支出（実績）" value={cashFlow.externalExpenseTotal} bold />
           <p className="pl-4 text-xs text-[var(--text-muted)]">
             調整・未分類差額: {adjustmentGap === null ? "データ未設定" : formatYen(adjustmentGap)}
           </p>
-          <Line label="当月現金増減（実績）" value={cashFlow.cashChange ?? walletBasedChange} bold />
-          <Line label="月末現預金" value={cashFlow.cashClosing ?? 0} bold />
         </div>
-      </div>
+
+        <div className="mt-3 border-t border-[var(--gridline)] pt-2">
+          <BigLine label="当月現金増減（実績）" value={cashFlow.cashChange ?? walletBasedChange} />
+        </div>
+      </Card>
+
+      {/* ブロック4: 月末現預金 */}
+      <Card>
+        <BigLine label="月末現預金" value={cashFlow.cashClosing ?? 0} />
+      </Card>
     </div>
   );
 }

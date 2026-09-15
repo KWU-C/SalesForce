@@ -39,14 +39,13 @@ function Row({
   );
 }
 
-/** 当期累計(KpiTile)と同じ大きさの見出し数字。手元資金・借入残高など最重要の値に使う */
-function BigNumber({ label, value }: { label: string; value: number | null }) {
+/** 当期累計(KpiTile)と同じ大きさの見出し数字。ラベル左・金額右(ユーザー確定、2026-09-15) */
+function BigRow({ label, value, signed = false }: { label: string; value: number | null; signed?: boolean }) {
+  const formatted = value === null ? "データ未設定" : signed ? formatManYenSigned(value) : formatManYen(value);
   return (
-    <div>
-      <p className="text-sm text-[var(--text-secondary)]">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--text-primary)]">
-        {value === null ? "データ未設定" : formatManYen(value)}
-      </p>
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-[var(--text-secondary)]">{label}</span>
+      <span className="text-2xl font-semibold tabular-nums text-[var(--text-primary)]">{formatted}</span>
     </div>
   );
 }
@@ -65,10 +64,11 @@ function SummaryBox({ title, children }: { title: string; children: React.ReactN
  * 表示する(ユーザー確定、2026-09-15)。
  *
  * レイアウト(ユーザー確定、2026-09-15):
- * 1段目: 手元資金(全幅)。月末現預金・自由に使える現預金を当期累計と同じ大きさの
- *   見出し数字で並べる
- * 2段目: 今月の資金収支・財務ポジションを半分ずつ。財務ポジションの借入残高も
- *   当期累計と同じ大きさの見出し数字にする
+ * 1段目: 手元資金(全幅)。月末現預金をラベル左・金額右、当期累計と同じ大きさの
+ *   見出し数字で表示(自由に使える現預金は経営サマリーでは非表示、資金の備え
+ *   セクションの詳細に譲る)
+ * 2段目: 今月の資金収支・財務ポジションを半分ずつ。今月の資金収支の当月現金増減、
+ *   財務ポジションの借入残高も同じ大きさの見出し数字にする
  *
  * ここでの数字は下部の詳細セクションと必ず同じデータソース・同じ計算関数の結果を
  * そのまま使い、UI側で別計算はしない(ユーザー確定)。「今月の資金収支」の内訳
@@ -89,10 +89,7 @@ export function ManagementSummary({ term, month, cashFlow, loanStatus, fundReser
 
       <div className="flex flex-col gap-3">
         <SummaryBox title="手元資金">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <BigNumber label="月末現預金" value={cashFlow?.cashClosing ?? null} />
-            <BigNumber label="自由に使える現預金" value={fundReserve?.freeCash ?? null} />
-          </div>
+          <BigRow label="月末現預金" value={cashFlow?.cashClosing ?? null} />
           <div className="mt-3 border-t border-[var(--gridline)] pt-2">
             <Row label="うち目的準備資金" value={fundReserve?.cashRestrictedTotal ?? null} />
           </div>
@@ -104,13 +101,13 @@ export function ManagementSummary({ term, month, cashFlow, loanStatus, fundReser
             <Row label="当月元本返済" value={cashFlow?.financingCashFlow ?? null} signed />
             <Row label="支払利息" value={cashFlow?.interestCashFlow ?? null} signed />
             <Row label="積立・資産移動" value={cashFlow?.assetTransferCashFlow ?? null} signed />
-            <div className="mt-1 border-t border-[var(--gridline)] pt-1">
-              <Row label="当月現金増減" value={cashFlow?.cashChange ?? null} signed bold />
+            <div className="mt-3 border-t border-[var(--gridline)] pt-2">
+              <BigRow label="当月現金増減" value={cashFlow?.cashChange ?? null} signed />
             </div>
           </SummaryBox>
 
           <SummaryBox title="財務ポジション">
-            <BigNumber label="借入残高" value={loanStatus?.totalCurrent ?? null} />
+            <BigRow label="借入残高" value={loanStatus?.totalCurrent ?? null} />
             <div className="mt-3 border-t border-[var(--gridline)] pt-2">
               <Row label="ネットキャッシュ" value={netCash} signed bold />
             </div>

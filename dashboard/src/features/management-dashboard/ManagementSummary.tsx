@@ -1,92 +1,92 @@
-import { formatYen } from "@/utils/format";
+import { calendarYearForTermMonth } from "@/config/fiscalPeriods";
+import { formatManYen, formatManYenSigned } from "@/utils/format";
 import type { MonthlyCashFlow } from "./types";
 import type { LoanStatus } from "./loanStatus";
 import type { FundReserve } from "./fundReserve";
 
 interface ManagementSummaryProps {
+  term: number;
+  month: number;
   cashFlow: MonthlyCashFlow | null;
   loanStatus: LoanStatus | null;
   fundReserve: FundReserve | null;
-  /** ネットキャッシュ(現預金－借入残高)。ページ側でfundReserve.cash・loanStatus.totalCurrentから合成して渡す */
+  /** ページ側で合成済みのネットキャッシュ(現預金－借入残高)。資金の備えセクションと同じ値を使う */
   netCash: number | null;
 }
 
-function SummaryRow({
+function Row({
   label,
-  description,
   value,
+  signed = false,
+  bold = false,
 }: {
   label: string;
-  description: string;
   value: number | null;
+  signed?: boolean;
+  bold?: boolean;
 }) {
+  const formatted = value === null ? "データ未設定" : signed ? formatManYenSigned(value) : formatManYen(value);
   return (
-    <div className="flex items-center justify-between gap-4 py-2">
-      <div>
-        <p className="text-sm font-medium text-[var(--text-primary)]">{label}</p>
-        <p className="text-xs text-[var(--text-muted)]">{description}</p>
-      </div>
-      <p className="shrink-0 text-lg font-semibold tabular-nums text-[var(--text-primary)]">
-        {value === null ? "データ未設定" : formatYen(value)}
-      </p>
+    <div className="flex items-center justify-between gap-3 py-1 text-sm">
+      <span className={bold ? "font-medium text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}>
+        {label}
+      </span>
+      <span className={`tabular-nums ${bold ? "font-semibold text-[var(--text-primary)]" : "text-[var(--text-primary)]"}`}>
+        {formatted}
+      </span>
     </div>
   );
 }
 
-function Arrow() {
+function SummaryBox({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="pl-1 text-[var(--text-muted)]" aria-hidden="true">
-      ↓
+    <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
+      <p className="mb-2 text-xs font-medium text-[var(--text-muted)]">{title}</p>
+      {children}
     </div>
   );
 }
 
 /**
- * 経営サマリー。ページを開いて5秒程度で今月の資金状態を把握できることを目的に、
- * 下部の3セクション(月次資金収支・借入状況・資金の備え)を
- * 「営業キャッシュ収支→財務・将来準備→月末現預金→自由に使える現預金→
- * 借入残高→ネットキャッシュ」という一続きの流れとして俯瞰する
- * (ユーザー確定、2026-09-15)。単なる独立KPIカードの羅列にしない。
+ * 経営サマリー。下の3セクション(月次資金収支・資金の備え・借入状況)のダイジェストを
+ * 3つの箱を横に並べて表示する(ユーザー確定、2026-09-15)。
  *
  * ここでの数字は下部の詳細セクションと必ず同じデータソース・同じ計算関数の結果を
- * そのまま使い、UI側で別計算はしない(ユーザー確定)。PL上の「利益」とキャッシュを
- * 混同しないよう、当期累計(売上・利益等)はここに含めない(ユーザー確定)。
+ * そのまま使い、UI側で別計算はしない(ユーザー確定)。「今月の資金収支」の内訳
+ * (営業キャッシュ収支・借入返済・積立資産移動)の合計は、当月現金増減(trial_bs基準の
+ * 真値)と完全には一致しない場合がある(月次資金収支表の「調整・未分類差額」と同じ理由。
+ * ここでは強制的に一致させず、当月現金増減はcashChangeをそのまま表示する)。
+ * PL上の「利益」とキャッシュを混同しないよう、当期累計(売上・利益等)はここに含めない
+ * (ユーザー確定)。
  */
-export function ManagementSummary({ cashFlow, loanStatus, fundReserve, netCash }: ManagementSummaryProps) {
-  const financingAndReserve =
-    cashFlow !== null ? cashFlow.financingCashFlow + cashFlow.assetTransferCashFlow : null;
+export function ManagementSummary({ term, month, cashFlow, loanStatus, fundReserve, netCash }: ManagementSummaryProps) {
+  const calendarYear = calendarYearForTermMonth(term, month);
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-[var(--text-secondary)]">経営サマリー</h2>
-      <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-        <SummaryRow
-          label="営業キャッシュ収支"
-          description="今月、本業の入出金でいくら残ったか"
-          value={cashFlow?.operatingCashFlow ?? null}
-        />
-        <Arrow />
-        <SummaryRow
-          label="財務・将来準備"
-          description="当月の借入返済・積立等"
-          value={financingAndReserve}
-        />
-        <Arrow />
-        <SummaryRow label="月末現預金" description="現在の手元資金" value={cashFlow?.cashClosing ?? null} />
-        <Arrow />
-        <SummaryRow
-          label="自由に使える現預金"
-          description="現預金から、現預金内の目的準備資金を除いた金額"
-          value={fundReserve?.freeCash ?? null}
-        />
-        <Arrow />
-        <SummaryRow
-          label="借入残高"
-          description="短期・長期・役員借入金の現在残高"
-          value={loanStatus?.totalCurrent ?? null}
-        />
-        <Arrow />
-        <SummaryRow label="ネットキャッシュ" description="現預金－借入残高" value={netCash} />
+      <h2 className="text-sm font-medium text-[var(--text-secondary)]">
+        経営サマリー　{calendarYear}年{month}月
+      </h2>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <SummaryBox title="今月の資金収支">
+          <Row label="営業キャッシュ収支" value={cashFlow?.operatingCashFlow ?? null} signed />
+          <Row label="借入返済" value={cashFlow?.financingCashFlow ?? null} signed />
+          <Row label="積立・資産移動" value={cashFlow?.assetTransferCashFlow ?? null} signed />
+          <div className="mt-1 border-t border-[var(--gridline)] pt-1">
+            <Row label="当月現金増減" value={cashFlow?.cashChange ?? null} signed bold />
+          </div>
+        </SummaryBox>
+
+        <SummaryBox title="手元資金">
+          <Row label="月末現預金" value={cashFlow?.cashClosing ?? null} bold />
+          <Row label="うち目的準備資金" value={fundReserve?.cashRestrictedTotal ?? null} />
+          <Row label="自由に使える現預金" value={fundReserve?.freeCash ?? null} bold />
+        </SummaryBox>
+
+        <SummaryBox title="財務ポジション">
+          <Row label="借入残高" value={loanStatus?.totalCurrent ?? null} bold />
+          <Row label="ネットキャッシュ" value={netCash} signed bold />
+        </SummaryBox>
       </div>
     </div>
   );

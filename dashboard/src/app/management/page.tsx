@@ -188,6 +188,8 @@ export default async function ManagementPage({ searchParams }: PageProps) {
                 />
 
                 <ManagementSummary
+                  term={selectedTerm}
+                  month={selectedMonth}
                   cashFlow={cashFlow}
                   loanStatus={loanStatus}
                   fundReserve={fundReserve}

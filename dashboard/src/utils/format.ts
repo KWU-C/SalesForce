@@ -11,6 +11,18 @@ export function formatThousandYen(amount: number): string {
   return Math.round(amount / 1000).toLocaleString("ja-JP");
 }
 
+/** 万円単位、小数点1桁、桁区切り（符号なし。例: 10,599.0万円） */
+export function formatManYen(amount: number): string {
+  const man = (amount / 10000).toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return `${man}万円`;
+}
+
+/** 万円単位、符号付き（経営サマリー用。例: ＋233.9万円 / ▲747.1万円） */
+export function formatManYenSigned(amount: number): string {
+  const sign = amount < 0 ? "▲" : "＋";
+  return `${sign}${formatManYen(Math.abs(amount))}`;
+}
+
 /** 月次達成率用。小数点2桁（例: 115.98%） */
 export function formatPercent2(rate: number): string {
   return `${rate.toFixed(2)}%`;

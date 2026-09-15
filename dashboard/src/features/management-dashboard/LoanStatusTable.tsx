@@ -8,6 +8,11 @@ interface LoanStatusTableProps {
 /**
  * 借入状況(ストック)。月次資金収支(フロー)とは別枠で表示する(ユーザー確定、2026-09-15)。
  * 目的は「借入がいくらあるか」ではなく「今期、借金をどれだけ減らせているか」を把握すること。
+ *
+ * 「今期元本返済累計」は事業年度の期首(9月)から選択月までの累計値(trial_bsのdebit_amount)。
+ * 月次資金収支の「当月元本返済」は選択月単月のフロー値であり、両者は意味が異なる
+ * (期首月を選択している場合のみ一致する)。ラベルで単月/年度累計を明示する
+ * (ユーザー確定、2026-09-15)。
  */
 export function LoanStatusTable({ loanStatus }: LoanStatusTableProps) {
   return (
@@ -21,7 +26,7 @@ export function LoanStatusTable({ loanStatus }: LoanStatusTableProps) {
               <th className="py-1 font-normal">科目</th>
               <th className="py-1 text-right font-normal">期首残高</th>
               <th className="py-1 text-right font-normal">現在残高</th>
-              <th className="py-1 text-right font-normal">今期返済</th>
+              <th className="py-1 text-right font-normal">今期元本返済累計</th>
             </tr>
           </thead>
           <tbody>
@@ -60,7 +65,7 @@ export function LoanStatusTable({ loanStatus }: LoanStatusTableProps) {
             <span className="tabular-nums text-[var(--text-primary)]">{formatYen(loanStatus.totalNewBorrowing)}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[var(--text-secondary)]">今期返済累計</span>
+            <span className="text-[var(--text-secondary)]">今期元本返済累計</span>
             <span className="tabular-nums text-[var(--text-primary)]">{formatYen(loanStatus.totalRepayment)}</span>
           </div>
           <div className="flex items-center justify-between font-semibold">

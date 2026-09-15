@@ -222,6 +222,49 @@ describe("computeMonthlyCashFlow", () => {
     expect(result.expenseByCategory.interest).toBe(0);
   });
 
+  it("categorizes a credit-card-paid deal into its account item's category (2026-09-15: カード利用の計上漏れ修正)", async () => {
+    setupCommonMocks();
+    getWalletTxnsMock.mockResolvedValue([]);
+    getExpenseDealsMock.mockResolvedValue([
+      {
+        id: 1,
+        type: "expense",
+        issue_date: "2026-08-01",
+        details: [{ account_item_id: 5, amount: 3000 }], // 通信費 -> otherOperating
+        payments: [{ date: "2026-08-05", amount: 3000, from_walletable_id: 200 }], // credit_card払い
+      },
+    ]);
+
+    const result = await computeMonthlyCashFlow(1, 2025, 8);
+
+    expect(result.expenseByCategory.otherOperating).toBe(3000);
+  });
+
+  it("does not double-count a credit-card deal when the bank later settles the card via a transfer (transfers are never scanned for categorization)", async () => {
+    setupCommonMocks();
+    getWalletTxnsMock.mockResolvedValue([
+      { id: 1, date: "2026-08-20", amount: 3000, entry_side: "expense", walletable_type: "bank_account", walletable_id: 100 },
+    ]);
+    // 銀行(100)からクレジットカード(200)への引落
+    getTransfersMock.mockResolvedValue([{ id: 1, amount: 3000, date: "2026-08-20", from_walletable_id: 100, to_walletable_id: 200 }]);
+    getExpenseDealsMock.mockResolvedValue([
+      {
+        id: 1,
+        type: "expense",
+        issue_date: "2026-08-01",
+        details: [{ account_item_id: 5, amount: 3000 }], // 通信費 -> otherOperating
+        payments: [{ date: "2026-08-05", amount: 3000, from_walletable_id: 200 }], // カード利用時に計上
+      },
+    ]);
+
+    const result = await computeMonthlyCashFlow(1, 2025, 8);
+
+    // カード利用分はdealとして1回だけ計上される(transfersは分類の対象外のため二重計上なし)
+    expect(result.expenseByCategory.otherOperating).toBe(3000);
+    // 銀行→カードの引落transferは、既存の一律控除ロジックにより外部支出から相殺される(資金移動として扱う、再度支出計上しない)
+    expect(result.externalExpenseTotal).toBe(0);
+  });
+
   it("returns null cashOpening/cashClosing (not 0) when no cash leaves are found in trial_bs", async () => {
     setupCommonMocks();
     getTrialBsMock.mockResolvedValue({ company_id: 1, fiscal_year: 2025, balances: [] });

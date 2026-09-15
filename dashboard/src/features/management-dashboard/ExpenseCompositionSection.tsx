@@ -12,7 +12,7 @@ const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   taxSocial: "税金・社会保険等",
   otherOperating: "諸経費",
   other: "その他",
-  financing: "借入元本返済",
+  financing: "当月元本返済",
   interest: "支払利息",
   assetTransfer: "積立・資産移動",
 };

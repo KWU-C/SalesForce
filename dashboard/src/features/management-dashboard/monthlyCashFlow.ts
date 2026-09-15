@@ -105,6 +105,13 @@ function splitLoanRepaymentPayment(
  *   (1件ずつの突合はdeal側の決済日とwallet_txn側の記帳日がずれるケースがあり
  *   信頼できなかったため、集計レベルでの比較に変更。検証の結果、区分別合計は
  *   外部支出総額の約101.7%を説明でき、実用的な精度と判断)
+ * - 区分分類の対象walletableは現金・預金+クレジットカード(categorizableWalletableIds)。
+ *   一方、外部入金・外部支出(wallet_txnsベース)は現金・預金のみ(cashWalletableIds)と
+ *   意図的に非対称(2026-09-15修正)。カード利用はwallet_txnsを生成しないため後者には
+ *   含められないが、dealとしては現金払いと同じ情報を持つため区分分類には含める。
+ *   これにより、以前は「カード利用時は区分から除外され、銀行→カード引落もtransfersとして
+ *   内部振替扱いになり、実支出がどの区分にも一度も計上されない」問題があったが解消した。
+ *   銀行→カード引落はdeal/paymentではなくtransfersなので、ここでの二重計上にはならない
  * - 月初・月末現預金はtrial_bsの現金・預金科目群(opening/closing_balance)から算出
  */
 export async function computeMonthlyCashFlow(
@@ -128,6 +135,15 @@ export async function computeMonthlyCashFlow(
   const cashWalletableIds = new Set(
     walletables.filter((w) => w.type === "bank_account" || w.type === "wallet").map((w) => w.id)
   );
+  // 支出の区分分類(expenseByCategory)は、現金・預金(cashWalletableIds)に加えて
+  // クレジットカード払いのdealも対象にする(2026-09-15修正)。カード利用時はwallet_txnsを
+  // 生成しないため外部入金・外部支出(wallet_txnsベース)には含められないが、deal自体は
+  // 通常の現金払いと同じ明細情報を持つため、同じ代表科目分類で人件費/外注費/税金社会保険等/
+  // 諸経費/その他へ計上できる。銀行口座からカード会社への引落はtransfersであり
+  // deal/paymentではないため、ここでの分類対象には含まれない(二重計上にならない)
+  const categorizableWalletableIds = new Set(
+    walletables.filter((w) => w.type === "bank_account" || w.type === "wallet" || w.type === "credit_card").map((w) => w.id)
+  );
 
   const cashTxns = walletTxns.filter((w) => cashWalletableIds.has(w.walletable_id));
   const grossIncome = cashTxns.filter((w) => w.entry_side === "income").reduce((s, w) => s + w.amount, 0);
@@ -141,7 +157,7 @@ export async function computeMonthlyCashFlow(
     // 未決済(status=unsettled)のdealはpaymentsキー自体が存在しないことがある(実データで確認)
     for (const payment of deal.payments ?? []) {
       if (payment.date < start || payment.date > end) continue;
-      if (payment.from_walletable_id === null || !cashWalletableIds.has(payment.from_walletable_id)) continue;
+      if (payment.from_walletable_id === null || !categorizableWalletableIds.has(payment.from_walletable_id)) continue;
       const category = representativeCategory(deal, idToName);
       if (category === "financing" || category === "interest") {
         const { financing, interest } = splitLoanRepaymentPayment(deal, payment.amount, idToName);

@@ -16,6 +16,7 @@ const EMPTY_CATEGORY_TOTALS: Record<ExpenseCategory, number> = {
   outsourcing: 0,
   taxSocial: 0,
   financing: 0,
+  interest: 0,
   assetTransfer: 0,
   otherOperating: 0,
   other: 0,
@@ -48,6 +49,36 @@ function representativeCategory(deal: FreeeDeal, idToName: Map<number, string>):
   const mainDetail = deal.details.reduce((a, b) => (Math.abs(b.amount) > Math.abs(a.amount) ? b : a));
   const name = idToName.get(mainDetail.account_item_id) ?? "";
   return classifyExpenseAccountItem(name);
+}
+
+/**
+ * 借入返済dealは、1つのdeal内に借入金(元本)と支払利息が別明細行で計上され、
+ * 金額の大きい元本行が代表科目に選ばれる(実データ確認済み、2026-09-15)。
+ * これをそのまま「financing」1区分に計上すると、借入残高の減少(元本)と
+ * 借入コスト(利息)が区別できなくなるため、dealの明細行の金額比で
+ * payment.amountをfinancing(元本)とinterest(利息)に按分する。
+ * 利息行が無い通常の借入金dealはfinancingへ全額計上(従来通り)。
+ * 実データ検証: 5件の返済dealで元本明細の合計・利息明細の合計がそれぞれ
+ * payment.amountの合計と1円単位で一致することを確認済み。
+ */
+function splitLoanRepaymentPayment(
+  deal: FreeeDeal,
+  paymentAmount: number,
+  idToName: Map<number, string>
+): { financing: number; interest: number } {
+  let principalTotal = 0;
+  let interestTotal = 0;
+  for (const detail of deal.details) {
+    const name = idToName.get(detail.account_item_id) ?? "";
+    const category = classifyExpenseAccountItem(name);
+    if (category === "financing") principalTotal += Math.abs(detail.amount);
+    else if (category === "interest") interestTotal += Math.abs(detail.amount);
+  }
+  const lineTotal = principalTotal + interestTotal;
+  if (lineTotal === 0) return { financing: paymentAmount, interest: 0 };
+
+  const financingShare = Math.round((paymentAmount * principalTotal) / lineTotal);
+  return { financing: financingShare, interest: paymentAmount - financingShare };
 }
 
 /**
@@ -112,7 +143,13 @@ export async function computeMonthlyCashFlow(
       if (payment.date < start || payment.date > end) continue;
       if (payment.from_walletable_id === null || !cashWalletableIds.has(payment.from_walletable_id)) continue;
       const category = representativeCategory(deal, idToName);
-      expenseByCategory[category] += payment.amount;
+      if (category === "financing" || category === "interest") {
+        const { financing, interest } = splitLoanRepaymentPayment(deal, payment.amount, idToName);
+        expenseByCategory.financing += financing;
+        expenseByCategory.interest += interest;
+      } else {
+        expenseByCategory[category] += payment.amount;
+      }
     }
   }
 
@@ -137,7 +174,10 @@ export async function computeMonthlyCashFlow(
     externalExpenseTotal,
     expenseByCategory,
     operatingCashFlow: externalIncome - operatingExpense,
+    /** 借入元本返済のみ(利息は含まない、ユーザー確定2026-09-15。借入状況の今期返済と同じ「元本」の定義) */
     financingCashFlow: -expenseByCategory.financing,
+    /** 当月支払利息。借入コストとして元本返済とは別枠 */
+    interestCashFlow: -expenseByCategory.interest,
     assetTransferCashFlow: -expenseByCategory.assetTransfer,
   };
 }

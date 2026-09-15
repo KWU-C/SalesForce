@@ -29,7 +29,12 @@ function createFirestoreStore(): MonthlyCashFlowStore {
     async get(fiscalYear, month) {
       const doc = await getFirestoreClient().collection(COLLECTION).doc(docId(fiscalYear, month)).get();
       if (!doc.exists) return null;
-      return toSnapshot(doc.data() as StoredFields);
+      const data = doc.data() as StoredFields;
+      // interestCashFlow追加(2026-09-15)より前に保存されたスナップショットはこのキーを
+      // 持たない。欠損値を0円と推測して埋めず、キャッシュミス扱いにして呼び出し側
+      // (monthlyCashFlowService)にfreeeから再取得・再保存させる(データ未設定の推測禁止)
+      if (data.interestCashFlow === undefined) return null;
+      return toSnapshot(data);
     },
     async save(snapshot) {
       await getFirestoreClient()

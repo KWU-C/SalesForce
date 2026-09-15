@@ -13,6 +13,7 @@ export type ExpenseCategory =
   | "outsourcing"
   | "taxSocial"
   | "financing"
+  | "interest"
   | "assetTransfer"
   | "otherOperating"
   | "other";
@@ -25,7 +26,16 @@ export const OPERATING_CATEGORIES: readonly ExpenseCategory[] = [
   "otherOperating",
   "other",
 ];
-export const FINANCING_AND_RESERVE_CATEGORIES: readonly ExpenseCategory[] = ["financing", "assetTransfer"];
+/**
+ * financing(借入元本返済)とinterest(支払利息)は、借入残高の減少(元本)と
+ * 借入コスト(利息)を別々に見られるよう分離する(ユーザー確定、2026-09-15)。
+ * 支払利息を通常の諸経費(otherOperating/other)へ混ぜない。
+ */
+export const FINANCING_AND_RESERVE_CATEGORIES: readonly ExpenseCategory[] = [
+  "financing",
+  "interest",
+  "assetTransfer",
+];
 
 const LABOR_ITEMS: readonly string[] = [
   "役員報酬",
@@ -59,6 +69,12 @@ const TAX_SOCIAL_ITEMS: readonly string[] = [
 ];
 
 const FINANCING_ITEMS: readonly string[] = ["短期借入金", "長期借入金", "役員借入金"];
+
+// 借入コスト(元本ではない)。実データ確認済み(2026-09-15): 1つのdeal内に借入金(元本)と
+// 支払利息が別明細行で計上されるケースがあり、金額の大きい元本行が代表科目に選ばれるため、
+// 単純な代表科目分類だけでは利息が借入元本返済に混入する。monthlyCashFlow.ts側で
+// この科目を検出し、deal明細の金額比で元本・利息にpayment.amountを按分する
+const INTEREST_ITEMS: readonly string[] = ["支払利息"];
 
 // 積立・資産移動: 現金は出るが費用ではなく資産へ振り替わるもの
 const ASSET_TRANSFER_ITEMS: readonly string[] = ["保険積立金", "前払費用"];
@@ -109,6 +125,7 @@ export function classifyExpenseAccountItem(accountItemName: string): ExpenseCate
   if (OUTSOURCING_ITEMS.includes(accountItemName)) return "outsourcing";
   if (TAX_SOCIAL_ITEMS.includes(accountItemName)) return "taxSocial";
   if (FINANCING_ITEMS.includes(accountItemName)) return "financing";
+  if (INTEREST_ITEMS.includes(accountItemName)) return "interest";
   if (ASSET_TRANSFER_ITEMS.includes(accountItemName)) return "assetTransfer";
   if (OTHER_OPERATING_ITEMS.includes(accountItemName)) return "otherOperating";
   return "other";

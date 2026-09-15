@@ -1,5 +1,5 @@
 import { formatYen } from "@/utils/format";
-import { OPERATING_CATEGORIES, FINANCING_AND_RESERVE_CATEGORIES } from "@/config/freeeExpenseClassification";
+import { OPERATING_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
 import { ExpenseCompositionSection } from "./ExpenseCompositionSection";
 import { RefreshMonthButton } from "./RefreshMonthButton";
@@ -11,7 +11,8 @@ const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   taxSocial: "税金・社会保険等",
   otherOperating: "諸経費",
   other: "その他",
-  financing: "借入返済",
+  financing: "借入元本返済",
+  interest: "支払利息",
   assetTransfer: "積立・資産移動",
 };
 
@@ -79,9 +80,15 @@ export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCas
 
         <div className="mt-3 border-t-2 border-[var(--baseline)] pt-2">
           <p className="text-xs font-medium text-[var(--text-muted)]">財務・将来準備（区分集計、参考内訳）</p>
-          {FINANCING_AND_RESERVE_CATEGORIES.map((c) => (
-            <Line key={c} label={CATEGORY_LABEL[c]} value={-cashFlow.expenseByCategory[c]} indent />
-          ))}
+          <Line label={CATEGORY_LABEL.financing} value={cashFlow.financingCashFlow} indent />
+          <Line label={CATEGORY_LABEL.interest} value={cashFlow.interestCashFlow} indent />
+          <Line
+            label="借入関連支出合計"
+            value={cashFlow.financingCashFlow + cashFlow.interestCashFlow}
+            indent
+            bold
+          />
+          <Line label={CATEGORY_LABEL.assetTransfer} value={cashFlow.assetTransferCashFlow} indent />
         </div>
 
         <div className="mt-3 border-t-2 border-[var(--baseline)] pt-2">

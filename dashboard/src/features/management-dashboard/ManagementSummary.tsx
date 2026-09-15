@@ -70,7 +70,8 @@ export function ManagementSummary({ term, month, cashFlow, loanStatus, fundReser
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <SummaryBox title="今月の資金収支">
           <Row label="営業キャッシュ収支" value={cashFlow?.operatingCashFlow ?? null} signed />
-          <Row label="借入返済" value={cashFlow?.financingCashFlow ?? null} signed />
+          <Row label="借入元本返済" value={cashFlow?.financingCashFlow ?? null} signed />
+          <Row label="支払利息" value={cashFlow?.interestCashFlow ?? null} signed />
           <Row label="積立・資産移動" value={cashFlow?.assetTransferCashFlow ?? null} signed />
           <div className="mt-1 border-t border-[var(--gridline)] pt-1">
             <Row label="当月現金増減" value={cashFlow?.cashChange ?? null} signed bold />

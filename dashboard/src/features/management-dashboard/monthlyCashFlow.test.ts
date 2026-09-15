@@ -38,6 +38,7 @@ function setupCommonMocks() {
     { id: 4, name: "保険積立金" },
     { id: 5, name: "通信費" },
     { id: 6, name: "預り金" },
+    { id: 7, name: "支払利息" },
   ]);
   getWalletablesMock.mockResolvedValue([
     { id: 100, type: "bank_account" },
@@ -174,6 +175,51 @@ describe("computeMonthlyCashFlow", () => {
     expect(result.assetTransferCashFlow).toBe(-500);
     // 営業CFは外部入金 - 通常運営区分(labor 1000のみ)。財務・積立は含めない
     expect(result.operatingCashFlow).toBe(10000 - 1000);
+  });
+
+  it("splits a loan-repayment deal's payment into financing(元本) and interest(利息) by the deal's own detail-line amounts (実データ2026-09-15検証済みの按分方式)", async () => {
+    setupCommonMocks();
+    getWalletTxnsMock.mockResolvedValue([]);
+    getExpenseDealsMock.mockResolvedValue([
+      {
+        id: 1,
+        type: "expense",
+        issue_date: "2026-08-01",
+        details: [
+          { account_item_id: 3, amount: 334000 }, // 長期借入金(元本、代表科目)
+          { account_item_id: 7, amount: 14094 }, // 支払利息
+        ],
+        payments: [{ date: "2026-08-10", amount: 348094, from_walletable_id: 100 }],
+      },
+    ]);
+
+    const result = await computeMonthlyCashFlow(1, 2025, 8);
+
+    expect(result.expenseByCategory.financing).toBe(334000);
+    expect(result.expenseByCategory.interest).toBe(14094);
+    expect(result.financingCashFlow).toBe(-334000);
+    expect(result.interestCashFlow).toBe(-14094);
+    // 元本と利息の合計は支払額と1円単位で一致する(端数はinterest側に寄せる実装)
+    expect(result.expenseByCategory.financing + result.expenseByCategory.interest).toBe(348094);
+  });
+
+  it("keeps interest at 0 when a financing deal has no interest detail line (regression guard)", async () => {
+    setupCommonMocks();
+    getWalletTxnsMock.mockResolvedValue([]);
+    getExpenseDealsMock.mockResolvedValue([
+      {
+        id: 1,
+        type: "expense",
+        issue_date: "2026-08-01",
+        details: [{ account_item_id: 3, amount: 2000 }], // 長期借入金のみ
+        payments: [{ date: "2026-08-05", amount: 2000, from_walletable_id: 100 }],
+      },
+    ]);
+
+    const result = await computeMonthlyCashFlow(1, 2025, 8);
+
+    expect(result.expenseByCategory.financing).toBe(2000);
+    expect(result.expenseByCategory.interest).toBe(0);
   });
 
   it("returns null cashOpening/cashClosing (not 0) when no cash leaves are found in trial_bs", async () => {

@@ -12,7 +12,8 @@ const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   taxSocial: "税金・社会保険等",
   otherOperating: "諸経費",
   other: "その他",
-  financing: "借入返済",
+  financing: "借入元本返済",
+  interest: "支払利息",
   assetTransfer: "積立・資産移動",
 };
 
@@ -89,7 +90,8 @@ export function ExpenseCompositionSection({
   const operatingColor4 = useCssVar("--series-category-4", "#c4606c");
   const operatingColor5 = useCssVar("--series-other", "#c9c7bf");
   const financingColor1 = useCssVar("--text-muted", "#8a8578");
-  const financingColor2 = useCssVar("--border-hairline", "#c9c4b8");
+  const financingColor2 = useCssVar("--series-category-5", "#c7ac41");
+  const financingColor3 = useCssVar("--border-hairline", "#c9c4b8");
   const surface = useCssVar("--surface-1", "#fcfcfb");
 
   const colorByCategory: Record<ExpenseCategory, string> = {
@@ -99,7 +101,8 @@ export function ExpenseCompositionSection({
     otherOperating: operatingColor4,
     other: operatingColor5,
     financing: financingColor1,
-    assetTransfer: financingColor2,
+    interest: financingColor2,
+    assetTransfer: financingColor3,
   };
 
   const allCategories: ExpenseCategory[] = [...OPERATING_CATEGORIES, ...FINANCING_AND_RESERVE_CATEGORIES];

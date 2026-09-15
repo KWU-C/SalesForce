@@ -28,9 +28,10 @@ function makeSnapshot(): MonthlyCashFlow {
     cashChange: 200,
     externalIncome: 500,
     externalExpenseTotal: 300,
-    expenseByCategory: { labor: 0, outsourcing: 0, taxSocial: 0, financing: 0, assetTransfer: 0, otherOperating: 0, other: 0 },
+    expenseByCategory: { labor: 0, outsourcing: 0, taxSocial: 0, financing: 0, interest: 0, assetTransfer: 0, otherOperating: 0, other: 0 },
     operatingCashFlow: 200,
     financingCashFlow: 0,
+    interestCashFlow: 0,
     assetTransferCashFlow: 0,
     fetchedAt: new Date("2026-09-14T00:00:00Z"),
   };
@@ -65,9 +66,10 @@ describe("getOrFetchMonthlyCashFlow", () => {
       cashChange: 1,
       externalIncome: 3,
       externalExpenseTotal: 4,
-      expenseByCategory: { labor: 0, outsourcing: 0, taxSocial: 0, financing: 0, assetTransfer: 0, otherOperating: 0, other: 0 },
+      expenseByCategory: { labor: 0, outsourcing: 0, taxSocial: 0, financing: 0, interest: 0, assetTransfer: 0, otherOperating: 0, other: 0 },
       operatingCashFlow: 0,
       financingCashFlow: 0,
+      interestCashFlow: 0,
       assetTransferCashFlow: 0,
     });
 
@@ -98,9 +100,10 @@ describe("getOrFetchMonthlyCashFlow", () => {
       cashChange: 1,
       externalIncome: 999,
       externalExpenseTotal: 4,
-      expenseByCategory: { labor: 0, outsourcing: 0, taxSocial: 0, financing: 0, assetTransfer: 0, otherOperating: 0, other: 0 },
+      expenseByCategory: { labor: 0, outsourcing: 0, taxSocial: 0, financing: 0, interest: 0, assetTransfer: 0, otherOperating: 0, other: 0 },
       operatingCashFlow: 0,
       financingCashFlow: 0,
+      interestCashFlow: 0,
       assetTransferCashFlow: 0,
     });
 

@@ -30,8 +30,13 @@ export interface MonthlyCashFlow {
 
   /** 営業キャッシュ収支 = externalIncome - (通常運営区分の支出合計) */
   operatingCashFlow: number;
-  /** 財務キャッシュ収支 = -(借入返済等) */
+  /**
+   * 財務キャッシュ収支 = -(借入元本返済)。利息は含まない(ユーザー確定、2026-09-15。
+   * 借入残高をどれだけ減らしたかと、借入コストをいくら払ったかを別々に見られるようにする)
+   */
   financingCashFlow: number;
+  /** 借入コストキャッシュ収支 = -(当月支払利息)。通常の諸経費とは別枠で扱う */
+  interestCashFlow: number;
   /** 積立・資産移動によるキャッシュ収支 = -(積立・資産移動) */
   assetTransferCashFlow: number;
 

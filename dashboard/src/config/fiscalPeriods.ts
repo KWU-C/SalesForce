@@ -79,6 +79,18 @@ export function calendarYearForTermMonth(term: number, calendarMonth: number): n
   return calendarMonth >= 9 ? startYear : startYear + 1;
 }
 
+/**
+ * 指定した事業期・暦月の「前月」の事業期・暦月を求める(期をまたぐ場合は前期の期末月(8月)
+ * になる)。経営ダッシュボードの「前月比」表示用(ユーザー確定、2026-09-15)。
+ */
+export function previousFiscalTermMonth(term: number, calendarMonth: number): { term: number; month: number } {
+  const index = FISCAL_MONTH_ORDER.indexOf(calendarMonth);
+  if (index <= 0) {
+    return { term: term - 1, month: FISCAL_MONTH_ORDER[FISCAL_MONTH_ORDER.length - 1] };
+  }
+  return { term, month: FISCAL_MONTH_ORDER[index - 1] };
+}
+
 /** 事業期の期首・期末（暦日、YYYY-MM-DD）。SOQLの日付リテラルに使う */
 export function fiscalTermDateRange(term: number): { start: string; end: string } {
   const startYear = FISCAL_TERM_ANCHOR.year + (term - FISCAL_TERM_ANCHOR.term);

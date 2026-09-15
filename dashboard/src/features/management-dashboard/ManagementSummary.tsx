@@ -13,6 +13,8 @@ interface ManagementSummaryProps {
   fundReserve: FundReserve | null;
   /** ページ側で合成済みのネットキャッシュ(現預金－借入残高)。資金の備えセクションと同じ値を使う */
   netCash: number | null;
+  /** 月末現預金の前月比(cashClosing - 前月のcashClosing)。ページ側で合成済み */
+  cashClosingDiffFromPreviousMonth: number | null;
 }
 
 function Row({
@@ -50,6 +52,18 @@ function BigRow({ label, value, signed = false }: { label: string; value: number
   );
 }
 
+/** 前月比の小さい差額表示。マイナスの場合は赤字にする(ユーザー確定、2026-09-15) */
+function DiffFromPreviousMonth({ value }: { value: number | null }) {
+  const isNegative = value !== null && value < 0;
+  return (
+    <p
+      className={`text-right text-xs ${isNegative ? "text-[var(--status-critical)]" : "text-[var(--text-muted)]"}`}
+    >
+      前月比 {value === null ? "データ未設定" : formatManYenSigned(value)}
+    </p>
+  );
+}
+
 function SummaryBox({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
@@ -69,6 +83,9 @@ function SummaryBox({ title, children }: { title: string; children: React.ReactN
  *   セクションの詳細に譲る)
  * 2段目: 今月の資金収支・財務ポジションを半分ずつ。今月の資金収支の当月現金増減、
  *   財務ポジションの借入残高も同じ大きさの見出し数字にする
+ * 月末現預金の下には前月比を小さく表示し、マイナスの場合は赤字にする
+ * (cashClosingDiffFromPreviousMonthはページ側で前月のスナップショット(常にFirestore
+ * 優先、過去月のため)と合成済み。UI側で別計算はしない、ユーザー確定、2026-09-15)
  *
  * ここでの数字は下部の詳細セクションと必ず同じデータソース・同じ計算関数の結果を
  * そのまま使い、UI側で別計算はしない(ユーザー確定)。「今月の資金収支」の内訳
@@ -78,7 +95,15 @@ function SummaryBox({ title, children }: { title: string; children: React.ReactN
  * PL上の「利益」とキャッシュを混同しないよう、当期累計(売上・利益等)はここに含めない
  * (ユーザー確定)。
  */
-export function ManagementSummary({ term, month, cashFlow, loanStatus, fundReserve, netCash }: ManagementSummaryProps) {
+export function ManagementSummary({
+  term,
+  month,
+  cashFlow,
+  loanStatus,
+  fundReserve,
+  netCash,
+  cashClosingDiffFromPreviousMonth,
+}: ManagementSummaryProps) {
   const calendarYear = calendarYearForTermMonth(term, month);
 
   return (
@@ -90,6 +115,7 @@ export function ManagementSummary({ term, month, cashFlow, loanStatus, fundReser
       <div className="flex flex-col gap-3">
         <SummaryBox title="手元資金">
           <BigRow label="月末現預金" value={cashFlow?.cashClosing ?? null} />
+          <DiffFromPreviousMonth value={cashClosingDiffFromPreviousMonth} />
           <div className="mt-3 border-t border-[var(--gridline)] pt-2">
             <Row label="うち目的準備資金" value={fundReserve?.cashRestrictedTotal ?? null} />
           </div>

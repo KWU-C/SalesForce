@@ -26,6 +26,7 @@ import {
   freeeFiscalYearForTerm,
   getCurrentFiscalPeriod,
   getSelectableTerms,
+  previousFiscalTermMonth,
 } from "@/config/fiscalPeriods";
 import { formatDateTime } from "@/utils/format";
 
@@ -96,6 +97,7 @@ export default async function ManagementPage({ searchParams }: PageProps) {
   let loanStatusError = false;
   let fundReserve: FundReserve | null = null;
   let fundReserveError = false;
+  let previousMonthCashClosing: number | null = null;
 
   const { term: currentTerm, currentMonth } = getCurrentFiscalPeriod();
   const minTerm = Math.min(...getSelectableTerms());
@@ -133,6 +135,16 @@ export default async function ManagementPage({ searchParams }: PageProps) {
         console.error(`[management page] freeeからの月次資金収支取得に失敗しました: ${detail}`);
         cashFlowError = true;
       }
+      // 経営サマリーの「前月比」用。前月は常に過去月なのでforceRefreshせず
+      // Firestore優先(遅延バックフィル)で取得する(ユーザー確定、2026-09-15)
+      try {
+        const { term: prevTerm, month: prevMonth } = previousFiscalTermMonth(selectedTerm, selectedMonth);
+        const prevFiscalYear = freeeFiscalYearForTerm(prevTerm);
+        const previousCashFlow = await getOrFetchMonthlyCashFlow(prevFiscalYear, prevMonth, { forceRefresh: false });
+        previousMonthCashClosing = previousCashFlow?.cashClosing ?? null;
+      } catch {
+        console.error("[management page] freeeからの前月データ取得に失敗しました");
+      }
       try {
         loanStatus = await getOrFetchLoanStatus(fiscalYear, selectedMonth, { forceRefresh: isCurrentMonth });
       } catch {
@@ -163,6 +175,13 @@ export default async function ManagementPage({ searchParams }: PageProps) {
     fundReserve?.cash === null || fundReserve?.cash === undefined || loanStatus === null
       ? null
       : fundReserve.cash - loanStatus.totalCurrent;
+
+  // 経営サマリーの「前月比」。cashFlow.cashClosingとpreviousMonthCashClosingの
+  // 両方が揃っている場合のみ計算し、片方でも欠けていればnull(推測値を出さない)
+  const cashClosingDiffFromPreviousMonth =
+    cashFlow?.cashClosing == null || previousMonthCashClosing === null
+      ? null
+      : cashFlow.cashClosing - previousMonthCashClosing;
 
   return (
     <>
@@ -199,6 +218,7 @@ export default async function ManagementPage({ searchParams }: PageProps) {
                   loanStatus={loanStatus}
                   fundReserve={fundReserve}
                   netCash={netCash}
+                  cashClosingDiffFromPreviousMonth={cashClosingDiffFromPreviousMonth}
                 />
 
                 {cashFlow && (

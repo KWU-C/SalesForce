@@ -74,62 +74,68 @@ export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCas
         月次資金収支（会社版家計簿）
       </SectionBanner>
 
-      {/* ブロック1: 月初現預金 */}
-      <Card>
-        <BigLine label="月初現預金" value={cashFlow.cashOpening ?? 0} />
-      </Card>
+      {/* 節目ブロック間の間隔は通常のセクション間隔(gap-6)の1/3(gap-2)にする(ユーザー確定、2026-09-15) */}
+      <div className="flex flex-col gap-2">
+        {/* ブロック1: 月初現預金 */}
+        <Card>
+          <BigLine label="月初現預金" value={cashFlow.cashOpening ?? 0} />
+        </Card>
 
-      {/* ブロック2: 入金〜営業キャッシュ収支 */}
-      <Card>
-        <div>
-          <p className="text-xs font-medium text-[var(--text-muted)]">入金</p>
-          <Line label="外部入金" value={cashFlow.externalIncome} indent />
-        </div>
+        {/* ブロック2: 入金〜営業キャッシュ収支 */}
+        <Card>
+          <div>
+            <p className="text-xs font-medium text-[var(--text-muted)]">入金</p>
+            <Line label="外部入金" value={cashFlow.externalIncome} indent />
+          </div>
 
-        <div className="mt-2 border-t border-[var(--gridline)] pt-2">
-          <p className="text-xs font-medium text-[var(--text-muted)]">支出（区分集計、参考内訳）</p>
-          {OPERATING_CATEGORIES.map((c) => (
-            <Line key={c} label={CATEGORY_LABEL[c]} value={cashFlow.expenseByCategory[c]} indent />
-          ))}
-          <Line label="内訳合計（区分集計）" value={operatingExpenseTotal} bold />
-        </div>
+          <div className="mt-2 border-t border-[var(--gridline)] pt-2">
+            <p className="text-xs font-medium text-[var(--text-muted)]">支出（区分集計、参考内訳）</p>
+            {OPERATING_CATEGORIES.map((c) => (
+              <Line key={c} label={CATEGORY_LABEL[c]} value={cashFlow.expenseByCategory[c]} indent />
+            ))}
+            <Line label="内訳合計（区分集計）" value={operatingExpenseTotal} bold />
+          </div>
 
-        <div className="mt-3 border-t border-[var(--gridline)] pt-2">
-          <BigLine label="営業キャッシュ収支" value={cashFlow.operatingCashFlow} />
-        </div>
-      </Card>
+          <div className="mt-3 border-t border-[var(--gridline)] pt-2">
+            <BigLine label="営業キャッシュ収支" value={cashFlow.operatingCashFlow} />
+          </div>
+        </Card>
 
-      {/* ブロック3: 財務・将来準備〜当月現金増減（実績） */}
-      <Card>
-        <div>
-          <p className="text-xs font-medium text-[var(--text-muted)]">財務・将来準備（区分集計、参考内訳）</p>
-          <Line label={CATEGORY_LABEL.financing} value={cashFlow.financingCashFlow} indent />
-          <Line label={CATEGORY_LABEL.interest} value={cashFlow.interestCashFlow} indent />
-          <Line
-            label="借入関連支出合計"
-            value={cashFlow.financingCashFlow + cashFlow.interestCashFlow}
-            indent
-            bold
-          />
-          <Line label={CATEGORY_LABEL.assetTransfer} value={cashFlow.assetTransferCashFlow} indent />
-        </div>
+        {/* ブロック3: 財務・将来準備〜当月現金増減（実績） */}
+        <Card>
+          <div>
+            <p className="text-xs font-medium text-[var(--text-muted)]">財務・将来準備（区分集計、参考内訳）</p>
+            <Line label={CATEGORY_LABEL.financing} value={cashFlow.financingCashFlow} indent />
+            <Line label={CATEGORY_LABEL.interest} value={cashFlow.interestCashFlow} indent />
+            <Line
+              label="借入関連支出合計"
+              value={cashFlow.financingCashFlow + cashFlow.interestCashFlow}
+              indent
+              bold
+            />
+            <Line label={CATEGORY_LABEL.assetTransfer} value={cashFlow.assetTransferCashFlow} indent />
+          </div>
 
-        <div className="mt-3 border-t border-[var(--gridline)] pt-2">
-          <Line label="外部支出（実績）" value={cashFlow.externalExpenseTotal} bold />
-          <p className="pl-4 text-xs text-[var(--text-muted)]">
-            調整・未分類差額: {adjustmentGap === null ? "データ未設定" : formatYen(adjustmentGap)}
-          </p>
-        </div>
+          <div className="mt-3 border-t border-[var(--gridline)] pt-2">
+            <Line label="外部支出（実績）" value={cashFlow.externalExpenseTotal} bold />
+            <div className="flex items-center justify-between pl-4 text-xs text-[var(--text-muted)]">
+              <span>調整・未分類差額:</span>
+              <span className="tabular-nums">
+                {adjustmentGap === null ? "データ未設定" : formatYen(adjustmentGap)}
+              </span>
+            </div>
+          </div>
 
-        <div className="mt-3 border-t border-[var(--gridline)] pt-2">
-          <BigLine label="当月現金増減（実績）" value={cashFlow.cashChange ?? walletBasedChange} />
-        </div>
-      </Card>
+          <div className="mt-3 border-t border-[var(--gridline)] pt-2">
+            <BigLine label="当月現金増減（実績）" value={cashFlow.cashChange ?? walletBasedChange} />
+          </div>
+        </Card>
 
-      {/* ブロック4: 月末現預金 */}
-      <Card>
-        <BigLine label="月末現預金" value={cashFlow.cashClosing ?? 0} />
-      </Card>
+        {/* ブロック4: 月末現預金 */}
+        <Card>
+          <BigLine label="月末現預金" value={cashFlow.cashClosing ?? 0} />
+        </Card>
+      </div>
     </div>
   );
 }

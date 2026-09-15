@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fiscalTermDateRange, getSelectableTerms, getCurrentFiscalPeriod } from "./fiscalPeriods";
+import { fiscalTermDateRange, getSelectableTerms, getCurrentFiscalPeriod, previousFiscalTermMonth } from "./fiscalPeriods";
 
 describe("getCurrentFiscalPeriod", () => {
   it("returns 49期・8月 for 2026-08-06 (today at time of writing)", () => {
@@ -30,6 +30,20 @@ describe("getSelectableTerms", () => {
 
   it("returns [50, 49, 48] right after rolling over to 50期", () => {
     expect(getSelectableTerms(new Date(2026, 8, 1))).toEqual([50, 49, 48]);
+  });
+});
+
+describe("previousFiscalTermMonth", () => {
+  it("returns the same term's prior month for a mid-term month (e.g. 49期10月 -> 49期9月)", () => {
+    expect(previousFiscalTermMonth(49, 10)).toEqual({ term: 49, month: 9 });
+  });
+
+  it("wraps into the previous term's fiscal year-end month (8月) when at the term's first month (9月)", () => {
+    expect(previousFiscalTermMonth(50, 9)).toEqual({ term: 49, month: 8 });
+  });
+
+  it("handles the term's last month correctly (49期8月 -> 49期7月)", () => {
+    expect(previousFiscalTermMonth(49, 8)).toEqual({ term: 49, month: 7 });
   });
 });
 

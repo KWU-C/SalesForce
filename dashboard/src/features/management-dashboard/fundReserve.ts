@@ -25,7 +25,13 @@ export interface OtherPurposeLine {
   balance: number | null;
 }
 
-export interface FundReserve {
+/**
+ * 資金の備えのうち、freeeから取得できる部分(現預金は含まない)。
+ * Firestoreスナップショットとしてキャッシュする対象はこちら(2026-09-15、
+ * 過去月=Firestore/当月=freeeライブの切り替え対応)。現預金(cash)は月次資金収支の
+ * スナップショットに既に含まれているため、ここでは二重に保存しない。
+ */
+export interface FundReserveCore {
   /** WALLETABLE_PURPOSE_MAPに賞与用の口座が設定されているか。falseの間はUI側で常に「未設定」表示 */
   bonusReserveConfigured: boolean;
   bonusReserve: number;
@@ -46,10 +52,24 @@ export interface FundReserve {
    * (二重控除防止、ユーザー確定、2026-09-15)。
    */
   insuranceAssetReserve: number;
+}
+
+export interface FundReserve extends FundReserveCore {
   /** 現預金(呼び出し側から渡される。月次資金収支の月末現預金と同じ値を使う想定) */
   cash: number | null;
   /** 自由に使える現預金 = 現預金 - 現預金内の目的別拘束資金(保険積立金は含めない) */
   freeCash: number | null;
+}
+
+/**
+ * Firestoreへキャッシュするスナップショットの形(2026-09-15、過去月=Firestore/当月=freee
+ * ライブの切り替え対応)。cash/freeCashは現預金の取得元によって変わり得るためキャッシュ
+ * せず、常にcomposeFundReserveでその場で合成する。
+ */
+export interface FundReserveCoreSnapshot extends FundReserveCore {
+  fiscalYear: number;
+  month: number;
+  fetchedAt: Date;
 }
 
 function findRow(balances: FreeeTrialBalanceRow[], name: string): FreeeTrialBalanceRow | null {
@@ -86,15 +106,14 @@ function sumPurposeWalletables(
 }
 
 /**
- * trial_bs・account_itemsの取得済みレスポンスから資金の備えを合成する。
- * WALLETABLE_PURPOSE_MAPの口座分類を変更しても、この関数やUI側の変更は不要
+ * trial_bs・account_itemsの取得済みレスポンスから資金の備え(現預金を除く、freee由来の部分)を
+ * 合成する。WALLETABLE_PURPOSE_MAPの口座分類を変更しても、この関数やUI側の変更は不要
  * (purpose別に合算するだけの汎用ロジックのため、ユーザー確定の設計要件2026-09-15)。
  */
-export function buildFundReserve(params: {
+export function buildFundReserveCore(params: {
   trialBs: FreeeTrialBalanceResponse;
   accountItems: FreeeAccountItem[];
-  cash: number | null;
-}): FundReserve {
+}): FundReserveCore {
   // 保険積立金は勘定科目(資産)であり現金・預金カテゴリには含まれないため、
   // 現預金内拘束資金(cashRestrictedTotal)には絶対に混ぜない(二重控除防止)
   const insuranceAssetReserve = extractInsuranceAccountBalance(params.trialBs);
@@ -106,29 +125,32 @@ export function buildFundReserve(params: {
   const otherPurpose = sumPurposeWalletables(params.accountItems, params.trialBs, "other");
   const cashRestrictedTotal = bonusPurpose.total + insurancePurposeWalletables.total + otherPurpose.total;
 
-  const freeCash = params.cash === null ? null : params.cash - cashRestrictedTotal;
-
   return {
     bonusReserveConfigured: BONUS_RESERVE_CONFIGURED,
     bonusReserve: bonusPurpose.total,
     otherPurposeLines: otherPurpose.lines,
     cashRestrictedTotal,
     insuranceAssetReserve,
-    cash: params.cash,
-    freeCash,
   };
 }
 
 /**
- * freee接続済みの事業所から資金の備えを取得する。cashは呼び出し側(月次資金収支の
- * 月末現預金)から渡してもらう想定(同じ「選択月の現預金」を二重に取得しないため)。
+ * FundReserveCore(freee由来、キャッシュ可能)と現預金(呼び出し側から渡す。月次資金収支の
+ * 月末現預金と同じ値を使う想定)から、表示用のFundReserveを合成する。cash/freeCashは
+ * 現預金の取得元(月次資金収支のキャッシュ有無)に応じて変わり得るため、常にその場で
+ * 計算し、FundReserveCoreの側には保存しない(2026-09-15、過去月=Firestore/当月=freee
+ * ライブの切り替え対応)。
+ */
+export function composeFundReserve(core: FundReserveCore, cash: number | null): FundReserve {
+  const freeCash = cash === null ? null : cash - core.cashRestrictedTotal;
+  return { ...core, cash, freeCash };
+}
+
+/**
+ * freee接続済みの事業所から資金の備え(現預金を除く部分)を取得する。
  * company_id未確定(未接続)の場合はnull。
  */
-export async function getFundReserve(
-  fiscalYear: number,
-  selectedMonth: number,
-  cash: number | null
-): Promise<FundReserve | null> {
+export async function getFundReserveCore(fiscalYear: number, selectedMonth: number): Promise<FundReserveCore | null> {
   const companyId = await getFreeeCompanyId();
   if (companyId === null) return null;
 
@@ -136,5 +158,5 @@ export async function getFundReserve(
     getTrialBs(companyId, { fiscalYear, startMonth: FISCAL_MONTH_ORDER[0], endMonth: selectedMonth }),
     getAccountItems(companyId),
   ]);
-  return buildFundReserve({ trialBs, accountItems, cash });
+  return buildFundReserveCore({ trialBs, accountItems });
 }

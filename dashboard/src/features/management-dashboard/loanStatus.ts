@@ -30,6 +30,17 @@ export interface LoanStatus {
   netChange: number;
 }
 
+/**
+ * Firestoreへキャッシュする借入状況スナップショットの形(2026-09-15、過去月=Firestore/
+ * 当月=freeeライブの切り替え対応)。月次資金収支のMonthlyCashFlowと同じ考え方で
+ * fiscalYear/month/fetchedAtを付与する。
+ */
+export interface LoanStatusSnapshot extends LoanStatus {
+  fiscalYear: number;
+  month: number;
+  fetchedAt: Date;
+}
+
 const LOAN_ACCOUNT_ITEMS: readonly { key: LoanKey; label: string }[] = [
   { key: "shortTerm", label: "短期借入金" },
   { key: "longTerm", label: "長期借入金" },

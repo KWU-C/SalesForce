@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getOrFetchMonthlyCashFlow } from "@/features/management-dashboard/monthlyCashFlowService";
+import { getOrFetchLoanStatus } from "@/features/management-dashboard/loanStatusService";
+import { getOrFetchFundReserveCore } from "@/features/management-dashboard/fundReserveService";
 import { verifyIapJwt } from "@/services/iap/verifyIapJwt";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 
@@ -18,10 +20,11 @@ function parseRequestBody(body: unknown): RefreshRequestBody | null {
 }
 
 /**
- * 指定月の月次経営スナップショットをfreeeから強制的に再取得し、Firestoreの
- * キャッシュを上書きする(「更新」ボタン用)。会計データは過去月でも修正され得るため、
- * 過去月のキャッシュを永久固定にしないための手段(ユーザー確定、2026-09-14)。
- * 認証はexchange APIと同じくIAP検証+経営ダッシュボード許可リストで絞る。
+ * 指定月の月次経営スナップショット(月次資金収支・借入状況・資金の備え)を
+ * まとめてfreeeから強制的に再取得し、Firestoreのキャッシュを上書きする
+ * (「更新」ボタン用)。会計データは過去月でも修正され得るため、過去月のキャッシュを
+ * 永久固定にしないための手段(ユーザー確定、2026-09-14。3種のスナップショットに
+ * 拡張、2026-09-15)。認証はexchange APIと同じくIAP検証+経営ダッシュボード許可リストで絞る。
  */
 export async function POST(request: NextRequest) {
   const verification = await verifyIapJwt(request.headers);
@@ -42,8 +45,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const snapshot = await getOrFetchMonthlyCashFlow(parsed.fiscalYear, parsed.month, { forceRefresh: true });
-    if (!snapshot) {
+    const [cashFlow, loanStatus, fundReserveCore] = await Promise.all([
+      getOrFetchMonthlyCashFlow(parsed.fiscalYear, parsed.month, { forceRefresh: true }),
+      getOrFetchLoanStatus(parsed.fiscalYear, parsed.month, { forceRefresh: true }),
+      getOrFetchFundReserveCore(parsed.fiscalYear, parsed.month, { forceRefresh: true }),
+    ]);
+    if (!cashFlow || !loanStatus || !fundReserveCore) {
       return NextResponse.json({ error: "freee_not_connected" }, { status: 409 });
     }
     return NextResponse.json({ ok: true });

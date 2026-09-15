@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FreeeTrialBalanceResponse, FreeeTrialBalanceRow } from "@/services/freee/freeeAccountingClient";
 import type { FreeeAccountItem } from "@/services/freee/freeeTransactionClient";
-import { buildFundReserve, extractInsuranceAccountBalance } from "./fundReserve";
+import { buildFundReserveCore, composeFundReserve, extractInsuranceAccountBalance } from "./fundReserve";
 
 function row(overrides: Partial<FreeeTrialBalanceRow>): FreeeTrialBalanceRow {
   return {
@@ -37,7 +37,7 @@ describe("extractInsuranceAccountBalance", () => {
   });
 });
 
-describe("buildFundReserve", () => {
+describe("buildFundReserveCore + composeFundReserve", () => {
   it("classifies purpose-mapped accounts generically via WALLETABLE_PURPOSE_MAP (id 4582561 = other), reading the selected month's closing_balance from trial_bs", () => {
     const trialBs = trialBsFixture([
       row({ account_item_name: "保険積立金", closing_balance: 300 }),
@@ -47,7 +47,8 @@ describe("buildFundReserve", () => {
         closing_balance: 500,
       }),
     ]);
-    const reserve = buildFundReserve({ trialBs, accountItems: [SAVINGS_ACCOUNT_ITEM], cash: 2000 });
+    const core = buildFundReserveCore({ trialBs, accountItems: [SAVINGS_ACCOUNT_ITEM] });
+    const reserve = composeFundReserve(core, 2000);
 
     expect(reserve.bonusReserveConfigured).toBe(false);
     expect(reserve.bonusReserve).toBe(0);
@@ -66,18 +67,19 @@ describe("buildFundReserve", () => {
     const augustTrialBs = trialBsFixture([
       row({ account_item_name: "定期預金_尼信1012積立", account_category_name: "現金・預金", closing_balance: 4_500_000 }),
     ]);
-    const reserve = buildFundReserve({ trialBs: augustTrialBs, accountItems: [SAVINGS_ACCOUNT_ITEM], cash: 100_000_000 });
-    expect(reserve.otherPurposeLines).toEqual([
+    const core = buildFundReserveCore({ trialBs: augustTrialBs, accountItems: [SAVINGS_ACCOUNT_ITEM] });
+    expect(core.otherPurposeLines).toEqual([
       { label: "その他目的資金（定期預金_尼信1012積立）", balance: 4_500_000 },
     ]);
-    expect(reserve.cashRestrictedTotal).toBe(4_500_000);
+    expect(core.cashRestrictedTotal).toBe(4_500_000);
   });
 
   it("does not subtract 保険積立金 from freeCash even when it is large (regression guard for the double-subtraction bug)", () => {
     // 実データ(2026-09-15)を模したケース: 現預金には保険積立金が一切含まれていないため、
     // freeCashの計算から保険積立金を除外しても現預金の全額はそのまま残るべき
     const trialBs = trialBsFixture([row({ account_item_name: "保険積立金", closing_balance: 19_567_068 })]);
-    const reserve = buildFundReserve({ trialBs, accountItems: [], cash: 95_107_184 });
+    const core = buildFundReserveCore({ trialBs, accountItems: [] });
+    const reserve = composeFundReserve(core, 95_107_184);
 
     expect(reserve.insuranceAssetReserve).toBe(19_567_068);
     expect(reserve.cashRestrictedTotal).toBe(0);
@@ -85,23 +87,35 @@ describe("buildFundReserve", () => {
   });
 
   it("keeps an other-purpose line's balance null (not 0) when no account_item maps to the walletable", () => {
-    const reserve = buildFundReserve({ trialBs: trialBsFixture([]), accountItems: [], cash: 1000 });
-    expect(reserve.otherPurposeLines).toEqual([
+    const core = buildFundReserveCore({ trialBs: trialBsFixture([]), accountItems: [] });
+    expect(core.otherPurposeLines).toEqual([
       { label: "その他目的資金（定期預金_尼信1012積立）", balance: null },
     ]);
-    expect(reserve.cashRestrictedTotal).toBe(0); // nullは合計に0として寄与(未検出≠マイナス残高)
+    expect(core.cashRestrictedTotal).toBe(0); // nullは合計に0として寄与(未検出≠マイナス残高)
   });
 
   it("treats a missing trial_bs row as 0 (not null) once the account_item is found (freee omits zero-activity rows)", () => {
-    const reserve = buildFundReserve({ trialBs: trialBsFixture([]), accountItems: [SAVINGS_ACCOUNT_ITEM], cash: 1000 });
-    expect(reserve.otherPurposeLines).toEqual([
+    const core = buildFundReserveCore({ trialBs: trialBsFixture([]), accountItems: [SAVINGS_ACCOUNT_ITEM] });
+    expect(core.otherPurposeLines).toEqual([
       { label: "その他目的資金（定期預金_尼信1012積立）", balance: 0 },
     ]);
   });
 
   it("returns null free cash when cash itself is unknown", () => {
     const trialBs = trialBsFixture([row({ account_item_name: "保険積立金", closing_balance: 100 })]);
-    const reserve = buildFundReserve({ trialBs, accountItems: [], cash: null });
+    const core = buildFundReserveCore({ trialBs, accountItems: [] });
+    const reserve = composeFundReserve(core, null);
     expect(reserve.freeCash).toBeNull();
+  });
+
+  it("recomposes cash/freeCash from a cached core without recomputing the freee-derived fields (past-month Firestore reuse)", () => {
+    // FundReserveCoreはキャッシュされたスナップショットを模し、composeFundReserveだけを
+    // 都度呼び出しても中身が変わらないことを確認する(2026-09-15、過去月=Firestore対応)
+    const core = { bonusReserveConfigured: false, bonusReserve: 0, otherPurposeLines: [], cashRestrictedTotal: 5000, insuranceAssetReserve: 300 };
+    const reserveA = composeFundReserve(core, 10000);
+    const reserveB = composeFundReserve(core, 20000);
+    expect(reserveA.freeCash).toBe(5000);
+    expect(reserveB.freeCash).toBe(15000);
+    expect(reserveA.cashRestrictedTotal).toBe(reserveB.cashRestrictedTotal);
   });
 });

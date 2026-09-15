@@ -9,11 +9,12 @@ import { MonthlyCashFlowTable } from "@/features/management-dashboard/MonthlyCas
 import { getOrFetchMonthlyCashFlow } from "@/features/management-dashboard/monthlyCashFlowService";
 import type { MonthlyCashFlow } from "@/features/management-dashboard/types";
 import { LoanStatusTable } from "@/features/management-dashboard/LoanStatusTable";
-import { getLoanStatus } from "@/features/management-dashboard/loanStatus";
-import type { LoanStatus } from "@/features/management-dashboard/loanStatus";
+import { getOrFetchLoanStatus } from "@/features/management-dashboard/loanStatusService";
+import type { LoanStatusSnapshot } from "@/features/management-dashboard/loanStatus";
 import { FundReserveSection } from "@/features/management-dashboard/FundReserveSection";
-import { getFundReserve } from "@/features/management-dashboard/fundReserve";
+import { composeFundReserve } from "@/features/management-dashboard/fundReserve";
 import type { FundReserve } from "@/features/management-dashboard/fundReserve";
+import { getOrFetchFundReserveCore } from "@/features/management-dashboard/fundReserveService";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ExpenseCompositionSection } from "@/features/management-dashboard/ExpenseCompositionSection";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
@@ -91,7 +92,7 @@ export default async function ManagementPage({ searchParams }: PageProps) {
   let financialSummaryError = false;
   let cashFlow: MonthlyCashFlow | null = null;
   let cashFlowError = false;
-  let loanStatus: LoanStatus | null = null;
+  let loanStatus: LoanStatusSnapshot | null = null;
   let loanStatusError = false;
   let fundReserve: FundReserve | null = null;
   let fundReserveError = false;
@@ -133,13 +134,16 @@ export default async function ManagementPage({ searchParams }: PageProps) {
         cashFlowError = true;
       }
       try {
-        loanStatus = await getLoanStatus(fiscalYear, selectedMonth);
+        loanStatus = await getOrFetchLoanStatus(fiscalYear, selectedMonth, { forceRefresh: isCurrentMonth });
       } catch {
         console.error("[management page] freeeからの借入状況取得に失敗しました");
         loanStatusError = true;
       }
       try {
-        fundReserve = await getFundReserve(fiscalYear, selectedMonth, cashFlow?.cashClosing ?? null);
+        const fundReserveCore = await getOrFetchFundReserveCore(fiscalYear, selectedMonth, {
+          forceRefresh: isCurrentMonth,
+        });
+        fundReserve = fundReserveCore ? composeFundReserve(fundReserveCore, cashFlow?.cashClosing ?? null) : null;
       } catch {
         console.error("[management page] freeeからの資金の備え取得に失敗しました");
         fundReserveError = true;

@@ -1,7 +1,6 @@
 import { formatYen } from "@/utils/format";
 import { OPERATING_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
-import { ExpenseCompositionSection } from "./ExpenseCompositionSection";
 import { RefreshMonthButton } from "./RefreshMonthButton";
 import type { MonthlyCashFlow } from "./types";
 
@@ -100,11 +99,6 @@ export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCas
           <Line label="月末現預金" value={cashFlow.cashClosing ?? 0} bold />
         </div>
       </div>
-
-      <ExpenseCompositionSection
-        expenseByCategory={cashFlow.expenseByCategory}
-        externalExpenseTotal={cashFlow.externalExpenseTotal}
-      />
     </div>
   );
 }

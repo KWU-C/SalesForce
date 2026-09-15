@@ -15,6 +15,7 @@ import { FundReserveSection } from "@/features/management-dashboard/FundReserveS
 import { getFundReserve } from "@/features/management-dashboard/fundReserve";
 import type { FundReserve } from "@/features/management-dashboard/fundReserve";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
+import { ExpenseCompositionSection } from "@/features/management-dashboard/ExpenseCompositionSection";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { getFreeeConnectionStatus } from "@/repositories/freeeAuthRepository";
@@ -195,6 +196,13 @@ export default async function ManagementPage({ searchParams }: PageProps) {
                   fundReserve={fundReserve}
                   netCash={netCash}
                 />
+
+                {cashFlow && (
+                  <ExpenseCompositionSection
+                    expenseByCategory={cashFlow.expenseByCategory}
+                    externalExpenseTotal={cashFlow.externalExpenseTotal}
+                  />
+                )}
 
                 {cashFlowError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">

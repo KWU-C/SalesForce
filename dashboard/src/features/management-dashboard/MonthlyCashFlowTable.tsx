@@ -2,6 +2,7 @@ import { formatYen } from "@/utils/format";
 import { OPERATING_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
 import { RefreshMonthButton } from "./RefreshMonthButton";
+import { SectionBanner } from "./SectionBanner";
 import type { MonthlyCashFlow } from "./types";
 
 const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
@@ -52,10 +53,9 @@ export function MonthlyCashFlowTable({ fiscalYear, month, cashFlow }: MonthlyCas
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-[var(--text-secondary)]">月次資金収支（会社版家計簿）</h2>
-        <RefreshMonthButton fiscalYear={fiscalYear} month={month} />
-      </div>
+      <SectionBanner right={<RefreshMonthButton fiscalYear={fiscalYear} month={month} />}>
+        月次資金収支（会社版家計簿）
+      </SectionBanner>
 
       <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
         <Line label="月初現預金" value={cashFlow.cashOpening ?? 0} bold />

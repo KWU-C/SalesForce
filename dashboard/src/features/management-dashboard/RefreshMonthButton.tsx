@@ -38,7 +38,7 @@ export function RefreshMonthButton({ fiscalYear, month }: RefreshMonthButtonProp
         type="button"
         onClick={handleClick}
         disabled={status === "refreshing"}
-        className="rounded border border-[var(--border-hairline)] px-2 py-1 text-xs text-[var(--text-secondary)] disabled:opacity-50"
+        className="rounded border border-[var(--border-hairline)] bg-[var(--surface-1)] px-2 py-1 text-xs text-[var(--text-secondary)] disabled:opacity-50"
       >
         {status === "refreshing" ? "更新中..." : "この月をfreeeから更新"}
       </button>

@@ -1,4 +1,5 @@
 import { formatYen } from "@/utils/format";
+import { SectionBanner } from "./SectionBanner";
 import type { FundReserve } from "./fundReserve";
 
 interface FundReserveSectionProps {
@@ -48,7 +49,7 @@ function Line({
 export function FundReserveSection({ fundReserve, loanTotalCurrent, netCash }: FundReserveSectionProps) {
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium text-[var(--text-secondary)]">資金の備え</h2>
+      <SectionBanner>資金の備え</SectionBanner>
 
       <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
         <p className="text-xs font-medium text-[var(--text-muted)]">現預金内の目的準備資金（自由資金の控除対象）</p>

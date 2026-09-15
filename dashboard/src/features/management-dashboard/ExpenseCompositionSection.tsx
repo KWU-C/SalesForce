@@ -5,6 +5,7 @@ import { useCssVar } from "@/utils/useCssVar";
 import { formatPercent, formatYen } from "@/utils/format";
 import { OPERATING_CATEGORIES, FINANCING_AND_RESERVE_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
+import { SectionBanner } from "./SectionBanner";
 
 const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   labor: "人件費",
@@ -111,60 +112,62 @@ export function ExpenseCompositionSection({
     .filter((d) => d.value > 0);
 
   return (
-    <div>
-      <h3 className="mb-2 text-sm font-medium text-[var(--text-secondary)]">支出構成</h3>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="flex shrink-0 justify-center">
-          {pieData.length === 0 ? (
-            <div className="flex h-[180px] w-[180px] items-center justify-center text-xs text-[var(--text-muted)]">
-              データなし
-            </div>
-          ) : (
-            <ResponsiveContainer width={180} height={180}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  dataKey="value"
-                  nameKey="name"
-                  outerRadius={80}
-                  startAngle={90}
-                  endAngle={-270}
-                  stroke={surface}
-                  strokeWidth={2}
-                  isAnimationActive={false}
-                >
-                  {pieData.map((d, i) => (
-                    <Cell key={i} fill={d.color} />
-                  ))}
-                </Pie>
-                <Tooltip content={<CompositionTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+    <div className="flex flex-col gap-2">
+      <SectionBanner>支出構成</SectionBanner>
+      <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <div className="flex shrink-0 justify-center">
+            {pieData.length === 0 ? (
+              <div className="flex h-[180px] w-[180px] items-center justify-center text-xs text-[var(--text-muted)]">
+                データなし
+              </div>
+            ) : (
+              <ResponsiveContainer width={180} height={180}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    outerRadius={80}
+                    startAngle={90}
+                    endAngle={-270}
+                    stroke={surface}
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                  >
+                    {pieData.map((d, i) => (
+                      <Cell key={i} fill={d.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CompositionTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
 
-        <div className="flex-1">
-          <p className="mb-1 text-xs font-medium text-[var(--text-muted)]">通常運営</p>
-          {OPERATING_CATEGORIES.map((c) => (
-            <CategoryRow
-              key={c}
-              category={c}
-              amount={expenseByCategory[c]}
-              total={externalExpenseTotal}
-              color={colorByCategory[c]}
-            />
-          ))}
+          <div className="flex-1">
+            <p className="mb-1 text-xs font-medium text-[var(--text-muted)]">通常運営</p>
+            {OPERATING_CATEGORIES.map((c) => (
+              <CategoryRow
+                key={c}
+                category={c}
+                amount={expenseByCategory[c]}
+                total={externalExpenseTotal}
+                color={colorByCategory[c]}
+              />
+            ))}
 
-          <p className="mb-1 mt-3 text-xs font-medium text-[var(--text-muted)]">財務・将来準備</p>
-          {FINANCING_AND_RESERVE_CATEGORIES.map((c) => (
-            <CategoryRow
-              key={c}
-              category={c}
-              amount={expenseByCategory[c]}
-              total={externalExpenseTotal}
-              color={colorByCategory[c]}
-            />
-          ))}
+            <p className="mb-1 mt-3 text-xs font-medium text-[var(--text-muted)]">財務・将来準備</p>
+            {FINANCING_AND_RESERVE_CATEGORIES.map((c) => (
+              <CategoryRow
+                key={c}
+                category={c}
+                amount={expenseByCategory[c]}
+                total={externalExpenseTotal}
+                color={colorByCategory[c]}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>

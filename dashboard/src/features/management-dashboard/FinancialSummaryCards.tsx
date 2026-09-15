@@ -1,5 +1,6 @@
 import { formatPercent, formatYen } from "@/utils/format";
 import { KpiTile } from "./KpiTile";
+import { SectionBanner } from "./SectionBanner";
 import type { FinancialSummary } from "./financialSummary";
 
 interface FinancialSummaryCardsProps {
@@ -13,8 +14,8 @@ interface FinancialSummaryCardsProps {
  */
 export function FinancialSummaryCards({ summary }: FinancialSummaryCardsProps) {
   return (
-    <div>
-      <h3 className="mb-2 text-sm font-medium text-[var(--text-secondary)]">当期累計（参考）</h3>
+    <div className="flex flex-col gap-2">
+      <SectionBanner>当期累計（参考）</SectionBanner>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <KpiTile title="売上高" value={summary.revenue} formatter={formatYen} />
         <KpiTile

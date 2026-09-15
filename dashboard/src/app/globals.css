@@ -13,6 +13,8 @@
   --gridline: #e1e0d9;
   --baseline: #c3c2b7;
   --border-hairline: rgba(11, 11, 11, 0.1);
+  /* セクション見出しの帯用。ライト/ダークどちらでも白文字が読めるよう固定色(テーマで上書きしない) */
+  --band-bg: #52514e;
 
   --series-1: #2a78d6; /* blue: 受注 */
   --series-2: #eb6834; /* orange: 完了 */

@@ -1,4 +1,5 @@
 import { formatYen } from "@/utils/format";
+import { SectionBanner } from "./SectionBanner";
 import type { LoanStatus } from "./loanStatus";
 
 interface LoanStatusTableProps {
@@ -17,7 +18,7 @@ interface LoanStatusTableProps {
 export function LoanStatusTable({ loanStatus }: LoanStatusTableProps) {
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium text-[var(--text-secondary)]">借入状況</h2>
+      <SectionBanner>借入状況</SectionBanner>
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
         <table className="w-full min-w-[420px] text-sm">

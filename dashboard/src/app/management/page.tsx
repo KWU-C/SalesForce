@@ -4,8 +4,8 @@ import { FreeeConnectForm } from "@/features/management-dashboard/FreeeConnectFo
 import { FinancialSummaryCards } from "@/features/management-dashboard/FinancialSummaryCards";
 import { getFinancialSummary } from "@/features/management-dashboard/financialSummary";
 import type { FinancialSummary } from "@/features/management-dashboard/financialSummary";
-import { MonthSelector } from "@/features/management-dashboard/MonthSelector";
-import { MonthlyCashFlowTable } from "@/features/management-dashboard/MonthlyCashFlowTable";
+import { MonthlyCashFlowScrollTable } from "@/features/management-dashboard/MonthlyCashFlowScrollTable";
+import type { MonthColumn } from "@/features/management-dashboard/MonthlyCashFlowScrollTable";
 import { getOrFetchMonthlyCashFlow } from "@/features/management-dashboard/monthlyCashFlowService";
 import type { MonthlyCashFlow } from "@/features/management-dashboard/types";
 import { LoanStatusTable } from "@/features/management-dashboard/LoanStatusTable";
@@ -22,10 +22,9 @@ import { isManagementDashboardAuthorized } from "@/config/managementDashboardAcc
 import { getFreeeConnectionStatus } from "@/repositories/freeeAuthRepository";
 import { buildFreeeAuthorizeUrl } from "@/services/freee/freeeTokenClient";
 import {
-  FISCAL_MONTH_ORDER,
+  calendarYearForTermMonth,
   freeeFiscalYearForTerm,
   getCurrentFiscalPeriod,
-  getSelectableTerms,
   previousFiscalTermMonth,
 } from "@/config/fiscalPeriods";
 import { formatDateTime } from "@/utils/format";
@@ -37,41 +36,6 @@ export const metadata: Metadata = {
   description: "TCD 経営ダッシュボード（freeeベース）",
 };
 
-interface PageProps {
-  searchParams: Promise<{ term?: string; month?: string }>;
-}
-
-/**
- * ?term=/?month=を選択可能な範囲(現在・前期・前々期 × 各期の期首月〜当月/期末月)へ
- * クランプする。期の変わり目直後は当期の経過月が1ヶ月だけになるため、前期以前へも
- * 移動できるようにする(ユーザー確定、2026-09-14)。範囲外・不正値は当期・当月へ
- * フォールバックする。
- */
-function resolveSelectedPeriod(
-  requestedTermRaw: string | undefined,
-  requestedMonthRaw: string | undefined,
-  currentTerm: number,
-  currentMonth: number,
-  minTerm: number
-): { term: number; month: number } {
-  const fallback = { term: currentTerm, month: currentMonth };
-  const requestedTerm = requestedTermRaw ? Number(requestedTermRaw) : currentTerm;
-  const requestedMonth = requestedMonthRaw ? Number(requestedMonthRaw) : currentMonth;
-
-  if (!Number.isInteger(requestedTerm) || requestedTerm < minTerm || requestedTerm > currentTerm) {
-    return fallback;
-  }
-  const monthIndex = FISCAL_MONTH_ORDER.indexOf(requestedMonth);
-  if (monthIndex === -1) {
-    return fallback;
-  }
-  if (requestedTerm === currentTerm) {
-    const currentIndex = FISCAL_MONTH_ORDER.indexOf(currentMonth);
-    if (monthIndex > currentIndex) return fallback;
-  }
-  return { term: requestedTerm, month: requestedMonth };
-}
-
 /**
  * 経営ダッシュボード（freeeベース）。
  * 閲覧は許可リスト(managementDashboardAccess)に載ったIAP検証済みメールのみに限定する
@@ -82,8 +46,14 @@ function resolveSelectedPeriod(
  * 主役とする月次資金収支表を表示する(ユーザー確定、2026-09-14。freeeの試算表を
  * そのまま複製しない)。値は実データから取得できたものだけを表示し、取得できない項目は
  * 「データ未設定」と表示する（推測値・仮の値は一切出さない）。
+ *
+ * ページ全体の月切替UIは廃止し、当月は現在日付から自動判定する(ユーザー確定、2026-09-15)。
+ * 経営サマリー・支出構成・借入状況・資金の備えは常に当月/現在時点を表示する
+ * （月選択機能は持たせない）。月次資金収支のみ、前月・当月の2列を横スクロール表で
+ * 表示する(前月=Firestoreスナップショット優先、当月=アクセスごとにfreeeライブ取得。
+ * 10月以降の自動追加は次フェーズ)。
  */
-export default async function ManagementPage({ searchParams }: PageProps) {
+export default async function ManagementPage() {
   const iapEmail = await getRequestIapEmail();
   const authorized = isManagementDashboardAuthorized(iapEmail);
 
@@ -91,24 +61,18 @@ export default async function ManagementPage({ searchParams }: PageProps) {
   let authorizeUrl: string | null = null;
   let financialSummary: FinancialSummary | null = null;
   let financialSummaryError = false;
-  let cashFlow: MonthlyCashFlow | null = null;
+  let currentCashFlow: MonthlyCashFlow | null = null;
+  let previousCashFlow: MonthlyCashFlow | null = null;
   let cashFlowError = false;
   let loanStatus: LoanStatusSnapshot | null = null;
   let loanStatusError = false;
   let fundReserve: FundReserve | null = null;
   let fundReserveError = false;
-  let previousMonthCashClosing: number | null = null;
 
   const { term: currentTerm, currentMonth } = getCurrentFiscalPeriod();
-  const minTerm = Math.min(...getSelectableTerms());
-  const { term: selectedTerm, month: selectedMonth } = resolveSelectedPeriod(
-    (await searchParams).term,
-    (await searchParams).month,
-    currentTerm,
-    currentMonth,
-    minTerm
-  );
-  const fiscalYear = freeeFiscalYearForTerm(selectedTerm);
+  const currentFiscalYear = freeeFiscalYearForTerm(currentTerm);
+  const { term: prevTerm, month: prevMonth } = previousFiscalTermMonth(currentTerm, currentMonth);
+  const prevFiscalYear = freeeFiscalYearForTerm(prevTerm);
 
   if (authorized) {
     try {
@@ -125,9 +89,9 @@ export default async function ManagementPage({ searchParams }: PageProps) {
     }
 
     if (connectionStatus?.connected) {
-      const isCurrentMonth = selectedTerm === currentTerm && selectedMonth === currentMonth;
+      // 当月: アクセスごとにfreeeライブ取得(ユーザー確定、2026-09-15)
       try {
-        cashFlow = await getOrFetchMonthlyCashFlow(fiscalYear, selectedMonth, { forceRefresh: isCurrentMonth });
+        currentCashFlow = await getOrFetchMonthlyCashFlow(currentFiscalYear, currentMonth, { forceRefresh: true });
       } catch (error) {
         // ここで出すのは自前でthrowしているエラーメッセージのみ(freee_api_error等の固定文言、
         // トークン等の機微情報は含まない)。原因切り分けのための一時的な診断ログ
@@ -135,27 +99,24 @@ export default async function ManagementPage({ searchParams }: PageProps) {
         console.error(`[management page] freeeからの月次資金収支取得に失敗しました: ${detail}`);
         cashFlowError = true;
       }
-      // 経営サマリーの「前月比」用。前月は常に過去月なのでforceRefreshせず
-      // Firestore優先(遅延バックフィル)で取得する(ユーザー確定、2026-09-15)
+      // 前月: 常に過去月なのでforceRefreshせずFirestore優先(遅延バックフィル)で取得する
+      // (ユーザー確定、2026-09-15)。失敗しても当月表示は継続する
       try {
-        const { term: prevTerm, month: prevMonth } = previousFiscalTermMonth(selectedTerm, selectedMonth);
-        const prevFiscalYear = freeeFiscalYearForTerm(prevTerm);
-        const previousCashFlow = await getOrFetchMonthlyCashFlow(prevFiscalYear, prevMonth, { forceRefresh: false });
-        previousMonthCashClosing = previousCashFlow?.cashClosing ?? null;
+        previousCashFlow = await getOrFetchMonthlyCashFlow(prevFiscalYear, prevMonth, { forceRefresh: false });
       } catch {
         console.error("[management page] freeeからの前月データ取得に失敗しました");
       }
       try {
-        loanStatus = await getOrFetchLoanStatus(fiscalYear, selectedMonth, { forceRefresh: isCurrentMonth });
+        loanStatus = await getOrFetchLoanStatus(currentFiscalYear, currentMonth, { forceRefresh: true });
       } catch {
         console.error("[management page] freeeからの借入状況取得に失敗しました");
         loanStatusError = true;
       }
       try {
-        const fundReserveCore = await getOrFetchFundReserveCore(fiscalYear, selectedMonth, {
-          forceRefresh: isCurrentMonth,
+        const fundReserveCore = await getOrFetchFundReserveCore(currentFiscalYear, currentMonth, {
+          forceRefresh: true,
         });
-        fundReserve = fundReserveCore ? composeFundReserve(fundReserveCore, cashFlow?.cashClosing ?? null) : null;
+        fundReserve = fundReserveCore ? composeFundReserve(fundReserveCore, currentCashFlow?.cashClosing ?? null) : null;
       } catch {
         console.error("[management page] freeeからの資金の備え取得に失敗しました");
         fundReserveError = true;
@@ -169,6 +130,26 @@ export default async function ManagementPage({ searchParams }: PageProps) {
     }
   }
 
+  // 横スクロール表(前月・当月の2列)。10月以降の自動追加は次フェーズ(ユーザー確定、2026-09-15)
+  const cashFlowColumns: MonthColumn[] = [
+    {
+      fiscalYear: prevFiscalYear,
+      term: prevTerm,
+      month: prevMonth,
+      calendarYear: calendarYearForTermMonth(prevTerm, prevMonth),
+      isCurrent: false,
+      cashFlow: previousCashFlow,
+    },
+    {
+      fiscalYear: currentFiscalYear,
+      term: currentTerm,
+      month: currentMonth,
+      calendarYear: calendarYearForTermMonth(currentTerm, currentMonth),
+      isCurrent: true,
+      cashFlow: currentCashFlow,
+    },
+  ];
+
   // ネットキャッシュ(現預金－借入残高)は経営サマリー・資金の備えの両方で使うため、
   // ページ側で一度だけ合成する(同じデータソース・値をUI側で再計算しない、ユーザー確定)
   const netCash =
@@ -176,12 +157,12 @@ export default async function ManagementPage({ searchParams }: PageProps) {
       ? null
       : fundReserve.cash - loanStatus.totalCurrent;
 
-  // 経営サマリーの「前月比」。cashFlow.cashClosingとpreviousMonthCashClosingの
-  // 両方が揃っている場合のみ計算し、片方でも欠けていればnull(推測値を出さない)
+  // 経営サマリーの「前月比」。当月・前月のcashClosingが両方揃っている場合のみ計算し、
+  // 片方でも欠けていればnull(推測値を出さない)
   const cashClosingDiffFromPreviousMonth =
-    cashFlow?.cashClosing == null || previousMonthCashClosing === null
+    currentCashFlow?.cashClosing == null || previousCashFlow?.cashClosing == null
       ? null
-      : cashFlow.cashClosing - previousMonthCashClosing;
+      : currentCashFlow.cashClosing - previousCashFlow.cashClosing;
 
   return (
     <>
@@ -203,28 +184,20 @@ export default async function ManagementPage({ searchParams }: PageProps) {
 
             {connectionStatus?.connected ? (
               <>
-                <MonthSelector
-                  selectedTerm={selectedTerm}
-                  selectedMonth={selectedMonth}
-                  currentTerm={currentTerm}
-                  currentMonth={currentMonth}
-                  minTerm={minTerm}
-                />
-
                 <ManagementSummary
-                  term={selectedTerm}
-                  month={selectedMonth}
-                  cashFlow={cashFlow}
+                  term={currentTerm}
+                  month={currentMonth}
+                  cashFlow={currentCashFlow}
                   loanStatus={loanStatus}
                   fundReserve={fundReserve}
                   netCash={netCash}
                   cashClosingDiffFromPreviousMonth={cashClosingDiffFromPreviousMonth}
                 />
 
-                {cashFlow && (
+                {currentCashFlow && (
                   <ExpenseCompositionSection
-                    expenseByCategory={cashFlow.expenseByCategory}
-                    externalExpenseTotal={cashFlow.externalExpenseTotal}
+                    expenseByCategory={currentCashFlow.expenseByCategory}
+                    externalExpenseTotal={currentCashFlow.externalExpenseTotal}
                   />
                 )}
 
@@ -235,9 +208,7 @@ export default async function ManagementPage({ searchParams }: PageProps) {
                   </p>
                 )}
 
-                {cashFlow && (
-                  <MonthlyCashFlowTable fiscalYear={fiscalYear} month={selectedMonth} cashFlow={cashFlow} />
-                )}
+                <MonthlyCashFlowScrollTable columns={cashFlowColumns} />
 
                 {loanStatusError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">借入状況の取得に失敗しました。</p>

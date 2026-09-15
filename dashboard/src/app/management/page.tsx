@@ -8,6 +8,12 @@ import { MonthSelector } from "@/features/management-dashboard/MonthSelector";
 import { MonthlyCashFlowTable } from "@/features/management-dashboard/MonthlyCashFlowTable";
 import { getOrFetchMonthlyCashFlow } from "@/features/management-dashboard/monthlyCashFlowService";
 import type { MonthlyCashFlow } from "@/features/management-dashboard/types";
+import { LoanStatusTable } from "@/features/management-dashboard/LoanStatusTable";
+import { getLoanStatus } from "@/features/management-dashboard/loanStatus";
+import type { LoanStatus } from "@/features/management-dashboard/loanStatus";
+import { FundReserveSection } from "@/features/management-dashboard/FundReserveSection";
+import { getFundReserve } from "@/features/management-dashboard/fundReserve";
+import type { FundReserve } from "@/features/management-dashboard/fundReserve";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { getFreeeConnectionStatus } from "@/repositories/freeeAuthRepository";
@@ -83,6 +89,10 @@ export default async function ManagementPage({ searchParams }: PageProps) {
   let financialSummaryError = false;
   let cashFlow: MonthlyCashFlow | null = null;
   let cashFlowError = false;
+  let loanStatus: LoanStatus | null = null;
+  let loanStatusError = false;
+  let fundReserve: FundReserve | null = null;
+  let fundReserveError = false;
 
   const { term: currentTerm, currentMonth } = getCurrentFiscalPeriod();
   const minTerm = Math.min(...getSelectableTerms());
@@ -119,6 +129,18 @@ export default async function ManagementPage({ searchParams }: PageProps) {
         const detail = error instanceof Error ? error.message : String(error);
         console.error(`[management page] freeeからの月次資金収支取得に失敗しました: ${detail}`);
         cashFlowError = true;
+      }
+      try {
+        loanStatus = await getLoanStatus(fiscalYear, selectedMonth);
+      } catch {
+        console.error("[management page] freeeからの借入状況取得に失敗しました");
+        loanStatusError = true;
+      }
+      try {
+        fundReserve = await getFundReserve(fiscalYear, selectedMonth, cashFlow?.cashClosing ?? null);
+      } catch {
+        console.error("[management page] freeeからの資金の備え取得に失敗しました");
+        fundReserveError = true;
       }
       try {
         financialSummary = await getFinancialSummary();
@@ -166,6 +188,21 @@ export default async function ManagementPage({ searchParams }: PageProps) {
 
                 {cashFlow && (
                   <MonthlyCashFlowTable fiscalYear={fiscalYear} month={selectedMonth} cashFlow={cashFlow} />
+                )}
+
+                {loanStatusError && (
+                  <p className="text-center text-sm text-[var(--text-muted)]">借入状況の取得に失敗しました。</p>
+                )}
+                {loanStatus && <LoanStatusTable loanStatus={loanStatus} />}
+
+                {fundReserveError && (
+                  <p className="text-center text-sm text-[var(--text-muted)]">資金の備えの取得に失敗しました。</p>
+                )}
+                {fundReserve && (
+                  <FundReserveSection
+                    fundReserve={fundReserve}
+                    loanTotalCurrent={loanStatus?.totalCurrent ?? null}
+                  />
                 )}
 
                 {financialSummary && <FinancialSummaryCards summary={financialSummary} />}

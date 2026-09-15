@@ -80,6 +80,13 @@ const ROWS: RowDef[] = [
 const LABEL_COL_WIDTH = "w-52 min-w-52";
 const MONTH_COL_WIDTH = "w-40 min-w-40";
 
+// 項目列は常に背景あり、月列は列単位で背景あり/なしを交互にする(タテのシマシマ、
+// ユーザー確定、2026-09-15)。行単位ではなく列単位で交互にする点に注意
+const LABEL_COL_BG = "bg-[var(--surface-sunken)]";
+function monthColBg(colIndex: number): string {
+  return colIndex % 2 === 0 ? "bg-[var(--surface-1)]" : "bg-[var(--surface-sunken)]";
+}
+
 function formatCell(value: number | null): string {
   return value === null ? "データ未設定" : formatYen(value);
 }
@@ -130,21 +137,22 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
             </tr>
           </thead>
           <tbody>
-            {ROWS.map((row, rowIndex) => {
+            {ROWS.map((row) => {
               const rowBorder = row.groupStart ? "border-t-2 border-[var(--baseline)]" : "border-t border-[var(--gridline)]";
-              // 項目・各月列すべてに、行単位で交互に背景色を入れる(ユーザー確定、2026-09-15)
-              const zebraBg = rowIndex % 2 === 0 ? "bg-[var(--surface-1)]" : "bg-[var(--surface-sunken)]";
 
               if (row.kind === "section") {
                 return (
                   <tr key={row.label}>
                     <td
-                      className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} ${zebraBg} px-3 py-1.5 text-xs font-medium text-[var(--text-muted)]`}
+                      className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} ${LABEL_COL_BG} px-3 py-1.5 text-xs font-medium text-[var(--text-muted)]`}
                     >
                       {row.label}
                     </td>
-                    {columns.map((col) => (
-                      <td key={`${col.fiscalYear}-${col.month}`} className={`${MONTH_COL_WIDTH} ${rowBorder} ${zebraBg}`} />
+                    {columns.map((col, colIndex) => (
+                      <td
+                        key={`${col.fiscalYear}-${col.month}`}
+                        className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)}`}
+                      />
                     ))}
                   </tr>
                 );
@@ -164,14 +172,14 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
               return (
                 <tr key={row.label}>
                   <td
-                    className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} ${zebraBg} px-3 py-1.5 ${row.indent ? "pl-6" : ""} ${textClass}`}
+                    className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} ${LABEL_COL_BG} px-3 py-1.5 ${row.indent ? "pl-6" : ""} ${textClass}`}
                   >
                     {row.label}
                   </td>
-                  {columns.map((col) => (
+                  {columns.map((col, colIndex) => (
                     <td
                       key={`${col.fiscalYear}-${col.month}`}
-                      className={`${MONTH_COL_WIDTH} ${rowBorder} ${zebraBg} px-3 py-1.5 text-right tabular-nums ${valueClass}`}
+                      className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)} px-3 py-1.5 text-right tabular-nums ${valueClass}`}
                     >
                       {col.cashFlow ? formatCell(row.get(col.cashFlow)) : "データ未設定"}
                     </td>

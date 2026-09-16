@@ -76,12 +76,6 @@ export function FundReserveSection({ fundReserve, loanTotalCurrent, netCash }: F
           <p className="text-xs font-medium text-[var(--text-muted)]">資金余力</p>
           <Line label="現預金" value={fundReserve.cash} indent />
           <Line label="現預金内目的準備資金" value={fundReserve.cashRestrictedTotal} indent />
-          <Line
-            label="自由に使える現預金（現預金－現預金内目的準備資金）"
-            value={fundReserve.freeCash}
-            indent
-            bold
-          />
           <Line label="借入残高" value={loanTotalCurrent} indent />
           <Line label="ネットキャッシュ（現預金－借入残高）" value={netCash} indent bold />
         </div>

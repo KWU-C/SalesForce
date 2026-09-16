@@ -215,7 +215,6 @@ export default async function ManagementPage() {
                   month={currentMonth}
                   cashFlow={currentCashFlow}
                   loanStatus={loanStatus}
-                  fundReserve={fundReserve}
                   cashClosingDiffFromPreviousMonth={cashClosingDiffFromPreviousMonth}
                 />
 

@@ -9,8 +9,6 @@ interface ManagementSummaryProps {
   month: number;
   cashFlow: MonthlyCashFlow | null;
   loanStatus: LoanStatus | null;
-  /** 月末現預金の前月比(cashClosing - 前月のcashClosing)。ページ側で合成済み */
-  cashClosingDiffFromPreviousMonth: number | null;
 }
 
 function Row({
@@ -48,18 +46,6 @@ function BigRow({ label, value, signed = false }: { label: string; value: number
   );
 }
 
-/** 前月比の小さい差額表示。マイナスの場合は赤字にする(ユーザー確定、2026-09-15) */
-function DiffFromPreviousMonth({ value }: { value: number | null }) {
-  const isNegative = value !== null && value < 0;
-  return (
-    <p
-      className={`text-right text-xs ${isNegative ? "text-[var(--status-critical)]" : "text-[var(--text-muted)]"}`}
-    >
-      前月比 {value === null ? "データ未設定" : formatManYenSigned(value)}
-    </p>
-  );
-}
-
 function SummaryBox({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
@@ -73,8 +59,9 @@ function SummaryBox({ title, children }: { title: string; children: React.ReactN
  * 経営サマリー。下の詳細セクション(月次資金収支・借入状況)のダイジェストを
  * 手元資金・今月の資金収支・借入状況の3ボックスに三等分して表示する
  * (ユーザー確定、2026-09-16)。各ボックスは
- * 「タイトル→項目名+大きい文字の数字→hr→小さい文字で補足情報」の同じ構造に揃える:
- * - 手元資金: 月末現預金(大) / 前月比(補足、マイナスは赤字)
+ * 「タイトル→項目名+大きい文字の数字→hr→小さい文字で補足情報」の構造を基本とするが、
+ * 手元資金は補足情報(前月比)を廃止し見出し数字のみ表示する(ユーザー確定、2026-09-16):
+ * - 手元資金: 月末現預金(大)のみ
  * - 今月の資金収支: 営業収支(大) / 当月現金増減(補足)
  * - 借入状況: 借入残高(大) / 今期借入純増減(補足)
  *
@@ -87,7 +74,6 @@ export function ManagementSummary({
   month,
   cashFlow,
   loanStatus,
-  cashClosingDiffFromPreviousMonth,
 }: ManagementSummaryProps) {
   const calendarYear = calendarYearForTermMonth(term, month);
 
@@ -100,9 +86,6 @@ export function ManagementSummary({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <SummaryBox title="手元資金">
           <BigRow label="月末現預金" value={cashFlow?.cashClosing ?? null} />
-          <div className="mt-3 border-t border-[var(--gridline)] pt-2">
-            <DiffFromPreviousMonth value={cashClosingDiffFromPreviousMonth} />
-          </div>
         </SummaryBox>
 
         <SummaryBox title="今月の資金収支">

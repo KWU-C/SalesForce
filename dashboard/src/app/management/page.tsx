@@ -174,7 +174,6 @@ export default async function ManagementPage() {
     cashFlow: cashFlowByMonth[idx] ?? null,
   }));
   const currentCashFlow = cashFlowByMonth[cashFlowByMonth.length - 1] ?? null;
-  const previousCashFlow = cashFlowByMonth.length > 1 ? cashFlowByMonth[cashFlowByMonth.length - 2] : null;
 
   // ネットキャッシュ(現預金－借入残高)は経営サマリー・資金の備えの両方で使うため、
   // ページ側で一度だけ合成する(同じデータソース・値をUI側で再計算しない、ユーザー確定)
@@ -182,13 +181,6 @@ export default async function ManagementPage() {
     fundReserve?.cash === null || fundReserve?.cash === undefined || loanStatus === null
       ? null
       : fundReserve.cash - loanStatus.totalCurrent;
-
-  // 経営サマリーの「前月比」。当月・前月のcashClosingが両方揃っている場合のみ計算し、
-  // 片方でも欠けていればnull(推測値を出さない)
-  const cashClosingDiffFromPreviousMonth =
-    currentCashFlow?.cashClosing == null || previousCashFlow?.cashClosing == null
-      ? null
-      : currentCashFlow.cashClosing - previousCashFlow.cashClosing;
 
   return (
     <>
@@ -215,7 +207,6 @@ export default async function ManagementPage() {
                   month={currentMonth}
                   cashFlow={currentCashFlow}
                   loanStatus={loanStatus}
-                  cashClosingDiffFromPreviousMonth={cashClosingDiffFromPreviousMonth}
                 />
 
                 {currentCashFlow && (

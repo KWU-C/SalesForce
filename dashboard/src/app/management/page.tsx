@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { DashboardNav } from "@/components/DashboardNav";
 import { FreeeConnectForm } from "@/features/management-dashboard/FreeeConnectForm";
 import { FinancialSummaryCards } from "@/features/management-dashboard/FinancialSummaryCards";
 import { getFinancialSummary } from "@/features/management-dashboard/financialSummary";
@@ -184,9 +183,7 @@ export default async function ManagementPage() {
       : fundReserve.cash - loanStatus.totalCurrent;
 
   return (
-    <>
-      <DashboardNav active="/management" showManagementTab={authorized} />
-      <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
+    <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
         {authorized ? (
           <>
             <h1 className="text-center text-xl font-semibold text-[var(--text-primary)]">経営ダッシュボード</h1>
@@ -268,7 +265,6 @@ export default async function ManagementPage() {
             <p className="text-sm text-[var(--text-secondary)]">このページの閲覧権限がありません。</p>
           </div>
         )}
-      </main>
-    </>
+    </main>
   );
 }

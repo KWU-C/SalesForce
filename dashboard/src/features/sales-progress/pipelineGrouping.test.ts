@@ -11,6 +11,7 @@ function deal(overrides: Partial<PipelineDeal>): PipelineDeal {
     grossProfit: 100,
     sales: 300,
     salesforceMemo: null,
+    salesforceMemoUpdatedAt: "2026-08-15T02:30:00.000+0000",
     ...overrides,
   };
 }

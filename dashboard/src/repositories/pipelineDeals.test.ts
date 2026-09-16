@@ -12,6 +12,7 @@ describe("mapPipelineDealRows", () => {
         arari__c: 1000,
         uriagegoukei__c: 3000,
         memo__c: "既存メモ",
+        LastModifiedDate: "2026-08-15T02:30:00.000+0000",
       },
     ];
 
@@ -24,6 +25,7 @@ describe("mapPipelineDealRows", () => {
         grossProfit: 1000,
         sales: 3000,
         salesforceMemo: "既存メモ",
+        salesforceMemoUpdatedAt: "2026-08-15T02:30:00.000+0000",
       },
     ]);
   });
@@ -38,6 +40,7 @@ describe("mapPipelineDealRows", () => {
         arari__c: null,
         uriagegoukei__c: null,
         memo__c: null,
+        LastModifiedDate: "2026-08-15T02:30:00.000+0000",
       },
     ];
 
@@ -55,6 +58,7 @@ describe("excludeLostExpectedDeals", () => {
       arari__c: 100,
       uriagegoukei__c: 200,
       memo__c: null,
+      LastModifiedDate: "2026-08-15T02:30:00.000+0000",
       ...overrides,
     };
   }

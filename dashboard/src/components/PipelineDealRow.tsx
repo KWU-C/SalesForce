@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { ProcessMemoEditor } from "@/components/ProcessMemoEditor";
 import type { ConcreteCrId, PipelineDeal, ProcessMemo } from "@/domain/types";
-import { formatThousandYen } from "@/utils/format";
+import { isMemoStale } from "@/features/sales-progress/memoStaleness";
+import { resolveHighlighted } from "@/features/sales-progress/resolveHighlighted";
+import { formatDateTime, formatThousandYen } from "@/utils/format";
 
 interface PipelineDealRowProps {
   deal: PipelineDeal;
@@ -21,9 +23,22 @@ interface PipelineDealRowProps {
  * 案件一覧の1行。クライアント名頭のチェックボックスで行全体をハイライト表示する
  * （ユーザー確定）。チェックのon/offはボタン無しでその場で保存される
  * （メモ本文の保存とは独立、processMemoRepository.tsのマージ書き込み参照）。
+ *
+ * 初期チェック状態はSalesforceメモ先頭の「●」とダッシュボード側の手動チェックを
+ * resolveHighlightedで突き合わせて決める(ユーザー確定、2026-09-16。詳細は同関数参照)。
+ * 保存後(ユーザーが今まさに手動トグルした直後)はその値をそのまま採用し、
+ * 再度resolveHighlightedにはかけない(手動操作が常に最新のため)。
  */
 export function PipelineDealRow({ deal, crId, initialMemo, onMemoSaved }: PipelineDealRowProps) {
-  const [highlighted, setHighlighted] = useState(initialMemo?.highlighted ?? false);
+  const [highlighted, setHighlighted] = useState(() =>
+    resolveHighlighted({
+      salesforceMemo: deal.salesforceMemo,
+      salesforceMemoUpdatedAt: deal.salesforceMemoUpdatedAt,
+      dashboardHighlighted: initialMemo?.highlighted ?? false,
+      dashboardHighlightedUpdatedAt: initialMemo?.highlightedUpdatedAt,
+    })
+  );
+  const memoStale = isMemoStale(deal.salesforceMemoUpdatedAt);
 
   async function handleToggle(nextHighlighted: boolean) {
     setHighlighted(nextHighlighted);
@@ -67,6 +82,9 @@ export function PipelineDealRow({ deal, crId, initialMemo, onMemoSaved }: Pipeli
         <div className="flex flex-col gap-2">
           <p className="whitespace-pre-wrap text-[var(--text-primary)]">
             {deal.salesforceMemo || "—"}
+          </p>
+          <p className={`text-[10px] ${memoStale ? "text-[var(--status-critical)]" : "text-[var(--text-muted)]"}`}>
+            案件: 最終更新日 {formatDateTime(new Date(deal.salesforceMemoUpdatedAt))}
           </p>
           <ProcessMemoEditor
             processId={deal.processId}

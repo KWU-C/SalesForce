@@ -41,6 +41,7 @@ interface FirestoreTimestampLike {
 }
 
 function toProcessMemo(id: string, data: Record<string, unknown>): ProcessMemo {
+  const highlightedUpdatedAt = data.highlightedUpdatedAt as FirestoreTimestampLike | undefined;
   return {
     processId: id,
     crId: data.crId as ConcreteCrId,
@@ -48,6 +49,7 @@ function toProcessMemo(id: string, data: Record<string, unknown>): ProcessMemo {
     highlighted: (data.highlighted as boolean | undefined) ?? false,
     updatedBy: data.updatedBy as string,
     updatedAt: (data.updatedAt as FirestoreTimestampLike).toDate().toISOString(),
+    highlightedUpdatedAt: highlightedUpdatedAt?.toDate().toISOString(),
   };
 }
 
@@ -99,7 +101,12 @@ export async function saveProcessMemo(
     updatedAt,
   };
   if (input.memo !== undefined) data.memo = input.memo;
-  if (input.highlighted !== undefined) data.highlighted = input.highlighted;
+  if (input.highlighted !== undefined) {
+    data.highlighted = input.highlighted;
+    // highlighted専用の更新日時。メモ本文だけの保存では触らない(resolveHighlightedの
+    // 比較対象がメモ編集で意図せず更新されるのを防ぐため、ユーザー確定、2026-09-16)
+    data.highlightedUpdatedAt = updatedAt;
+  }
 
   await store.save(input.processId, data);
 

@@ -116,6 +116,12 @@ export interface PipelineDeal {
   sales: number | null;
   /** Salesforce側の既存メモ(memo__c)。ダッシュボード独自メモとは別物 */
   salesforceMemo: string | null;
+  /**
+   * Process__cレコードの最終更新日時(ISO8601、LastModifiedDate)。
+   * レポート上の「案件: 最終更新日」に相当し、memo__c欄限定の更新日ではない
+   * （ユーザー確定、2026-09-16）。
+   */
+  salesforceMemoUpdatedAt: string;
 }
 
 /**
@@ -129,8 +135,15 @@ export interface ProcessMemo {
   /** 行をハイライト表示するかどうか（クライアント名頭のチェックボックス、ユーザー確定） */
   highlighted: boolean;
   updatedBy: string;
-  /** ISO8601文字列 */
+  /** ISO8601文字列。メモ本文・highlightedいずれかの更新で更新される(共有フィールド) */
   updatedAt: string;
+  /**
+   * highlightedを最後に手動変更した日時(ISO8601)。一度も手動変更されていなければ
+   * undefined。Salesforceメモの「●」による自動判定とダッシュボード側の手動チェックが
+   * 競合した場合に、どちらが新しいかを比較するために使う(ユーザー確定、2026-09-16。
+   * メモ本文の更新では変わらない、highlightedフィールド専用のタイムスタンプ)
+   */
+  highlightedUpdatedAt: string | undefined;
 }
 
 /** CRごとの進捗まとめ（受注・完了の月別データ） */

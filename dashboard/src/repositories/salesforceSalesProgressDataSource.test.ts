@@ -310,6 +310,7 @@ describe("SalesforceSalesProgressDataSource", () => {
             arari__c: 1_000_000,
             uriagegoukei__c: 3_000_000,
             memo__c: "既存メモ",
+            LastModifiedDate: "2026-08-15T02:30:00.000+0000",
           },
         ],
       },
@@ -329,6 +330,7 @@ describe("SalesforceSalesProgressDataSource", () => {
         grossProfit: 1_000_000,
         sales: 3_000_000,
         salesforceMemo: "既存メモ",
+        salesforceMemoUpdatedAt: "2026-08-15T02:30:00.000+0000",
       },
     ]);
     expect(cr2?.pipelineDeals).toEqual([]);
@@ -349,6 +351,7 @@ describe("SalesforceSalesProgressDataSource", () => {
             arari__c: 500_000,
             uriagegoukei__c: 1_500_000,
             memo__c: "失注予定",
+            LastModifiedDate: "2026-08-15T02:30:00.000+0000",
           },
           {
             Id: "b002",
@@ -358,6 +361,7 @@ describe("SalesforceSalesProgressDataSource", () => {
             arari__c: 300_000,
             uriagegoukei__c: 900_000,
             memo__c: null,
+            LastModifiedDate: "2026-08-15T02:30:00.000+0000",
           },
         ],
       },

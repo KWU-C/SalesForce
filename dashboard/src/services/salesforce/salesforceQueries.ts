@@ -173,6 +173,10 @@ export function buildOrderCategoryBreakdownQuery(
  * bumonna__c(CR)ごとに抽出。日付フィルタは持たない（レポート側もstandardDateFilterが
  * CUSTOM×start/end未設定＝常に全期間）ため、事業期・対象月の引数は取らない。
  *
+ * LastModifiedDate(レポート上の列名「案件: 最終更新日」に相当、ユーザー確定、2026-09-16)
+ * はレコード全体の最終更新日であり、memo__c欄の更新日限定ではないが、レポート原本の
+ * 列もこのフィールドをそのまま指しているため同じ値を採用する。
+ *
  * 除外フィルタのみCRごとに異なる（レポート原本の設定通り）:
  * - CR1/CR2/CR4: 案件名(Name)に'●'を含む行を除外（テスト・ダミー行の除外と推測）
  * - CR3: メモ(memo__c)が'失注予定'の行を除外。ただし`memo__c`はtextarea型で
@@ -186,7 +190,7 @@ export function buildOrderCategoryBreakdownQuery(
 export function buildPipelineDealsQuery(crId: string): string {
   const exclusionFilter = crId === "CR3" ? null : `AND (NOT Name LIKE '%●%')`;
 
-  return `SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, uriagegoukei__c, memo__c
+  return `SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, uriagegoukei__c, memo__c, LastModifiedDate
     FROM Process__c
     WHERE bumonna__c = '${crId}'
       AND phase__c IN ('提案','見積')

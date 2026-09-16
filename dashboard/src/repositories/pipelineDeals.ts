@@ -9,6 +9,8 @@ export interface PipelineDealRow {
   arari__c: number | null;
   uriagegoukei__c: number | null;
   memo__c: string | null;
+  /** レコード全体の最終更新日時(ISO8601)。レポート上の「案件: 最終更新日」に相当 */
+  LastModifiedDate: string;
 }
 
 const UNSPECIFIED_CONFIDENCE_LABEL = "未設定";
@@ -35,5 +37,6 @@ export function mapPipelineDealRows(rows: PipelineDealRow[]): PipelineDeal[] {
     grossProfit: row.arari__c,
     sales: row.uriagegoukei__c,
     salesforceMemo: row.memo__c,
+    salesforceMemoUpdatedAt: row.LastModifiedDate,
   }));
 }

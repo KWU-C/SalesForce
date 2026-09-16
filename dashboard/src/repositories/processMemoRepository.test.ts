@@ -28,6 +28,10 @@ class FakeProcessMemoStore implements ProcessMemoStore {
       const date = normalized.updatedAt;
       normalized.updatedAt = { toDate: () => date };
     }
+    if (normalized.highlightedUpdatedAt instanceof Date) {
+      const date = normalized.highlightedUpdatedAt;
+      normalized.highlightedUpdatedAt = { toDate: () => date };
+    }
     this.docs.set(processId, { ...(this.docs.get(processId) ?? {}), ...normalized });
   }
 }
@@ -131,5 +135,36 @@ describe("saveProcessMemo", () => {
 
     expect(saved.highlighted).toBe(true);
     expect(saved.memo).toBe("後から追加したメモ");
+  });
+
+  it("stamps highlightedUpdatedAt only when highlighted is included in the write", async () => {
+    const store = new FakeProcessMemoStore();
+
+    const memoOnly = await saveProcessMemo(
+      { processId: "a001", crId: "CR1", memo: "既存メモ", updatedBy: "kawauchi@tcd.jp" },
+      store
+    );
+    expect(memoOnly.highlightedUpdatedAt).toBeUndefined();
+
+    const highlighted = await saveProcessMemo(
+      { processId: "a001", crId: "CR1", highlighted: true, updatedBy: "kawauchi@tcd.jp" },
+      store
+    );
+    expect(highlighted.highlightedUpdatedAt).toBe(highlighted.updatedAt);
+  });
+
+  it("does not change highlightedUpdatedAt when only the memo body is saved afterwards", async () => {
+    const store = new FakeProcessMemoStore();
+    const highlighted = await saveProcessMemo(
+      { processId: "a001", crId: "CR1", highlighted: true, updatedBy: "kawauchi@tcd.jp" },
+      store
+    );
+
+    const afterMemoEdit = await saveProcessMemo(
+      { processId: "a001", crId: "CR1", memo: "後から追加したメモ", updatedBy: "kawauchi@tcd.jp" },
+      store
+    );
+
+    expect(afterMemoEdit.highlightedUpdatedAt).toBe(highlighted.highlightedUpdatedAt);
   });
 });

@@ -64,7 +64,7 @@ function SummaryBox({ title, children }: { title: string; children: React.ReactN
  * 「タイトル→項目名+大きい文字の数字→hr→小さい文字で補足情報」の構造に揃える
  * (ユーザー確定、2026-09-16)。手元資金の補足は前月比(差額)ではなく先月の実額を表示する:
  * - 手元資金: 月末現預金(大) / 先月(補足、実額)
- * - 今月の資金収支: 営業収支(大) / 当月現金増減(補足)
+ * - 今月の資金収支: 当月現金増減(大) / うち営業収支(補足)
  * - 借入状況: 借入残高(大) / 今期借入純増減(補足)
  *
  * ここでの数字は下部の詳細セクションと必ず同じデータソース・同じ計算関数の結果を
@@ -95,9 +95,9 @@ export function ManagementSummary({
         </SummaryBox>
 
         <SummaryBox title="今月の資金収支">
-          <BigRow label="営業収支" value={cashFlow?.operatingCashFlow ?? null} signed />
+          <BigRow label="当月現金増減" value={cashFlow?.cashChange ?? null} signed />
           <div className="mt-3 border-t border-[var(--gridline)] pt-2">
-            <Row label="当月現金増減" value={cashFlow?.cashChange ?? null} signed />
+            <Row label="うち営業収支" value={cashFlow?.operatingCashFlow ?? null} signed />
           </div>
         </SummaryBox>
 

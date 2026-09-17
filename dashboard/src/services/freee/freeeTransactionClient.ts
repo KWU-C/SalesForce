@@ -105,6 +105,20 @@ export async function getTransfers(companyId: number, startDate: string, endDate
   );
 }
 
+/** type別の取引(deal)を発生日で取得する(収入/支出共通)。 */
+export async function getDeals(
+  companyId: number,
+  type: "income" | "expense",
+  startIssueDate: string,
+  endIssueDate: string
+): Promise<FreeeDeal[]> {
+  return freeeGetPaginated<FreeeDeal>(
+    "/api/1/deals",
+    { company_id: companyId, type, start_issue_date: startIssueDate, end_issue_date: endIssueDate },
+    "deals"
+  );
+}
+
 /**
  * 支出取引(type=expense)を発生日で取得する。発生日と実際の決済日はずれることが
  * あるため(実データで確認済み)、対象月より広めの発生日範囲で取得し、呼び出し側で
@@ -115,11 +129,7 @@ export async function getExpenseDeals(
   startIssueDate: string,
   endIssueDate: string
 ): Promise<FreeeDeal[]> {
-  return freeeGetPaginated<FreeeDeal>(
-    "/api/1/deals",
-    { company_id: companyId, type: "expense", start_issue_date: startIssueDate, end_issue_date: endIssueDate },
-    "deals"
-  );
+  return getDeals(companyId, "expense", startIssueDate, endIssueDate);
 }
 
 export async function getAccountItems(companyId: number): Promise<FreeeAccountItem[]> {

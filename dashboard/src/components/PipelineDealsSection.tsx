@@ -3,6 +3,7 @@
 import { PipelineDealRow } from "@/components/PipelineDealRow";
 import type { ConcreteCrId, PipelineDeal, ProcessMemo } from "@/domain/types";
 import { groupPipelineDealsByConfidence } from "@/features/sales-progress/pipelineGrouping";
+import { sortHighlightedFirst } from "@/features/sales-progress/resolveHighlighted";
 import { formatThousandYen } from "@/utils/format";
 
 interface PipelineDealsSectionProps {
@@ -20,7 +21,12 @@ export function PipelineDealsSection({
   memosByProcessId,
   onMemoSaved,
 }: PipelineDealsSectionProps) {
-  const groups = groupPipelineDealsByConfidence(deals);
+  const groups = groupPipelineDealsByConfidence(deals).map((group) => ({
+    ...group,
+    // チェック済み(●またはダッシュボード側の手動チェック)の案件をグループ内の上に表示する
+    // (ユーザー確定、2026-09-17)。
+    deals: sortHighlightedFirst(group.deals, memosByProcessId),
+  }));
 
   return (
     <div className="flex flex-col gap-4">

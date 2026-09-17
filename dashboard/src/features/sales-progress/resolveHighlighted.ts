@@ -1,3 +1,5 @@
+import type { PipelineDeal, ProcessMemo } from "@/domain/types";
+
 export interface ResolveHighlightedInput {
   /** Salesforce側の既存メモ(memo__c) */
   salesforceMemo: string | null;
@@ -34,4 +36,34 @@ export function resolveHighlighted(input: ResolveHighlightedInput): boolean {
   const salesforceTime = new Date(input.salesforceMemoUpdatedAt).getTime();
   const dashboardTime = new Date(input.dashboardHighlightedUpdatedAt).getTime();
   return salesforceTime > dashboardTime ? hasBullet : input.dashboardHighlighted;
+}
+
+/**
+ * PipelineDealRowが内部で使うresolveHighlightedと同じ入力の組み立てを、
+ * 一覧の並び替え(チェック済みを上に)のためにグループ側からも呼べるようにしたもの。
+ * 行コンポーネントのローカルstateとは無関係に、propsだけから同じ実効値を再計算する。
+ */
+export function isDealHighlighted(deal: PipelineDeal, memo: ProcessMemo | undefined): boolean {
+  return resolveHighlighted({
+    salesforceMemo: deal.salesforceMemo,
+    salesforceMemoUpdatedAt: deal.salesforceMemoUpdatedAt,
+    dashboardHighlighted: memo?.highlighted ?? false,
+    dashboardHighlightedUpdatedAt: memo?.highlightedUpdatedAt,
+  });
+}
+
+/**
+ * 案件一覧(確度グループ内)を、チェック済み(isDealHighlighted)が上に来るよう並び替える
+ * (ユーザー確定、2026-09-17)。Array.sortは安定ソートのため、チェック有無が同じ案件
+ * 同士の相対順序(呼び出し元の既存順=SOQLの受注確度→クライアント名順)は保たれる。
+ */
+export function sortHighlightedFirst(
+  deals: PipelineDeal[],
+  memosByProcessId: Record<string, ProcessMemo>
+): PipelineDeal[] {
+  return [...deals].sort(
+    (a, b) =>
+      Number(isDealHighlighted(b, memosByProcessId[b.processId])) -
+      Number(isDealHighlighted(a, memosByProcessId[a.processId]))
+  );
 }

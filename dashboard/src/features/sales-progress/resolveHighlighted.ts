@@ -12,6 +12,14 @@ export interface ResolveHighlightedInput {
 }
 
 /**
+ * 「チェック済み」とみなす先頭記号。「●」(U+25CF、CR1〜3で使用実績あり)に加えて
+ * 「⚫」(U+26AB、CR4の一部メモで使用。見た目はほぼ同じだが別のコードポイント)も対象にする
+ * (実データでCR4の複数案件がこの文字を使っており●判定から漏れていたことを確認、
+ * ユーザー報告により追加、2026-09-17)。
+ */
+const HIGHLIGHT_BULLETS = ["●", "⚫"];
+
+/**
  * 案件一覧のチェックボックス(highlighted)の実効値を決める(ユーザー確定、2026-09-16)。
  *
  * - Salesforceメモが「●」で始まる場合は基本的にチェック扱いにする
@@ -23,7 +31,8 @@ export interface ResolveHighlightedInput {
  *   新しくなるので●を再度採用する)
  */
 export function resolveHighlighted(input: ResolveHighlightedInput): boolean {
-  const hasBullet = input.salesforceMemo?.trimStart().startsWith("●") ?? false;
+  const trimmed = input.salesforceMemo?.trimStart() ?? "";
+  const hasBullet = HIGHLIGHT_BULLETS.some((bullet) => trimmed.startsWith(bullet));
 
   if (input.dashboardHighlightedUpdatedAt === undefined) {
     return hasBullet;

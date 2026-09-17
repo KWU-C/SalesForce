@@ -39,6 +39,17 @@ describe("resolveHighlighted", () => {
     ).toBe(true);
   });
 
+  it("also checks the box for the visually-similar ⚫ (U+26AB) bullet used in some CR4 memos", () => {
+    expect(
+      resolveHighlighted({
+        salesforceMemo: "⚫9/16先方社内で見直し中",
+        salesforceMemoUpdatedAt: "2026-09-01T00:00:00.000Z",
+        dashboardHighlighted: false,
+        dashboardHighlightedUpdatedAt: undefined,
+      })
+    ).toBe(true);
+  });
+
   it("leaves the box unchecked when there is no ● and the dashboard has never been manually toggled", () => {
     expect(
       resolveHighlighted({
@@ -123,7 +134,7 @@ describe("sortHighlightedFirst", () => {
       deal({ processId: "a", clientName: "A社" }),
       deal({ processId: "b", clientName: "B社", salesforceMemo: "●対応中" }),
       deal({ processId: "c", clientName: "C社" }),
-      deal({ processId: "d", clientName: "D社", salesforceMemo: "●対応中" }),
+      deal({ processId: "d", clientName: "D社", salesforceMemo: "⚫対応中" }),
     ];
 
     const sorted = sortHighlightedFirst(deals, {});

@@ -186,17 +186,18 @@ export default async function ManagementPage() {
     <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
         {authorized ? (
           <>
-            <h1 className="text-center text-xl font-semibold text-[var(--text-primary)]">経営ダッシュボード</h1>
-
-            {connectionStatus?.connected && (
-              <p className="text-center text-xs text-[var(--text-muted)]">
-                freee連携済み
-                {connectionStatus.connectedBy ? `（接続者: ${connectionStatus.connectedBy}）` : ""}
-                {connectionStatus.updatedAt
-                  ? `／最終更新: ${formatDateTime(connectionStatus.updatedAt)}`
-                  : ""}
-              </p>
-            )}
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h1 className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">経営ダッシュボード</h1>
+              {connectionStatus?.connected && (
+                <p className="text-xs text-[var(--text-muted)]">
+                  freee連携済み
+                  {connectionStatus.connectedBy ? `（接続者: ${connectionStatus.connectedBy}）` : ""}
+                  {connectionStatus.updatedAt
+                    ? `／最終更新: ${formatDateTime(connectionStatus.updatedAt)}`
+                    : ""}
+                </p>
+              )}
+            </div>
 
             {connectionStatus?.connected ? (
               <>

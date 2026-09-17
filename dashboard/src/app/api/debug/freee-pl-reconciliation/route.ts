@@ -27,19 +27,17 @@ export async function GET(request: NextRequest) {
   const fiscalYear = freeeFiscalYearForTerm(49);
 
   try {
-    const [monthlyResults, totalTrialPl] = await Promise.all([
-      Promise.all(
-        FISCAL_MONTH_ORDER.map(async (month) => {
-          const trialPl = await getTrialPl(companyId, { fiscalYear, startMonth: month, endMonth: month });
-          return { month, ...extractPlSummary(trialPl) };
-        })
-      ),
-      getTrialPl(companyId, {
-        fiscalYear,
-        startMonth: FISCAL_MONTH_ORDER[0],
-        endMonth: FISCAL_MONTH_ORDER[FISCAL_MONTH_ORDER.length - 1],
-      }),
-    ]);
+    // freeeのレート制限に引っかかるため並列ではなく直列で呼ぶ(実データで429を確認、2026-09-17)
+    const monthlyResults = [];
+    for (const month of FISCAL_MONTH_ORDER) {
+      const trialPl = await getTrialPl(companyId, { fiscalYear, startMonth: month, endMonth: month });
+      monthlyResults.push({ month, ...extractPlSummary(trialPl) });
+    }
+    const totalTrialPl = await getTrialPl(companyId, {
+      fiscalYear,
+      startMonth: FISCAL_MONTH_ORDER[0],
+      endMonth: FISCAL_MONTH_ORDER[FISCAL_MONTH_ORDER.length - 1],
+    });
 
     return NextResponse.json({
       fiscalYear,

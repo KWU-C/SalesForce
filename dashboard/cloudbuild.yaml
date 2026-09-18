@@ -94,20 +94,28 @@ steps:
   # tsx等のTypeScriptトランスパイラを一切必要としない(tsxはローカル動作確認用の
   # devDependencyのみに留める、ユーザー確定、2026-09-18)。
   #
-  # 重要: --commandは指定せず、`node ...`を丸ごと--argsに入れる(ユーザー確定、
-  # 2026-09-18、実地の起動失敗を受けての修正)。buildpacksが作るイメージのENTRYPOINTは
+  # 重要: --commandは指定せず、`-- node dist/jobs/...js`を丸ごと--argsに入れる
+  # (ユーザー確定、2026-09-18、実地の起動失敗2件を受けての修正)。
+  #
+  # 失敗1(--command=nodeを指定していた時): buildpacksが作るイメージのENTRYPOINTは
   # `/cnb/lifecycle/launcher`で、buildpacksが用意したPATH等の実行環境はこのlauncherが
-  # 起動時に自分で組み立てる。ここで--command=nodeのように指定するとENTRYPOINT自体を
-  # 丸ごと置き換えてしまい、launcherを経由しない生の(PATH未設定の)環境でnodeをexec
-  # しようとして即座に失敗する(実際にCloud Run上で「Application exec likely failed」
-  # 「Application failed to start」で起動できず、アプリ側のログが一行も出ない形で
-  # 再現した、2026-09-18)。--commandを空にして--argsだけに`node,dist/jobs/...js`を
-  # 渡すと、argv[0]("node")がbuildpacksのプロセスタイプ名と一致しないため、launcherが
-  # 「生のコマンド行」として解釈し、buildpacks環境を適用した上でexecしてくれる
-  # (Cloud Native Buildpacksの公式に文書化された挙動)。`--command=""`を明示しているのは、
-  # `gcloud run jobs deploy`は既存Jobの更新時、指定しなかったフィールドを前回の値の
-  # ままにする(差分更新)ため、省略するだけでは前回の`--command=node`が残ってしまう
-  # 可能性があるため(空文字を渡すと当該フィールドをリセットする、gcloud公式仕様)。
+  # 起動時に自分で組み立てる。--command=nodeのように指定するとENTRYPOINT自体を丸ごと
+  # 置き換えてしまい、launcherを経由しない生の(PATH未設定の)環境でnodeをexecしようと
+  # して即座に失敗する(Cloud Run上で「Application exec likely failed」「Application
+  # failed to start」となり、アプリ側のログが一行も出ない形で実際に再現した)。
+  #
+  # 失敗2(--commandを空にして--args=node,dist/jobs/...jsのみにした時):
+  # launcherは`--`区切りなしで渡された引数を「直接実行するコマンド」ではなく
+  # デフォルトのプロセスタイプ(Procfile/package.jsonのnpm start=`next start`)への
+  # 追加引数として解釈する(Cloud Native Buildpacksのlauncher仕様、RFC 0045)。
+  # 実際`next start node dist/jobs/scheduledFinanceRefresh.js`として実行され、
+  # nextが"node"をプロジェクトディレクトリ引数と誤認してエラーになる形で再現した。
+  #
+  # 修正: 先頭に`--`を入れることで「これは直接execする生のコマンド行」であることを
+  # launcherに明示する(RFC 0045で規定された挙動)。`--command=""`は、
+  # `gcloud run jobs deploy`が既存Jobの更新時に指定しなかったフィールドを前回の値の
+  # ままにする(差分更新)ため、省略するだけでは前回の値が残ってしまう可能性がある
+  # ことへの対策(空文字を渡すと当該フィールドをリセットする、gcloud公式仕様)。
   #
   # Cloud Run Jobは受信用URLを持たず、Cloud Scheduler→Cloud Run Admin API(jobs.run)
   # 経由でのみ起動される。IAP・OAuth・Cloud Run IAM(run.invoker等)はWebサービス側の
@@ -137,7 +145,7 @@ steps:
           --image="$image" \
           --region="$region" \
           --command="" \
-          --args=node,dist/jobs/scheduledFinanceRefresh.js \
+          --args=--,node,dist/jobs/scheduledFinanceRefresh.js \
           --set-env-vars=FREEE_TOKEN_DOC_ID=${_SERVICE_NAME} \
           --set-secrets=FREEE_CLIENT_ID=freee-client-id:latest,FREEE_CLIENT_SECRET=freee-client-secret:latest \
           --task-timeout=540s \

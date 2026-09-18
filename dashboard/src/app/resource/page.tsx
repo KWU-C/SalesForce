@@ -51,25 +51,30 @@ export default async function ResourcePage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-6 px-4 py-10 sm:px-6">
+    <main className="mx-auto flex max-w-5xl flex-1 flex-col px-4 py-10 sm:px-6">
       {authorized ? (
         <>
-          <h1 className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">リソース</h1>
-          {resourceLoad && (
-            <ResourceLoadTable crLoads={resourceLoad.crLoads} anomalyCount={resourceLoad.anomalyCount} />
-          )}
-          {loadError && (
-            <p className="text-center text-sm text-[var(--text-muted)]">
-              推定負荷率のデータ取得に失敗しました。
-            </p>
-          )}
+          <div className="flex flex-col gap-6">
+            <h1 className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">リソース</h1>
+            {resourceLoad && (
+              <ResourceLoadTable crLoads={resourceLoad.crLoads} anomalyCount={resourceLoad.anomalyCount} />
+            )}
+            {loadError && (
+              <p className="text-center text-sm text-[var(--text-muted)]">
+                推定負荷率のデータ取得に失敗しました。
+              </p>
+            )}
+          </div>
 
-          {attendance && <AttendanceSection data={attendance} />}
-          {attendanceError && (
-            <p className="text-center text-sm text-[var(--text-muted)]">
-              勤怠状況のデータ取得に失敗しました。
-            </p>
-          )}
+          {/* 勤怠状況の上に50px空ける(ユーザー確定、2026-09-18) */}
+          <div className="mt-[50px] flex flex-col gap-6">
+            {attendance && <AttendanceSection data={attendance} />}
+            {attendanceError && (
+              <p className="text-center text-sm text-[var(--text-muted)]">
+                勤怠状況のデータ取得に失敗しました。
+              </p>
+            )}
+          </div>
         </>
       ) : (
         <div className="flex flex-col gap-2 py-8 text-center">

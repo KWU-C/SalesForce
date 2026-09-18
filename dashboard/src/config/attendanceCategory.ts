@@ -24,8 +24,9 @@ export const ATTENDANCE_EXCLUDED_NAMES: readonly string[] = [
   "川内 祥克",
   "生山 久展",
   "田中 恵子",
+  "河﨑 美生",
 ];
 
-export const ATTENDANCE_SHORT_HOURS_NAMES: readonly string[] = ["能登 愛", "柳田 佳奈", "澤間 紋華"];
+export const ATTENDANCE_SHORT_HOURS_NAMES: readonly string[] = ["能登 愛", "柳田 佳奈", "澤間 紋華", "所 美由紀"];
 
 export const ATTENDANCE_CLERICAL_NAMES: readonly string[] = ["牛尾 郁美", "伊藤 茜", "加藤 絵理子"];

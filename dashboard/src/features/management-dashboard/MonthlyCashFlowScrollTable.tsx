@@ -16,7 +16,8 @@ const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   assetTransfer: "積立・資産移動",
 };
 
-/** 横スクロール表の1列(1ヶ月分)。cashFlowが取得できなかった月はnull(データ未設定として表示) */
+/** 横スクロール表の1列(1ヶ月分、またはisTermTotal=trueの場合は1期分の通期合計)。
+ * cashFlowが取得できなかった月/期はnull(データ未設定として表示) */
 export interface MonthColumn {
   fiscalYear: number;
   term: number;
@@ -25,6 +26,13 @@ export interface MonthColumn {
   /** 現在時刻から見て「当月」かどうか(軽い強調表示用) */
   isCurrent: boolean;
   cashFlow: MonthlyCashFlow | null;
+  /**
+   * 期別通期スナップショット(termCashFlowSnapshots)の列かどうか。trueの場合、
+   * ヘッダーは「{calendarYear}年（{term}期通期）」形式で表示し、月次の
+   * 「この月をfreeeから更新」ボタンは表示しない(月次スナップショットとは別種の
+   * 一度計算したら不変のデータのため、ユーザー確定、2026-09-18)。
+   */
+  isTermTotal?: boolean;
 }
 
 type RowDef =
@@ -98,10 +106,12 @@ function formatCell(value: number | null): string {
  * 月が進むごとに自動で列が増える設計。列の組み立てはpage.tsx側で行う、
  * ユーザー確定、2026-09-15)。
  *
- * 列ごとのデータソースは呼び出し側(page.tsx)が決める。当月を含む全列とも常に
+ * 列ごとのデータソースは呼び出し側(page.tsx)が決める。当月を含む全月列とも常に
  * Firestoreキャッシュ優先で読む(アクセスごとのfreeeライブ取得は行わない、
  * ユーザー確定、2026-09-18。ローディングを軽くするため)。「この月をfreeeから更新」
- * ボタンは全列に表示し、どの月でも個別に再取得できるようにする。
+ * ボタンは月列にのみ表示し、どの月でも個別に再取得できるようにする。isTermTotal=true
+ * の期別通期合計列は月次スナップショットとは別種の不変データのため、このボタンは
+ * 表示しない(termCashFlowSnapshots、ユーザー確定、2026-09-18)。
  */
 export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[] }) {
   return (
@@ -119,13 +129,19 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
               </th>
               {columns.map((col) => (
                 <th
-                  key={`${col.fiscalYear}-${col.month}`}
+                  key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
                   className={`${MONTH_COL_WIDTH} border-b border-[var(--gridline)] px-3 py-2 text-right align-bottom ${
-                    col.isCurrent ? "bg-[var(--surface-sunken)]" : ""
+                    col.isCurrent ? "bg-[var(--surface-sunken)]" : col.isTermTotal ? "bg-[var(--surface-sunken)]" : ""
                   }`}
                 >
                   <div className="flex items-center justify-end gap-1 whitespace-nowrap text-sm font-semibold text-[var(--text-primary)]">
-                    {col.calendarYear}年{col.month}月
+                    {col.isTermTotal ? (
+                      <>
+                        {col.calendarYear}年（{col.term}期通期）
+                      </>
+                    ) : (
+                      <>{col.calendarYear}年{col.month}月</>
+                    )}
                     {col.isCurrent && (
                       <span className="rounded bg-[var(--band-bg)] px-1 py-0.5 text-[10px] font-bold text-white">
                         当月
@@ -133,7 +149,7 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                     )}
                   </div>
                   <div className="mt-1 flex justify-end">
-                    <RefreshMonthButton fiscalYear={col.fiscalYear} month={col.month} />
+                    {!col.isTermTotal && <RefreshMonthButton fiscalYear={col.fiscalYear} month={col.month} />}
                   </div>
                 </th>
               ))}
@@ -153,7 +169,7 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                     </td>
                     {columns.map((col, colIndex) => (
                       <td
-                        key={`${col.fiscalYear}-${col.month}`}
+                        key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
                         className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)}`}
                       />
                     ))}
@@ -181,7 +197,7 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                   </td>
                   {columns.map((col, colIndex) => (
                     <td
-                      key={`${col.fiscalYear}-${col.month}`}
+                      key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
                       className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)} px-3 py-1.5 text-right tabular-nums ${valueClass}`}
                     >
                       {col.cashFlow ? formatCell(row.get(col.cashFlow)) : "データ未設定"}

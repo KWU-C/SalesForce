@@ -7,6 +7,7 @@ import {
   buildOrderLeaderRankingQuery,
   buildOrderProgressQuery,
   buildPipelineDealsQuery,
+  buildResourceLoadDealsQuery,
   buildSalesTargetQuery,
 } from "./salesforceQueries";
 
@@ -155,5 +156,22 @@ describe("buildPipelineDealsQuery", () => {
     expect(soql).not.toContain("Name LIKE");
     expect(soql).not.toContain("memo__c !=");
     expect(soql).not.toContain("失注予定");
+  });
+});
+
+describe("buildResourceLoadDealsQuery", () => {
+  it("selects raw (unaliased) deal fields for 受注済み・完了月が現在月以降 of the given CRs", () => {
+    const soql = buildResourceLoadDealsQuery(CR_IDS_4, "2026-09-01");
+
+    expect(soql).toContain("SELECT bumonna__c, arari__c, juchuubi__c, seikyuubi__c");
+    expect(soql).toContain("FROM Process__c");
+    expect(soql).toContain("bumonna__c IN ('CR1','CR2','CR3','CR4')");
+    expect(soql).toContain("juchukakudo__c = 'A (80～100%)'");
+    expect(soql).toContain("phase__c != '失注'");
+    expect(soql).toContain("juchuubi__c != null");
+    expect(soql).toContain("seikyuubi__c != null");
+    expect(soql).toContain("seikyuubi__c >= 2026-09-01");
+    // 完了月の上限は設けない(長期案件も対象に含めるため)
+    expect(soql).not.toContain("seikyuubi__c <=");
   });
 });

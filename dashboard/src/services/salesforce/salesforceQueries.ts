@@ -197,3 +197,31 @@ export function buildPipelineDealsQuery(crId: string): string {
       ${exclusionFilter ?? ""}
     ORDER BY juchukakudo__c ASC, clientName__c ASC`;
 }
+
+/**
+ * 推定負荷率（リソース、/resource）用の明細取得。
+ *
+ * 「受注」「完了」の集計クエリ(buildOrderProgressQuery/buildCompletedProgressQuery)とは
+ * 別の独立したクエリで、既存の受注・完了・達成率・累計の集計ロジックには一切影響しない
+ * （ユーザー確定、2026-09-18）。
+ *
+ * 対象: 受注確度A・失注除外・受注済み(juchuubi__c あり)・完了月(seikyuubi__c)が
+ * currentMonthStart以降の案件。完了が現在月より前(＝既に完了済みで現在は稼働していない
+ * とみなせる)案件は対象外にする(ユーザー確定)。上限日付は設けない(長期案件も
+ * 対象に含めるため)。集計はせず明細のまま返す(案件ごとに受注月〜完了月の月数で
+ * 按分するのはアプリ側、features/resource-load/resourceLoad.ts)。
+ *
+ * 明細取得(非集計)クエリのため、クライアントランキング用クエリ
+ * (buildOrderClientRankingQuery等)と同様にフィールドエイリアスは使わず
+ * 生のAPI名のまま返す(呼び出し側でマッピングする)。
+ */
+export function buildResourceLoadDealsQuery(crIds: readonly string[], currentMonthStart: string): string {
+  return `SELECT bumonna__c, arari__c, juchuubi__c, seikyuubi__c
+    FROM Process__c
+    WHERE bumonna__c IN (${crInClause(crIds)})
+      AND juchukakudo__c = 'A (80～100%)'
+      AND phase__c != '失注'
+      AND juchuubi__c != null
+      AND seikyuubi__c != null
+      AND seikyuubi__c >= ${currentMonthStart}`;
+}

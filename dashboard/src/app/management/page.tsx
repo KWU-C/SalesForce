@@ -6,6 +6,8 @@ import { MonthlyCashFlowScrollTable } from "@/features/management-dashboard/Mont
 import type { MonthColumn } from "@/features/management-dashboard/MonthlyCashFlowScrollTable";
 import { getOrFetchMonthlyCashFlow } from "@/features/management-dashboard/monthlyCashFlowService";
 import type { MonthlyCashFlow } from "@/features/management-dashboard/types";
+import { getOrComputeTermCashFlowTotal } from "@/features/management-dashboard/termCashFlowTotalService";
+import type { TermCashFlowTotal } from "@/features/management-dashboard/termCashFlowTotal";
 import { LoanStatusTable } from "@/features/management-dashboard/LoanStatusTable";
 import { getOrFetchLoanStatus } from "@/features/management-dashboard/loanStatusService";
 import type { LoanStatusSnapshot } from "@/features/management-dashboard/loanStatus";
@@ -100,10 +102,18 @@ export default async function ManagementPage() {
   let loanStatusError = false;
   let fundReserve: FundReserve | null = null;
   let fundReserveError = false;
+  const termTotalsByTerm = new Map<number, TermCashFlowTotal>();
 
   const { term: currentTerm, currentMonth } = getCurrentFiscalPeriod();
   const currentFiscalYear = freeeFiscalYearForTerm(currentTerm);
   const monthList = monthsFromAnchorToCurrent(CASH_FLOW_TABLE_ANCHOR, { term: currentTerm, month: currentMonth });
+  // 隣接する月列でtermが変わる境目を機械的に検出する。現在は49期8月→50期9月の1箇所
+  // だけだが、将来51期に入れば50期8月→51期9月の境目が新たに現れ、コード変更なしで
+  // 「50期 通期」が同じ仕組みで挿入される(ユーザー確定、2026-09-18)。
+  const termTotalBoundaries: number[] = [];
+  for (let i = 0; i < monthList.length - 1; i++) {
+    if (monthList[i].term !== monthList[i + 1].term) termTotalBoundaries.push(monthList[i].term);
+  }
 
   if (authorized) {
     try {
@@ -171,18 +181,64 @@ export default async function ManagementPage() {
         console.error("[management page] freeeからの当期累計サマリー取得に失敗しました");
         financialSummaryError = true;
       }
+      // 期をまたぐ境目だけ通期合計(termCashFlowSnapshots)を取得する。一度計算されたら
+      // Firestoreキャッシュを無条件で返す(forceRefreshは持たない、ユーザー確定、
+      // 2026-09-18)ため、毎回のページアクセスで重い計算が走ることはない
+      try {
+        const results = await Promise.all(
+          termTotalBoundaries.map(async (term) => [term, await getOrComputeTermCashFlowTotal(term)] as const)
+        );
+        for (const [term, total] of results) {
+          if (total) termTotalsByTerm.set(term, total);
+        }
+      } catch {
+        console.error("[management page] freeeからの通期合計取得に失敗しました");
+      }
     }
   }
 
-  // 横スクロール表(基準月〜当月)。月が進むごとに列が自動で増える(ユーザー確定、2026-09-15)
-  const cashFlowColumns: MonthColumn[] = monthList.map((m, idx) => ({
-    fiscalYear: freeeFiscalYearForTerm(m.term),
-    term: m.term,
-    month: m.month,
-    calendarYear: calendarYearForTermMonth(m.term, m.month),
-    isCurrent: idx === monthList.length - 1,
-    cashFlow: cashFlowByMonth[idx] ?? null,
-  }));
+  // 横スクロール表(基準月〜当月)。月が進むごとに列が自動で増える(ユーザー確定、2026-09-15)。
+  // 期の境目(termTotalBoundaries)には、その期の月列の直後に通期合計列を1本差し込む
+  // (例: 2026年8月 | 49期 通期 | 2026年9月 当月、ユーザー確定、2026-09-18)
+  const cashFlowColumns: MonthColumn[] = [];
+  monthList.forEach((m, idx) => {
+    cashFlowColumns.push({
+      fiscalYear: freeeFiscalYearForTerm(m.term),
+      term: m.term,
+      month: m.month,
+      calendarYear: calendarYearForTermMonth(m.term, m.month),
+      isCurrent: idx === monthList.length - 1,
+      cashFlow: cashFlowByMonth[idx] ?? null,
+    });
+
+    const isTermBoundary = idx < monthList.length - 1 && monthList[idx + 1].term !== m.term;
+    const termTotal = isTermBoundary ? termTotalsByTerm.get(m.term) : undefined;
+    if (isTermBoundary && termTotal) {
+      cashFlowColumns.push({
+        fiscalYear: termTotal.fiscalYear,
+        term: termTotal.term,
+        month: m.month,
+        calendarYear: calendarYearForTermMonth(m.term, m.month),
+        isCurrent: false,
+        isTermTotal: true,
+        cashFlow: {
+          fiscalYear: termTotal.fiscalYear,
+          month: m.month,
+          cashOpening: termTotal.cashOpening,
+          cashClosing: termTotal.cashClosing,
+          cashChange: termTotal.cashChange,
+          externalIncome: termTotal.externalIncome,
+          externalExpenseTotal: termTotal.externalExpenseTotal,
+          expenseByCategory: termTotal.expenseByCategory,
+          operatingCashFlow: termTotal.operatingCashFlow,
+          financingCashFlow: termTotal.financingCashFlow,
+          interestCashFlow: termTotal.interestCashFlow,
+          assetTransferCashFlow: termTotal.assetTransferCashFlow,
+          fetchedAt: termTotal.computedAt,
+        },
+      });
+    }
+  });
   const currentCashFlow = cashFlowByMonth[cashFlowByMonth.length - 1] ?? null;
   const previousCashFlow = cashFlowByMonth.length > 1 ? cashFlowByMonth[cashFlowByMonth.length - 2] : null;
   // 「最終更新」表示は接続(トークン)更新時刻ではなく、当月分データが実際にfreeeから

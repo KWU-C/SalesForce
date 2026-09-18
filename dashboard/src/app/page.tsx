@@ -26,7 +26,7 @@ export default async function Page({ searchParams }: PageProps) {
   const dataSource = getSalesProgressDataSource();
   const { term: actualTerm, currentMonth: actualCurrentMonth } = getCurrentFiscalPeriod();
   const iapEmail = await getRequestIapEmail();
-  const showManagementTab = isManagementDashboardAuthorized(iapEmail);
+  const showRestrictedTabs = isManagementDashboardAuthorized(iapEmail);
 
   // 期セレクターの選択肢。取得できなければ現在の事業期のみにフォールバック
   // （各DataSource実装が自分でこのフォールバックを持つため、ここでは待つだけ）
@@ -71,7 +71,7 @@ export default async function Page({ searchParams }: PageProps) {
 
   return (
     <>
-      <DashboardNav active="/" showManagementTab={showManagementTab} />
+      <DashboardNav active="/" showRestrictedTabs={showRestrictedTabs} />
       <Header
         fiscalPeriod={{ term: selectedTerm, currentMonth: displayMonth }}
         availableTerms={availableTerms}

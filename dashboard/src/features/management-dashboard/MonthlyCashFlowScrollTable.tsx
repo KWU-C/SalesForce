@@ -2,6 +2,7 @@ import { formatYen } from "@/utils/format";
 import { OPERATING_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
 import { RefreshMonthButton } from "./RefreshMonthButton";
+import { RefreshTermButton } from "./RefreshTermButton";
 import { SectionBanner } from "./SectionBanner";
 import type { MonthlyCashFlow } from "./types";
 
@@ -28,9 +29,9 @@ export interface MonthColumn {
   cashFlow: MonthlyCashFlow | null;
   /**
    * 期別通期スナップショット(termCashFlowSnapshots)の列かどうか。trueの場合、
-   * ヘッダーは「{calendarYear}年（{term}期通期）」形式で表示し、月次の
-   * 「この月をfreeeから更新」ボタンは表示しない(月次スナップショットとは別種の
-   * 一度計算したら不変のデータのため、ユーザー確定、2026-09-18)。
+   * ヘッダーは「{calendarYear}年{month}月（{term}期通期）」形式(期末月も含めて表示)、
+   * ヘッダー背景色つき、「この期をfreeeから更新」ボタン(RefreshTermButton、
+   * 月次とは別のFirestoreドキュメントを更新する)を表示する(ユーザー確定、2026-09-18)。
    */
   isTermTotal?: boolean;
 }
@@ -108,10 +109,14 @@ function formatCell(value: number | null): string {
  *
  * 列ごとのデータソースは呼び出し側(page.tsx)が決める。当月を含む全月列とも常に
  * Firestoreキャッシュ優先で読む(アクセスごとのfreeeライブ取得は行わない、
- * ユーザー確定、2026-09-18。ローディングを軽くするため)。「この月をfreeeから更新」
- * ボタンは月列にのみ表示し、どの月でも個別に再取得できるようにする。isTermTotal=true
- * の期別通期合計列は月次スナップショットとは別種の不変データのため、このボタンは
- * 表示しない(termCashFlowSnapshots、ユーザー確定、2026-09-18)。
+ * ユーザー確定、2026-09-18。ローディングを軽くするため)。月列は「この月をfreeeから
+ * 更新」、isTermTotal=true(期別通期合計)列は「この期をfreeeから更新」ボタンを
+ * それぞれ表示し、どちらも個別に再取得できるようにする(termCashFlowSnapshots、
+ * ユーザー確定、2026-09-18)。
+ *
+ * ヘッダーの背景色は期別通期合計列のみに付ける(isTermTotal、例:
+ * 「2026年8月（49期通期）」)。当月列も含め、それ以外の通常月列はヘッダー背景を
+ * 付けない(白のまま)。当月の強調は「当月」バッジのみで行う(ユーザー確定、2026-09-18)。
  */
 export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[] }) {
   return (
@@ -131,13 +136,13 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                 <th
                   key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
                   className={`${MONTH_COL_WIDTH} border-b border-[var(--gridline)] px-3 py-2 text-right align-bottom ${
-                    col.isCurrent ? "bg-[var(--surface-sunken)]" : col.isTermTotal ? "bg-[var(--surface-sunken)]" : ""
+                    col.isTermTotal ? "bg-[var(--surface-sunken)]" : ""
                   }`}
                 >
                   <div className="flex items-center justify-end gap-1 whitespace-nowrap text-sm font-semibold text-[var(--text-primary)]">
                     {col.isTermTotal ? (
                       <>
-                        {col.calendarYear}年（{col.term}期通期）
+                        {col.calendarYear}年{col.month}月（{col.term}期通期）
                       </>
                     ) : (
                       <>{col.calendarYear}年{col.month}月</>
@@ -149,7 +154,11 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                     )}
                   </div>
                   <div className="mt-1 flex justify-end">
-                    {!col.isTermTotal && <RefreshMonthButton fiscalYear={col.fiscalYear} month={col.month} />}
+                    {col.isTermTotal ? (
+                      <RefreshTermButton term={col.term} />
+                    ) : (
+                      <RefreshMonthButton fiscalYear={col.fiscalYear} month={col.month} />
+                    )}
                   </div>
                 </th>
               ))}

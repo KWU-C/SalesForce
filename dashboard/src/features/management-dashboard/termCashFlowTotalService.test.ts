@@ -95,12 +95,27 @@ describe("getOrComputeTermCashFlowTotal", () => {
     expect(saveTermCashFlowSnapshotMock).not.toHaveBeenCalled();
   });
 
-  it("has no forceRefresh option; a cached term is never recomputed by this function", async () => {
+  it("without forceRefresh, a cached term is never recomputed (page access / daily job path)", async () => {
     const cached = { ...makeComputed(), computedAt: new Date("2026-09-01T00:00:00Z") };
     getTermCashFlowSnapshotMock.mockResolvedValue(cached);
 
-    expect(getOrComputeTermCashFlowTotal.length).toBe(1); // term だけを受け取る(オプション引数なし)
     await getOrComputeTermCashFlowTotal(49);
+
     expect(computeTermCashFlowTotalMock).not.toHaveBeenCalled();
+  });
+
+  it("with forceRefresh:true, recomputes and overwrites even when a cache entry exists (manual 更新 button path)", async () => {
+    getTermCashFlowSnapshotMock.mockResolvedValue({ ...makeComputed(), computedAt: new Date("2026-09-01T00:00:00Z") });
+    getFreeeCompanyIdMock.mockResolvedValue(123);
+    computeTermCashFlowTotalMock.mockResolvedValue(makeComputed({ term: 49, cashClosing: 9_999_999 }));
+
+    const result = await getOrComputeTermCashFlowTotal(49, { forceRefresh: true });
+
+    expect(getTermCashFlowSnapshotMock).not.toHaveBeenCalled();
+    expect(computeTermCashFlowTotalMock).toHaveBeenCalledWith(123, 49);
+    expect(saveTermCashFlowSnapshotMock).toHaveBeenCalledWith(
+      expect.objectContaining({ term: 49, cashClosing: 9_999_999 })
+    );
+    expect(result?.cashClosing).toBe(9_999_999);
   });
 });

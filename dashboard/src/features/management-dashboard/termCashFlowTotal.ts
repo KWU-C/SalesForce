@@ -69,9 +69,14 @@ export async function computeTermCashFlowTotal(
   term: number
 ): Promise<Omit<TermCashFlowTotal, "computedAt">> {
   const fiscalYear = freeeFiscalYearForTerm(term);
-  const months = await Promise.all(
-    FISCAL_MONTH_ORDER.map((calendarMonth) => computeMonthlyCashFlow(companyId, fiscalYear, calendarMonth))
-  );
+  // 12か月分をPromise.allで並列実行すると、1か月あたり6本のfreee APIリクエストが
+  // 同時に72本前後飛び、freeeのレート制限(429)に実データで抵触することを確認した
+  // (2026-09-18)。この関数は「終わった期」を手動更新ボタンから稀にしか呼ばないため、
+  // 実行時間が延びても逐次実行の方が安全(レート制限を踏んで丸ごと失敗する方が困る)。
+  const months: Awaited<ReturnType<typeof computeMonthlyCashFlow>>[] = [];
+  for (const calendarMonth of FISCAL_MONTH_ORDER) {
+    months.push(await computeMonthlyCashFlow(companyId, fiscalYear, calendarMonth));
+  }
   // FISCAL_MONTH_ORDER = [9,10,11,12,1,2,3,4,5,6,7,8] なので先頭=期首月(9月)、末尾=期末月(8月)
   const first = months[0];
   const last = months[months.length - 1];

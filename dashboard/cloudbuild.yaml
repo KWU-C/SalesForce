@@ -94,28 +94,30 @@ steps:
   # tsx等のTypeScriptトランスパイラを一切必要としない(tsxはローカル動作確認用の
   # devDependencyのみに留める、ユーザー確定、2026-09-18)。
   #
-  # 重要: --commandは指定せず、`-- node dist/jobs/...js`を丸ごと--argsに入れる
-  # (ユーザー確定、2026-09-18、実地の起動失敗2件を受けての修正)。
+  # 重要: --commandに汎用launcherバイナリを絶対パスで直接指定し、--argsで
+  # `-- node dist/jobs/...js`を渡す(ユーザー確定、2026-09-18、実地の起動失敗3件を
+  # 受けての修正。Docker Registry HTTP APIでイメージのconfig blobを直接取得し、
+  # 実際のEntrypoint/Cmdを確認した上で特定した原因)。
   #
-  # 失敗1(--command=nodeを指定していた時): buildpacksが作るイメージのENTRYPOINTは
-  # `/cnb/lifecycle/launcher`で、buildpacksが用意したPATH等の実行環境はこのlauncherが
-  # 起動時に自分で組み立てる。--command=nodeのように指定するとENTRYPOINT自体を丸ごと
-  # 置き換えてしまい、launcherを経由しない生の(PATH未設定の)環境でnodeをexecしようと
-  # して即座に失敗する(Cloud Run上で「Application exec likely failed」「Application
-  # failed to start」となり、アプリ側のログが一行も出ない形で実際に再現した)。
+  # 失敗1(--command=nodeを指定): ENTRYPOINTを丸ごと置き換えてしまい、buildpacksが
+  # 用意するPATH等の環境なしに生の"node"をexecしようとして即座に失敗
+  # (Cloud Run上で「Application exec likely failed」、アプリログ0行で再現)。
   #
-  # 失敗2(--commandを空にして--args=node,dist/jobs/...jsのみにした時):
-  # launcherは`--`区切りなしで渡された引数を「直接実行するコマンド」ではなく
-  # デフォルトのプロセスタイプ(Procfile/package.jsonのnpm start=`next start`)への
-  # 追加引数として解釈する(Cloud Native Buildpacksのlauncher仕様、RFC 0045)。
+  # 失敗2(--commandを空にして--args=node,dist/jobs/...jsのみ): このイメージの実際の
+  # ENTRYPOINTは汎用の`/cnb/lifecycle/launcher`ではなく`/cnb/process/web`という、
+  # "web"プロセスタイプ専用の固定ショートカットだった(イメージのconfig blobで実測、
+  # Google Cloud BuildpacksのNode.js実装がプロセスタイプ単一の場合にこの形にする)。
+  # このショートカットは常に`npm start`(=`next start`)を実行し、渡された引数を
+  # 単純に追加するだけで、「これは別コマンドだ」と解釈する`--`区切りの処理を持たない。
   # 実際`next start node dist/jobs/scheduledFinanceRefresh.js`として実行され、
   # nextが"node"をプロジェクトディレクトリ引数と誤認してエラーになる形で再現した。
   #
-  # 修正: 先頭に`--`を入れることで「これは直接execする生のコマンド行」であることを
-  # launcherに明示する(RFC 0045で規定された挙動)。`--command=""`は、
-  # `gcloud run jobs deploy`が既存Jobの更新時に指定しなかったフィールドを前回の値の
-  # ままにする(差分更新)ため、省略するだけでは前回の値が残ってしまう可能性がある
-  # ことへの対策(空文字を渡すと当該フィールドをリセットする、gcloud公式仕様)。
+  # 修正: `--command=/cnb/lifecycle/launcher`で汎用launcherバイナリを絶対パス指定で
+  # 直接exec対象にする(絶対パスなのでPATH未確立でも実行でき、起動後にlauncher自身が
+  # buildpacksのレイヤー環境を組み立てる)。`--args=--,node,dist/jobs/...js`で、
+  # launcherに「`--`以降は直接execする生のコマンド行」と解釈させる(CNB launcherの
+  # 公式仕様、RFC 0045)。`/cnb/lifecycle/launcher`はPATH環境変数(イメージのconfig
+  # blobで確認済み: `/cnb/process:/cnb/lifecycle:...`)にも含まれる実体バイナリ。
   #
   # Cloud Run Jobは受信用URLを持たず、Cloud Scheduler→Cloud Run Admin API(jobs.run)
   # 経由でのみ起動される。IAP・OAuth・Cloud Run IAM(run.invoker等)はWebサービス側の
@@ -144,7 +146,7 @@ steps:
         gcloud run jobs deploy "$job" \
           --image="$image" \
           --region="$region" \
-          --command="" \
+          --command=/cnb/lifecycle/launcher \
           --args=--,node,dist/jobs/scheduledFinanceRefresh.js \
           --set-env-vars=FREEE_TOKEN_DOC_ID=${_SERVICE_NAME} \
           --set-secrets=FREEE_CLIENT_ID=freee-client-id:latest,FREEE_CLIENT_SECRET=freee-client-secret:latest \

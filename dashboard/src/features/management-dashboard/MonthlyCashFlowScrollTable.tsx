@@ -98,10 +98,10 @@ function formatCell(value: number | null): string {
  * 月が進むごとに自動で列が増える設計。列の組み立てはpage.tsx側で行う、
  * ユーザー確定、2026-09-15)。
  *
- * 列ごとのデータソースは呼び出し側(page.tsx)が決める: 過去月はFirestore優先、
- * 当月はアクセスごとにfreeeライブ取得(既存のgetOrFetchMonthlyCashFlowをそのまま利用、
- * 計算ロジック自体は変更していない)。「この月をfreeeから更新」ボタンは、当月は
- * 毎アクセスで自動取得されるため過去月列にのみ表示する(ユーザー確定、2026-09-15)。
+ * 列ごとのデータソースは呼び出し側(page.tsx)が決める。当月を含む全列とも常に
+ * Firestoreキャッシュ優先で読む(アクセスごとのfreeeライブ取得は行わない、
+ * ユーザー確定、2026-09-18。ローディングを軽くするため)。「この月をfreeeから更新」
+ * ボタンは全列に表示し、どの月でも個別に再取得できるようにする。
  */
 export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[] }) {
   return (
@@ -132,13 +132,9 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                       </span>
                     )}
                   </div>
-                  {/* 当月はアクセスごとに自動でfreeeライブ取得するため、再取得ボタンは
-                      過去月列にのみ置く(ユーザー確定、2026-09-15) */}
-                  {!col.isCurrent && (
-                    <div className="mt-1 flex justify-end">
-                      <RefreshMonthButton fiscalYear={col.fiscalYear} month={col.month} />
-                    </div>
-                  )}
+                  <div className="mt-1 flex justify-end">
+                    <RefreshMonthButton fiscalYear={col.fiscalYear} month={col.month} />
+                  </div>
                 </th>
               ))}
             </tr>

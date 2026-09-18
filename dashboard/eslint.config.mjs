@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Cloud Run Job build output (esbuild-bundled, see package.json build:job)
+    "dist/**",
   ]),
 ]);
 

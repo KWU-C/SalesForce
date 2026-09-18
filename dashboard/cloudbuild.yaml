@@ -15,6 +15,17 @@ substitutions:
   # 置換変数として設定する（SALES_DATA_SOURCEと同じ運用）。未設定のままだと
   # メモ保存APIのみ常時403になる(fail-closed)。ダッシュボード本体の閲覧には影響しない。
   _IAP_EXPECTED_AUDIENCE: ""
+  # 経営ダッシュボードの当月分スナップショットを毎日18:00(Asia/Tokyo)に自動更新する
+  # Cloud Run Job(deploy-jobステップ参照)が、コンテナの実行アイデンティティとして
+  # アタッチするサービスアカウント。IAPには一切関与せず、Firestore読み書き+freee
+  # Secret参照のみを持つ最小権限SA(ユーザー確定、2026-09-18)。Cloud SchedulerがJobを
+  # 起動するための別のサービスアカウント(roles/run.invokerのみ)とは完全に別物で、
+  # そちらはこのcloudbuild.yamlには一切登場しない(Scheduler側の設定でのみ使う、
+  # インフラ手順側で対応)。未設定(空文字)の場合はCloud Runのデフォルトコンピュート
+  # SAで動く(fail-closedにはしない。Jobは公開エンドポイントを持たず、誤って空文字の
+  # まま動いても外部からの攻撃面にはならないため)。dev/prodそれぞれのビルドトリガー
+  # 側の置換変数として設定する(_IAP_EXPECTED_AUDIENCEと同じ運用)。
+  _FREEE_JOB_SERVICE_ACCOUNT_EMAIL: ""
 
 steps:
   # 依存関係インストール（以降のstepはワークスペース共有のためnode_modulesを再利用）
@@ -73,6 +84,53 @@ steps:
       - --set-env-vars=SALES_DATA_SOURCE=${_SALES_DATA_SOURCE},SALESFORCE_LOGIN_URL=https://tcd-company.my.salesforce.com,SALESFORCE_USERNAME=sf-dashboard-integration@tcd.jp,IAP_EXPECTED_AUDIENCE=${_IAP_EXPECTED_AUDIENCE},FREEE_TOKEN_DOC_ID=${_SERVICE_NAME}
       - --set-secrets=SALESFORCE_CONSUMER_KEY=salesforce-consumer-key:latest,SALESFORCE_PRIVATE_KEY=salesforce-jwt-private-key:latest,FREEE_CLIENT_ID=freee-client-id:latest,FREEE_CLIENT_SECRET=freee-client-secret:latest
       - --quiet
+
+  # 経営ダッシュボードの当月分スナップショットを毎日18:00(Asia/Tokyo)に自動更新する
+  # Cloud Run Job。Webサービス(直前のdeployステップ)と全く同じソースイメージを使い、
+  # 起動コマンドだけ上書きする(Web用は`npm start`のまま、Job用は
+  # `node dist/jobs/scheduledFinanceRefresh.js`に分離、ユーザー確定、2026-09-18)。
+  # dist/jobs/scheduledFinanceRefresh.jsは`npm run build`(=`next build && npm run
+  # build:job`)がesbuildで生成する単一ファイルの事前コンパイル済みJSで、実行時に
+  # tsx等のTypeScriptトランスパイラを一切必要としない(tsxはローカル動作確認用の
+  # devDependencyのみに留める、ユーザー確定、2026-09-18)。Cloud Run Jobは受信用URLを
+  # 持たず、Cloud Scheduler→Cloud Run Admin API(jobs.run)経由でのみ起動される。
+  # IAP・OAuth・Cloud Run IAM(run.invoker等)はWebサービス側の設定に一切触れない、
+  # 別リソース・別IAM面(このJobを起動する権限は、下のservice-accountとは別の
+  # Scheduler専用SAへ、Job単体スコープでrun.invokerとして個別に付与する。
+  # インフラ手順側で対応)。
+  - id: deploy-job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        svc="${_SERVICE_NAME}"
+        region="${_REGION}"
+        job="${_SERVICE_NAME}-finance-refresh"
+
+        image=$(gcloud run services describe "$svc" --region="$region" --format='value(spec.template.spec.containers[0].image)')
+        echo "deploy-job: reusing image $image for $job"
+
+        sa_args=()
+        if [ -n "${_FREEE_JOB_SERVICE_ACCOUNT_EMAIL}" ]; then
+          sa_args=(--service-account="${_FREEE_JOB_SERVICE_ACCOUNT_EMAIL}")
+        fi
+
+        gcloud run jobs deploy "$job" \
+          --image="$image" \
+          --region="$region" \
+          --command=node \
+          --args=dist/jobs/scheduledFinanceRefresh.js \
+          --set-env-vars=FREEE_TOKEN_DOC_ID=${_SERVICE_NAME} \
+          --set-secrets=FREEE_CLIENT_ID=freee-client-id:latest,FREEE_CLIENT_SECRET=freee-client-secret:latest \
+          --task-timeout=540s \
+          --max-retries=1 \
+          --tasks=1 \
+          "${sa_args[@]}" \
+          --quiet
+
+        echo "deploy-job: $job deployed (trigger schedule is configured separately via Cloud Scheduler, not by this build)"
 
   # デプロイ後の稼働確認（ユーザー確定方針、2026-08-20）。
   # 1) 新revisionがReady状態か 2) URLがHTTP応答を返すか、を確認する。

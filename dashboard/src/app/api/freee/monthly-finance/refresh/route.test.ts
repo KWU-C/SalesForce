@@ -2,21 +2,13 @@ import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const verifyIapJwtMock = vi.fn();
-const getOrFetchMonthlyCashFlowMock = vi.fn();
-const getOrFetchLoanStatusMock = vi.fn();
-const getOrFetchFundReserveCoreMock = vi.fn();
+const refreshCurrentMonthSnapshotsMock = vi.fn();
 
 vi.mock("@/services/iap/verifyIapJwt", () => ({
   verifyIapJwt: verifyIapJwtMock,
 }));
-vi.mock("@/features/management-dashboard/monthlyCashFlowService", () => ({
-  getOrFetchMonthlyCashFlow: getOrFetchMonthlyCashFlowMock,
-}));
-vi.mock("@/features/management-dashboard/loanStatusService", () => ({
-  getOrFetchLoanStatus: getOrFetchLoanStatusMock,
-}));
-vi.mock("@/features/management-dashboard/fundReserveService", () => ({
-  getOrFetchFundReserveCore: getOrFetchFundReserveCoreMock,
+vi.mock("@/features/management-dashboard/refreshCurrentMonthSnapshots", () => ({
+  refreshCurrentMonthSnapshots: refreshCurrentMonthSnapshotsMock,
 }));
 
 const { POST } = await import("./route");
@@ -29,18 +21,10 @@ function makeRequest(body: unknown): NextRequest {
   });
 }
 
-function mockAllSucceed() {
-  getOrFetchMonthlyCashFlowMock.mockResolvedValue({ fiscalYear: 2025, month: 8 });
-  getOrFetchLoanStatusMock.mockResolvedValue({ fiscalYear: 2025, month: 8 });
-  getOrFetchFundReserveCoreMock.mockResolvedValue({ fiscalYear: 2025, month: 8 });
-}
-
 afterEach(() => {
   vi.restoreAllMocks();
   verifyIapJwtMock.mockReset();
-  getOrFetchMonthlyCashFlowMock.mockReset();
-  getOrFetchLoanStatusMock.mockReset();
-  getOrFetchFundReserveCoreMock.mockReset();
+  refreshCurrentMonthSnapshotsMock.mockReset();
 });
 
 describe("POST /api/freee/monthly-finance/refresh", () => {
@@ -48,7 +32,7 @@ describe("POST /api/freee/monthly-finance/refresh", () => {
     verifyIapJwtMock.mockResolvedValue({ ok: false, reason: "verification_failed" });
     const response = await POST(makeRequest({ fiscalYear: 2025, month: 8 }));
     expect(response.status).toBe(403);
-    expect(getOrFetchMonthlyCashFlowMock).not.toHaveBeenCalled();
+    expect(refreshCurrentMonthSnapshotsMock).not.toHaveBeenCalled();
   });
 
   it("returns 400 for an invalid month", async () => {
@@ -57,22 +41,29 @@ describe("POST /api/freee/monthly-finance/refresh", () => {
     expect(response.status).toBe(400);
   });
 
-  it("force-refreshes all three snapshots (cashFlow/loanStatus/fundReserveCore) for the requested month and returns ok", async () => {
+  it("delegates to refreshCurrentMonthSnapshots with includeFinancialSummary:false by default and returns ok", async () => {
     verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
-    mockAllSucceed();
+    refreshCurrentMonthSnapshotsMock.mockResolvedValue({ connected: true });
 
     const response = await POST(makeRequest({ fiscalYear: 2025, month: 8 }));
 
     expect(response.status).toBe(200);
-    expect(getOrFetchMonthlyCashFlowMock).toHaveBeenCalledWith(2025, 8, { forceRefresh: true });
-    expect(getOrFetchLoanStatusMock).toHaveBeenCalledWith(2025, 8, { forceRefresh: true });
-    expect(getOrFetchFundReserveCoreMock).toHaveBeenCalledWith(2025, 8, { forceRefresh: true });
+    expect(refreshCurrentMonthSnapshotsMock).toHaveBeenCalledWith(2025, 8, { includeFinancialSummary: false });
   });
 
-  it("returns 409 when freee is not connected (any of the three returns null)", async () => {
+  it("passes includeFinancialSummary:true through when requested", async () => {
     verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
-    mockAllSucceed();
-    getOrFetchLoanStatusMock.mockResolvedValue(null);
+    refreshCurrentMonthSnapshotsMock.mockResolvedValue({ connected: true });
+
+    const response = await POST(makeRequest({ fiscalYear: 2025, month: 8, includeFinancialSummary: true }));
+
+    expect(response.status).toBe(200);
+    expect(refreshCurrentMonthSnapshotsMock).toHaveBeenCalledWith(2025, 8, { includeFinancialSummary: true });
+  });
+
+  it("returns 409 when refreshCurrentMonthSnapshots reports connected:false", async () => {
+    verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
+    refreshCurrentMonthSnapshotsMock.mockResolvedValue({ connected: false });
 
     const response = await POST(makeRequest({ fiscalYear: 2025, month: 8 }));
 
@@ -81,8 +72,7 @@ describe("POST /api/freee/monthly-finance/refresh", () => {
 
   it("returns 502 without leaking details when the computation fails", async () => {
     verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
-    mockAllSucceed();
-    getOrFetchMonthlyCashFlowMock.mockRejectedValue(new Error("secret leak: token=abc"));
+    refreshCurrentMonthSnapshotsMock.mockRejectedValue(new Error("secret leak: token=abc"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const response = await POST(makeRequest({ fiscalYear: 2025, month: 8 }));

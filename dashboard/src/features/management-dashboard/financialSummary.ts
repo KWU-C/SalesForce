@@ -17,6 +17,14 @@ export interface FinancialSummary {
   ordinaryProfit: number | null;
 }
 
+/** Firestore(financialSummarySnapshots)へ保存するスナップショットの形。当期累計のため
+ * fiscalYear/monthは「どの時点でfreeeから取得したか」のキー(常に当月)に過ぎない */
+export interface FinancialSummarySnapshot extends FinancialSummary {
+  fiscalYear: number;
+  month: number;
+  fetchedAt: Date;
+}
+
 // trial_plの小計行は total_line: true で、account_category_nameがラベルになる
 // (freee実データで確認済み、2026-09-14)。この行にはaccount_item_nameのキー自体が
 // 存在しない(undefinedであり、nullではない)

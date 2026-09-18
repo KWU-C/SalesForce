@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { FreeeConnectForm } from "@/features/management-dashboard/FreeeConnectForm";
 import { FinancialSummaryCards } from "@/features/management-dashboard/FinancialSummaryCards";
-import { getFinancialSummary } from "@/features/management-dashboard/financialSummary";
 import type { FinancialSummary } from "@/features/management-dashboard/financialSummary";
 import { MonthlyCashFlowScrollTable } from "@/features/management-dashboard/MonthlyCashFlowScrollTable";
 import type { MonthColumn } from "@/features/management-dashboard/MonthlyCashFlowScrollTable";
@@ -14,8 +13,10 @@ import { FundReserveSection } from "@/features/management-dashboard/FundReserveS
 import { composeFundReserve } from "@/features/management-dashboard/fundReserve";
 import type { FundReserve } from "@/features/management-dashboard/fundReserve";
 import { getOrFetchFundReserveCore } from "@/features/management-dashboard/fundReserveService";
+import { getOrFetchFinancialSummary } from "@/features/management-dashboard/financialSummaryService";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ExpenseCompositionSection } from "@/features/management-dashboard/ExpenseCompositionSection";
+import { RefreshMonthButton } from "@/features/management-dashboard/RefreshMonthButton";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { getFreeeConnectionStatus } from "@/repositories/freeeAuthRepository";
@@ -73,9 +74,17 @@ function monthsFromAnchorToCurrent(
  * ページ全体の月切替UIは廃止し、当月は現在日付から自動判定する(ユーザー確定、2026-09-15)。
  * 経営サマリー・支出構成・借入状況・資金の備えは常に当月/現在時点を表示する
  * （月選択機能は持たせない）。月次資金収支のみ、CASH_FLOW_TABLE_ANCHOR(49期8月)〜
- * 当月までの月を横スクロール表で表示する(過去月=Firestoreスナップショット優先、
- * 当月=アクセスごとにfreeeライブ取得)。月が進むごとに列が自動で1つずつ増える
+ * 当月までの月を横スクロール表で表示する。月が進むごとに列が自動で1つずつ増える
  * (2ヶ月表示のレビューを経てユーザー確定、2026-09-15)。
+ *
+ * 当月分を含む全スナップショット(月次資金収支・借入状況・資金の備え・当期累計サマリー)は
+ * 常にFirestoreキャッシュ優先で読む(アクセスごとのfreeeライブ取得は行わない、ユーザー確定、
+ * 2026-09-18)。ローディングを軽くするため、実際のfreee再取得は以下の2経路のみで行う:
+ * Cloud SchedulerがCloud Run Admin API経由で毎日18:00(Asia/Tokyo)にトリガーする
+ * Cloud Run Job(`src/jobs/scheduledFinanceRefresh.ts`。HTTPエンドポイントを持たず、
+ * このWebサービスのIAP/OAuth/Cloud Run IAM設定には一切触れない)と、ヘッダーの
+ * 「更新」ボタン(手動、/api/freee/monthly-finance/refresh)。両経路とも実体は
+ * `refreshCurrentMonthSnapshots`を共有する(重複実装なし)。
  */
 export default async function ManagementPage() {
   const iapEmail = await getRequestIapEmail();
@@ -111,17 +120,19 @@ export default async function ManagementPage() {
     }
 
     if (connectionStatus?.connected) {
-      // 基準月〜当月の各列を並行取得。過去月はforceRefreshせずFirestore優先
-      // (遅延バックフィル)、当月のみアクセスごとにfreeeライブ取得する(ユーザー確定、
-      // 2026-09-15)。1列の失敗が他列の表示を止めないよう、列ごとに個別にcatchする。
-      // エラーフラグはPromise.all解決後にまとめて反映する(非同期コールバック内での
-      // 外側変数の再代入はNext.jsのlintルールで禁止されているため)
+      // 基準月〜当月の各列を並行取得。全列ともforceRefreshせずFirestore優先で読む
+      // (遅延バックフィル)。実際のfreee再取得はCloud Schedulerの定時ジョブと手動の
+      // 「更新」ボタンのみが行う(ユーザー確定、2026-09-18。ページアクセス自体は
+      // 常にキャッシュ読み取りのみにして毎回のローディングを軽くする)。1列の失敗が
+      // 他列の表示を止めないよう、列ごとに個別にcatchする。エラーフラグは
+      // Promise.all解決後にまとめて反映する(非同期コールバック内での外側変数の
+      // 再代入はNext.jsのlintルールで禁止されているため)
       const cashFlowResults = await Promise.all(
         monthList.map(async (m, idx) => {
           const isCurrentMonth = idx === monthList.length - 1;
           const fy = freeeFiscalYearForTerm(m.term);
           try {
-            const cashFlow = await getOrFetchMonthlyCashFlow(fy, m.month, { forceRefresh: isCurrentMonth });
+            const cashFlow = await getOrFetchMonthlyCashFlow(fy, m.month, { forceRefresh: false });
             return { cashFlow, failed: false };
           } catch (error) {
             if (isCurrentMonth) {
@@ -139,14 +150,14 @@ export default async function ManagementPage() {
       cashFlowByMonth = cashFlowResults.map((r) => r.cashFlow);
       cashFlowError = cashFlowResults[cashFlowResults.length - 1]?.failed ?? false;
       try {
-        loanStatus = await getOrFetchLoanStatus(currentFiscalYear, currentMonth, { forceRefresh: true });
+        loanStatus = await getOrFetchLoanStatus(currentFiscalYear, currentMonth, { forceRefresh: false });
       } catch {
         console.error("[management page] freeeからの借入状況取得に失敗しました");
         loanStatusError = true;
       }
       try {
         const fundReserveCore = await getOrFetchFundReserveCore(currentFiscalYear, currentMonth, {
-          forceRefresh: true,
+          forceRefresh: false,
         });
         const currentCashClosing = cashFlowByMonth[cashFlowByMonth.length - 1]?.cashClosing ?? null;
         fundReserve = fundReserveCore ? composeFundReserve(fundReserveCore, currentCashClosing) : null;
@@ -155,7 +166,7 @@ export default async function ManagementPage() {
         fundReserveError = true;
       }
       try {
-        financialSummary = await getFinancialSummary();
+        financialSummary = await getOrFetchFinancialSummary(currentFiscalYear, currentMonth, { forceRefresh: false });
       } catch {
         console.error("[management page] freeeからの当期累計サマリー取得に失敗しました");
         financialSummaryError = true;
@@ -174,6 +185,11 @@ export default async function ManagementPage() {
   }));
   const currentCashFlow = cashFlowByMonth[cashFlowByMonth.length - 1] ?? null;
   const previousCashFlow = cashFlowByMonth.length > 1 ? cashFlowByMonth[cashFlowByMonth.length - 2] : null;
+  // 「最終更新」表示は接続(トークン)更新時刻ではなく、当月分データが実際にfreeeから
+  // 取得された時刻を示す(ユーザー確定、2026-09-18)。当月分は4スナップショットとも
+  // 同じ操作(定時ジョブ/「更新」ボタン)でまとめて更新されるため、代表として
+  // 月次資金収支のfetchedAtを使う。
+  const dataUpdatedAt = currentCashFlow?.fetchedAt ?? null;
 
   // ネットキャッシュ(現預金－借入残高)は経営サマリー・資金の備えの両方で使うため、
   // ページ側で一度だけ合成する(同じデータソース・値をUI側で再計算しない、ユーザー確定)
@@ -189,13 +205,19 @@ export default async function ManagementPage() {
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h1 className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">経営ダッシュボード</h1>
               {connectionStatus?.connected && (
-                <p className="text-xs text-[var(--text-muted)]">
-                  freee連携済み
-                  {connectionStatus.connectedBy ? `（接続者: ${connectionStatus.connectedBy}）` : ""}
-                  {connectionStatus.updatedAt
-                    ? `／最終更新: ${formatDateTime(connectionStatus.updatedAt)}`
-                    : ""}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-[var(--text-muted)]">
+                    freee連携済み
+                    {connectionStatus.connectedBy ? `（接続者: ${connectionStatus.connectedBy}）` : ""}
+                    {dataUpdatedAt ? `／最終更新: ${formatDateTime(dataUpdatedAt)}` : ""}
+                  </p>
+                  <RefreshMonthButton
+                    fiscalYear={currentFiscalYear}
+                    month={currentMonth}
+                    label="更新"
+                    includeFinancialSummary
+                  />
+                </div>
               )}
             </div>
 

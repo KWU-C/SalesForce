@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# Cloud Run Job build output (src/jobs -> dist/jobs, see package.json build:job)
+/dist/
+
 # production
 /build
 

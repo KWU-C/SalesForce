@@ -52,7 +52,7 @@ describe("getOrFetchFinancialSummary", () => {
 
     const result = await getOrFetchFinancialSummary(2025, 8);
 
-    expect(getFinancialSummaryMock).toHaveBeenCalledWith();
+    expect(getFinancialSummaryMock).toHaveBeenCalledWith(2025);
     expect(saveFinancialSummarySnapshotMock).toHaveBeenCalledWith(
       expect.objectContaining({ fiscalYear: 2025, month: 8, revenue: 999 })
     );

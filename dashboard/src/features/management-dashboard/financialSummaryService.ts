@@ -23,7 +23,7 @@ export async function getOrFetchFinancialSummary(
     if (cached) return cached;
   }
 
-  const summary = await getFinancialSummary();
+  const summary = await getFinancialSummary(fiscalYear);
   if (summary === null) return null;
 
   const snapshot: FinancialSummarySnapshot = { fiscalYear, month, ...summary, fetchedAt: new Date() };

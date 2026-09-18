@@ -54,11 +54,18 @@ export function extractPlSummary(trialPl: FreeeTrialBalanceResponse): FinancialS
  * freee接続済みの事業所から当期累計の経営サマリーを取得する。company_id未確定
  * (未接続)の場合はnull。取得失敗時はそのままthrowする(呼び出し側でページ全体を
  * 落とさないようcatchする想定)。
+ *
+ * fiscalYearは必ずこのアプリ側の事業期定義(freeeFiscalYearForTerm、9月始まり)から
+ * 明示的に渡すこと。省略するとfreee側の「当期」判定に委ねることになるが、実データで
+ * 確認したところ、事業期が切り替わった直後(例: 49期の決算がfreee上でまだ締まって
+ * いない時期)はfreee側がまだ前期を「当期」として返し続けることがあり、画面の
+ * 「当期累計」ラベルと矛盾した金額(前期の通期累計)が表示されるバグがあった
+ * (2026-09-18発見)。
  */
-export async function getFinancialSummary(): Promise<FinancialSummary | null> {
+export async function getFinancialSummary(fiscalYear: number): Promise<FinancialSummary | null> {
   const companyId = await getFreeeCompanyId();
   if (companyId === null) return null;
 
-  const trialPl = await getTrialPl(companyId);
+  const trialPl = await getTrialPl(companyId, { fiscalYear });
   return extractPlSummary(trialPl);
 }

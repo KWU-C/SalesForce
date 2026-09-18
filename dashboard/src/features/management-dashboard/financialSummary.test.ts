@@ -1,6 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FreeeTrialBalanceResponse, FreeeTrialBalanceRow } from "@/services/freee/freeeAccountingClient";
-import { extractPlSummary } from "./financialSummary";
+
+const getTrialPlMock = vi.fn();
+const getFreeeCompanyIdMock = vi.fn();
+
+vi.mock("@/services/freee/freeeAccountingClient", () => ({
+  getTrialPl: getTrialPlMock,
+}));
+vi.mock("@/repositories/freeeAuthRepository", () => ({
+  getFreeeCompanyId: getFreeeCompanyIdMock,
+}));
+
+const { extractPlSummary, getFinancialSummary } = await import("./financialSummary");
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  getTrialPlMock.mockReset();
+  getFreeeCompanyIdMock.mockReset();
+});
 
 function row(overrides: Partial<FreeeTrialBalanceRow>): FreeeTrialBalanceRow {
   return {
@@ -67,5 +84,25 @@ describe("extractPlSummary", () => {
     };
     const summary = extractPlSummary(trialPl);
     expect(summary.grossProfit).toBeNull();
+  });
+});
+
+describe("getFinancialSummary", () => {
+  it("passes the caller's fiscalYear through to getTrialPl explicitly (2026-09-18 regression guard: freeeのデフォルト当期判定は期切替直後に前期を指し続けることがある)", async () => {
+    getFreeeCompanyIdMock.mockResolvedValue(11314786);
+    getTrialPlMock.mockResolvedValue({ company_id: 11314786, fiscal_year: 2026, balances: [] });
+
+    await getFinancialSummary(2026);
+
+    expect(getTrialPlMock).toHaveBeenCalledWith(11314786, { fiscalYear: 2026 });
+  });
+
+  it("returns null without calling getTrialPl when freee is not connected", async () => {
+    getFreeeCompanyIdMock.mockResolvedValue(null);
+
+    const result = await getFinancialSummary(2026);
+
+    expect(result).toBeNull();
+    expect(getTrialPlMock).not.toHaveBeenCalled();
   });
 });

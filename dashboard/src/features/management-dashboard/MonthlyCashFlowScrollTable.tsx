@@ -152,6 +152,18 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                         当月
                       </span>
                     )}
+                    {col.cashFlow?.status === "provisional" && (
+                      <span
+                        className="rounded bg-[var(--status-warning)] px-1 py-0.5 text-[10px] font-bold text-white"
+                        title={
+                          col.cashFlow.unresolvedItems.length > 0
+                            ? `未解決明細${col.cashFlow.unresolvedItems.length}件あり(外部入金・外部支出に含む。分類未確定)`
+                            : "証拠付きoverride適用済み、または確定に至っていない候補あり"
+                        }
+                      >
+                        暫定
+                      </span>
+                    )}
                   </div>
                   <div className="mt-1 flex justify-end">
                     {col.isTermTotal ? (

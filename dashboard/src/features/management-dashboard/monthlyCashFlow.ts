@@ -9,6 +9,8 @@ import {
 import type { FreeeDeal } from "@/services/freee/freeeTransactionClient";
 import { classifyExpenseAccountItem } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
+import { isCashWalletable } from "@/config/cashAccountBoundary";
+import { computeExternalCashFlow } from "./externalCashFlow";
 import type { MonthlyCashFlow } from "./types";
 
 const EMPTY_CATEGORY_TOTALS: Record<ExpenseCategory, number> = {
@@ -84,22 +86,25 @@ function splitLoanRepaymentPayment(
 /**
  * 指定月の資金収支(会社版家計簿)をfreeeの実データから再構成する。
  *
- * 手法(2026年8月の実データで検証済み):
- * - 外部入金・外部支出は wallet_txns(銀行/wallet口座のみ、カード種別除く)から算出し、
- *   transfers(自社口座間振替)の合計を両側から一律に差し引く。
- *
- *   【既知の限界、2026-09-15検証】振替先がクレジットカードやwallet型口座の場合、
- *   その側にはwallet_txnsが生成されないケースがあり、この一律控除は外部入金・外部支出を
- *   個別には歪める(実データで9月に約99万円分を確認)。日付・金額ベースの片側マッチングへの
- *   修正を試みたが、実データ検証の結果、trial_bs実績との差額(調整・未分類差額)がかえって
- *   拡大した(片側の対応関係が完全には再現できないマッチングノイズが乗るため)。
- *   より再現性のある方法(transfer ID・口座種別・journalとの関連付け等)を別途設計するまでは、
- *   この一律控除を暫定実装として維持する(ユーザー確定、2026-09-15。「正しい仕様」として
- *   確定したものではない)。
- *
- *   なお、外部入金-外部支出の【差】自体はこの控除方法に依存しない(同額を両側から
- *   引くため計算上完全に相殺する)。月末現預金の真値はtrial_bs(canonical)を使うため、
- *   この限界は「調整・未分類差額」に自動的に反映され、他区分へ紛れ込むことはない。
+ * 手法(2026-09-18改訂。output/freee49-audit/REPORT.md(通称Codexレポート)による
+ * 監査を踏まえた恒久ロジック):
+ * - 外部入金・外部支出は wallet_txns(口座境界はcashAccountBoundary.ts。bank_account型は
+ *   常時対象、wallet型はallowlistに載ったもののみ対象。カード種別は対象外)から算出し、
+ *   externalCashFlow.ts(computeExternalCashFlow)で以下を控除する。
+ *   1. 公式transfers(自社口座間振替)。ただしincome側はtransfer.to_walletables[].amount
+ *      (受取先の実額、手数料控除後)、expense側はtransfer.amount(送金元の額面)で、
+ *      それぞれ(date, walletable, amount)の1:1消費マッチングにより照合する
+ *      (2026-09-15時点の「一律控除」は、振替先がカード等でwallet_txnsが生成されない
+ *      ケースを歪めることが判明したため廃止。片側マッチングへの単純な置き換えも
+ *      実データ検証でtrial_bs差額が悪化したため、実額照合の精度を上げる方向で解決)。
+ *   2. externalCashFlowOverrides.tsの証拠付きoverride(confidence=confirmedのみ)。
+ *      freeeのtransfers APIに登録されていない非公式な内部振替を、仕訳(manual_journals)
+ *      の貸借照合で1件ずつ裏取りした個別レコードとして適用する。ハードコードの定数では
+ *      なく、ID・根拠・confidence付きのレコードとして保持し、恒久ロジックと明確に分離する。
+ *   未解決の明細(evidence不十分なもの)はoverride化せず、controlされたunresolvedItems/
+ *   tentativeCandidatesとして結果に残す(無理に分類・補正しない、ユーザー確定2026-09-18)。
+ *   このためexternalIncome/externalExpenseTotalは「恒久ロジック＋確定overrideまでの
+ *   算出値」であり、未解決分を含む可能性がある点に注意(status="provisional"で判別可能)。
  * - 支出の区分内訳は、個々のwallet_txnとdealを1件ずつ突合するのではなく、
  *   dealsのpayments(決済)のうち対象月に決済されたものを区分ごとに合算する
  *   (1件ずつの突合はdeal側の決済日とwallet_txn側の記帳日がずれるケースがあり
@@ -132,25 +137,21 @@ export async function computeMonthlyCashFlow(
   ]);
 
   const idToName = new Map(accountItems.map((i) => [i.id, i.name]));
-  const cashWalletableIds = new Set(
-    walletables.filter((w) => w.type === "bank_account" || w.type === "wallet").map((w) => w.id)
-  );
-  // 支出の区分分類(expenseByCategory)は、現金・預金(cashWalletableIds)に加えて
+  // 支出の区分分類(expenseByCategory)は、現金・預金(cashAccountBoundary)に加えて
   // クレジットカード払いのdealも対象にする(2026-09-15修正)。カード利用時はwallet_txnsを
   // 生成しないため外部入金・外部支出(wallet_txnsベース)には含められないが、deal自体は
   // 通常の現金払いと同じ明細情報を持つため、同じ代表科目分類で人件費/外注費/税金社会保険等/
   // 諸経費/その他へ計上できる。銀行口座からカード会社への引落はtransfersであり
   // deal/paymentではないため、ここでの分類対象には含まれない(二重計上にならない)
   const categorizableWalletableIds = new Set(
-    walletables.filter((w) => w.type === "bank_account" || w.type === "wallet" || w.type === "credit_card").map((w) => w.id)
+    walletables.filter((w) => isCashWalletable(w) || w.type === "credit_card").map((w) => w.id)
   );
 
-  const cashTxns = walletTxns.filter((w) => cashWalletableIds.has(w.walletable_id));
-  const grossIncome = cashTxns.filter((w) => w.entry_side === "income").reduce((s, w) => s + w.amount, 0);
-  const grossExpense = cashTxns.filter((w) => w.entry_side === "expense").reduce((s, w) => s + w.amount, 0);
-  const transferTotal = transfers.reduce((s, t) => s + t.amount, 0);
-  const externalIncome = grossIncome - transferTotal;
-  const externalExpenseTotal = grossExpense - transferTotal;
+  const cashTxns = walletTxns.filter((w) => isCashWalletable({ type: w.walletable_type, id: w.walletable_id }));
+  const cashIncome = cashTxns.filter((w) => w.entry_side === "income");
+  const cashExpense = cashTxns.filter((w) => w.entry_side === "expense");
+  const externalCashFlow = computeExternalCashFlow(companyId, cashIncome, cashExpense, transfers);
+  const { externalIncome, externalExpenseTotal } = externalCashFlow;
 
   const expenseByCategory: Record<ExpenseCategory, number> = { ...EMPTY_CATEGORY_TOTALS };
   for (const deal of expenseDeals) {
@@ -188,6 +189,11 @@ export async function computeMonthlyCashFlow(
     cashChange: cashOpening !== null && cashClosing !== null ? cashClosing - cashOpening : null,
     externalIncome,
     externalExpenseTotal,
+    calculationVersion: externalCashFlow.calculationVersion,
+    status: externalCashFlow.status,
+    appliedOverrideIds: externalCashFlow.appliedOverrideIds,
+    unresolvedItems: externalCashFlow.unresolvedItems,
+    tentativeCandidates: externalCashFlow.tentativeCandidates,
     expenseByCategory,
     operatingCashFlow: externalIncome - operatingExpense,
     /** 借入元本返済のみ(利息は含まない、ユーザー確定2026-09-15。借入状況の今期返済と同じ「元本」の定義) */

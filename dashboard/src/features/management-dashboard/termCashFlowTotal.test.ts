@@ -31,6 +31,11 @@ function makeMonth(overrides: Partial<MonthResult> = {}): MonthResult {
     cashChange: 100_000,
     externalIncome: 500_000,
     externalExpenseTotal: 400_000,
+    calculationVersion: "test-version",
+    status: "final",
+    appliedOverrideIds: [],
+    unresolvedItems: [],
+    tentativeCandidates: [],
     expenseByCategory: { ...EMPTY_CATEGORIES, labor: 300_000, outsourcing: 100_000 },
     operatingCashFlow: 100_000,
     financingCashFlow: -50_000,
@@ -96,5 +101,45 @@ describe("computeTermCashFlowTotal", () => {
 
     expect(result.term).toBe(50);
     expect(result.fiscalYear).toBe(2026);
+  });
+
+  it("marks the term provisional when any single month is provisional (override/unresolved item present), and collects overrides/unresolved items across months", async () => {
+    computeMonthlyCashFlowMock.mockImplementation(async (_companyId: number, _fiscalYear: number, month: number) =>
+      makeMonth(
+        month === 10
+          ? {
+              status: "provisional",
+              appliedOverrideIds: ["term49-pair-20251030-5000000"],
+              unresolvedItems: [
+                {
+                  id: "term49-unresolved-20251031-50000000",
+                  companyId: 11314786,
+                  walletTxnId: 1,
+                  side: "income",
+                  amount: 50_000_000,
+                  date: "2025-10-31",
+                  reason: "test",
+                },
+              ],
+            }
+          : {}
+      )
+    );
+
+    const result = await computeTermCashFlowTotal(1, 49);
+
+    expect(result.status).toBe("provisional");
+    expect(result.appliedOverrideIds).toEqual(["term49-pair-20251030-5000000"]);
+    expect(result.unresolvedItems).toHaveLength(1);
+  });
+
+  it("stays final when every month is clean", async () => {
+    computeMonthlyCashFlowMock.mockResolvedValue(makeMonth());
+
+    const result = await computeTermCashFlowTotal(1, 50);
+
+    expect(result.status).toBe("final");
+    expect(result.appliedOverrideIds).toEqual([]);
+    expect(result.unresolvedItems).toEqual([]);
   });
 });

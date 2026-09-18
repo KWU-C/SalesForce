@@ -1,4 +1,6 @@
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
+import type { ExternalCashFlowOverride, UnresolvedCashFlowItem } from "@/config/externalCashFlowOverrides";
+import type { ExternalCashFlowStatus } from "./externalCashFlow";
 
 /**
  * 月次資金収支(会社版家計簿)のスナップショット。Firestore(monthlyCashFlowSnapshots)へ
@@ -24,6 +26,27 @@ export interface MonthlyCashFlow {
   externalIncome: number;
   /** 外部支出合計(自社口座間振替を除く) */
   externalExpenseTotal: number;
+
+  /**
+   * externalIncome/externalExpenseTotalを算出した恒久ロジックのバージョン
+   * (externalCashFlow.ts の EXTERNAL_CASH_FLOW_CALCULATION_VERSION)。保存済み
+   * スナップショットのこの値が現在のバージョンと異なる場合はキャッシュミス扱いにし、
+   * 次回の更新で自動的に再計算する(ユーザー確定、2026-09-18)。
+   */
+  calculationVersion: string;
+  /**
+   * "provisional": この期間に未解決明細・tentative候補・overrideのいずれかが
+   * 適用されている(49期のようなfreee移行期はほぼ常にこれになる)。
+   * "final": 恒久ロジック(口座境界+公式transfer実額照合)のみで機械的に確定できた
+   * (50期以降、override無しで済む期間を想定)。
+   */
+  status: ExternalCashFlowStatus;
+  /** この期間内で確定(confidence=confirmed)として適用されたoverrideのID一覧(監査用) */
+  appliedOverrideIds: string[];
+  /** この期間内で内部振替か外部入金か無理に分類していない未解決明細(控除していない) */
+  unresolvedItems: UnresolvedCashFlowItem[];
+  /** この期間内の、確定に至っていないoverride候補(参考情報。控除していない) */
+  tentativeCandidates: ExternalCashFlowOverride[];
 
   /** 区分別の支出内訳(二重計上なし、1取引=1区分で代表分類) */
   expenseByCategory: Record<ExpenseCategory, number>;

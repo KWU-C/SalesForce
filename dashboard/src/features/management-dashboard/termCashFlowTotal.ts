@@ -1,6 +1,8 @@
 import { FISCAL_MONTH_ORDER, freeeFiscalYearForTerm } from "@/config/fiscalPeriods";
 import { computeMonthlyCashFlow } from "./monthlyCashFlow";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
+import type { ExternalCashFlowOverride, UnresolvedCashFlowItem } from "@/config/externalCashFlowOverrides";
+import type { ExternalCashFlowStatus } from "./externalCashFlow";
 
 /**
  * 期(事業期)単位の通期資金収支合計。月次スナップショット(monthlyCashFlowSnapshots、
@@ -22,6 +24,19 @@ export interface TermCashFlowTotal {
   cashChange: number | null;
   externalIncome: number;
   externalExpenseTotal: number;
+  /**
+   * externalIncome/externalExpenseTotal算出に使った恒久ロジックのバージョン
+   * (12か月すべて同じ実行タイミングで計算するため単一の値になる)。
+   */
+  calculationVersion: string;
+  /** 12か月のうち1か月でもprovisional(override適用・未解決明細ありなど)を含めばprovisional */
+  status: ExternalCashFlowStatus;
+  /** 12か月分の適用overrideIDをまとめたもの(監査用) */
+  appliedOverrideIds: string[];
+  /** 12か月分の未解決明細をまとめたもの(控除していない) */
+  unresolvedItems: UnresolvedCashFlowItem[];
+  /** 12か月分のtentative候補をまとめたもの(控除していない) */
+  tentativeCandidates: ExternalCashFlowOverride[];
   expenseByCategory: Record<ExpenseCategory, number>;
   operatingCashFlow: number;
   financingCashFlow: number;
@@ -76,6 +91,11 @@ export async function computeTermCashFlowTotal(
     cashChange: first.cashOpening !== null && last.cashClosing !== null ? last.cashClosing - first.cashOpening : null,
     externalIncome: sum((m) => m.externalIncome),
     externalExpenseTotal: sum((m) => m.externalExpenseTotal),
+    calculationVersion: first.calculationVersion,
+    status: months.some((m) => m.status === "provisional") ? "provisional" : "final",
+    appliedOverrideIds: months.flatMap((m) => m.appliedOverrideIds),
+    unresolvedItems: months.flatMap((m) => m.unresolvedItems),
+    tentativeCandidates: months.flatMap((m) => m.tentativeCandidates),
     expenseByCategory,
     operatingCashFlow: sum((m) => m.operatingCashFlow),
     financingCashFlow: sum((m) => m.financingCashFlow),

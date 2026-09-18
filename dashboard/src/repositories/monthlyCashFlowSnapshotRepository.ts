@@ -1,5 +1,6 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
 import type { MonthlyCashFlow } from "@/features/management-dashboard/types";
+import { EXTERNAL_CASH_FLOW_CALCULATION_VERSION } from "@/features/management-dashboard/externalCashFlow";
 
 // processMemos/freeeAuth/monthlyFinanceとは別コレクション。Dashboard表示に必要な
 // 集計値のみを保存し、freeeの生レスポンスは保存しない(ユーザー確定、2026-09-14)。
@@ -34,6 +35,11 @@ function createFirestoreStore(): MonthlyCashFlowStore {
       // 持たない。欠損値を0円と推測して埋めず、キャッシュミス扱いにして呼び出し側
       // (monthlyCashFlowService)にfreeeから再取得・再保存させる(データ未設定の推測禁止)
       if (data.interestCashFlow === undefined) return null;
+      // 外部入金・外部支出の恒久ロジックを変更した際(externalCashFlow.ts の
+      // EXTERNAL_CASH_FLOW_CALCULATION_VERSION参照)、保存済みスナップショットが
+      // 旧バージョンで計算されたものならキャッシュミス扱いにして再計算させる
+      // (ユーザー確定、2026-09-18。月次は定時Job/手動更新で自動的に最新化される)
+      if (data.calculationVersion !== EXTERNAL_CASH_FLOW_CALCULATION_VERSION) return null;
       return toSnapshot(data);
     },
     async save(snapshot) {

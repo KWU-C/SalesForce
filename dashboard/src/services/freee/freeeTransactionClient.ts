@@ -12,12 +12,25 @@ export interface FreeeWalletTxn {
   walletable_id: number;
 }
 
+export interface FreeeTransferDestinationLeg {
+  type: "bank_account" | "credit_card" | "wallet";
+  id: number;
+  /** 受取先の実額。手数料等により送金元の`amount`と一致しないケースがある(2026-09-18確認) */
+  amount: number;
+}
+
 export interface FreeeTransfer {
   id: number;
+  /** 送金元の額面。受取側では手数料分が差し引かれることがあるため、受取側の実額照合には
+   * 使わずto_walletables[].amountを使うこと(externalCashFlow.ts参照) */
   amount: number;
   date: string;
+  from_walletable_type: "bank_account" | "credit_card" | "wallet";
   from_walletable_id: number;
+  to_walletable_type: "bank_account" | "credit_card" | "wallet";
   to_walletable_id: number;
+  /** 受取レグの内訳。通常1要素だが、freeeのAPI仕様上は配列 */
+  to_walletables?: FreeeTransferDestinationLeg[];
 }
 
 export interface FreeeDealDetail {

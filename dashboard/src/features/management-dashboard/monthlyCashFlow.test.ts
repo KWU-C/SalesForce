@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { EXTERNAL_CASH_FLOW_OVERRIDES, EXTERNAL_CASH_FLOW_UNRESOLVED_ITEMS } from "@/config/externalCashFlowOverrides";
 
 const getTrialBsMock = vi.fn();
 const getWalletTxnsMock = vi.fn();
@@ -70,19 +71,56 @@ describe("computeMonthlyCashFlow", () => {
     expect(result.externalExpenseTotal).toBe(300);
   });
 
-  it("subtracts inter-account transfer totals from both income and expense sides (暫定実装、2026-09-15: 片側マッチングは実データ検証で差額が悪化したため差し戻し)", async () => {
+  it("removes official transfers from both income and expense sides via presence-verified matching (2026-09-18: 受取実額照合による恒久ロジック)", async () => {
     setupCommonMocks();
     getWalletTxnsMock.mockResolvedValue([
-      { id: 1, date: "2026-08-15", amount: 1000, entry_side: "income", walletable_type: "bank_account", walletable_id: 100 },
+      { id: 1, date: "2026-08-15", amount: 1000, entry_side: "income", walletable_type: "bank_account", walletable_id: 101 },
       { id: 2, date: "2026-08-15", amount: 1000, entry_side: "expense", walletable_type: "bank_account", walletable_id: 100 },
     ]);
-    getTransfersMock.mockResolvedValue([{ id: 1, amount: 1000, date: "2026-08-15", from_walletable_id: 100, to_walletable_id: 101 }]);
+    getTransfersMock.mockResolvedValue([
+      {
+        id: 1,
+        amount: 1000,
+        date: "2026-08-15",
+        from_walletable_type: "bank_account",
+        from_walletable_id: 100,
+        to_walletable_type: "bank_account",
+        to_walletable_id: 101,
+        to_walletables: [{ type: "bank_account", id: 101, amount: 1000 }],
+      },
+    ]);
     getExpenseDealsMock.mockResolvedValue([]);
 
     const result = await computeMonthlyCashFlow(1, 2025, 8);
 
     expect(result.externalIncome).toBe(0);
     expect(result.externalExpenseTotal).toBe(0);
+    expect(result.status).toBe("final");
+  });
+
+  it("only removes the receiving leg's actual amount, not the face amount, when a fee is deducted on receipt (2026-09-18: 電子債権資金化のような手数料差分ケース)", async () => {
+    setupCommonMocks();
+    getWalletTxnsMock.mockResolvedValue([
+      { id: 1, date: "2026-08-15", amount: 990, entry_side: "income", walletable_type: "bank_account", walletable_id: 101 },
+    ]);
+    getTransfersMock.mockResolvedValue([
+      {
+        id: 1,
+        amount: 1000,
+        date: "2026-08-15",
+        from_walletable_type: "bank_account",
+        from_walletable_id: 100,
+        to_walletable_type: "bank_account",
+        to_walletable_id: 101,
+        to_walletables: [{ type: "bank_account", id: 101, amount: 990 }],
+      },
+    ]);
+    getExpenseDealsMock.mockResolvedValue([]);
+
+    const result = await computeMonthlyCashFlow(1, 2025, 8);
+
+    // 送金元の額面(1000)ではなく受取実額(990)で照合するため、全額(990)が控除される
+    expect(result.externalIncome).toBe(0);
   });
 
   it("skips deals with no payments field at all (regression guard: 未決済dealsでpaymentsキー自体が無いケース)", async () => {
@@ -246,7 +284,18 @@ describe("computeMonthlyCashFlow", () => {
       { id: 1, date: "2026-08-20", amount: 3000, entry_side: "expense", walletable_type: "bank_account", walletable_id: 100 },
     ]);
     // 銀行(100)からクレジットカード(200)への引落
-    getTransfersMock.mockResolvedValue([{ id: 1, amount: 3000, date: "2026-08-20", from_walletable_id: 100, to_walletable_id: 200 }]);
+    getTransfersMock.mockResolvedValue([
+      {
+        id: 1,
+        amount: 3000,
+        date: "2026-08-20",
+        from_walletable_type: "bank_account",
+        from_walletable_id: 100,
+        to_walletable_type: "credit_card",
+        to_walletable_id: 200,
+        to_walletables: [{ type: "credit_card", id: 200, amount: 3000 }],
+      },
+    ]);
     getExpenseDealsMock.mockResolvedValue([
       {
         id: 1,
@@ -261,7 +310,7 @@ describe("computeMonthlyCashFlow", () => {
 
     // カード利用分はdealとして1回だけ計上される(transfersは分類の対象外のため二重計上なし)
     expect(result.expenseByCategory.otherOperating).toBe(3000);
-    // 銀行→カードの引落transferは、既存の一律控除ロジックにより外部支出から相殺される(資金移動として扱う、再度支出計上しない)
+    // 銀行→カードの引落transferは、公式transferとして送金元(銀行)側で実額照合され外部支出から相殺される(資金移動として扱う、再度支出計上しない)
     expect(result.externalExpenseTotal).toBe(0);
   });
 
@@ -276,5 +325,81 @@ describe("computeMonthlyCashFlow", () => {
     expect(result.cashOpening).toBeNull();
     expect(result.cashClosing).toBeNull();
     expect(result.cashChange).toBeNull();
+  });
+
+  it("applies a confirmed evidence-backed override (49期の非公式内部振替) and marks the period provisional", async () => {
+    setupCommonMocks();
+    const override = EXTERNAL_CASH_FLOW_OVERRIDES.find((o) => o.id === "term49-pair-20251030-5000000")!;
+    getWalletTxnsMock.mockResolvedValue([
+      {
+        id: override.incomeWalletTxnId,
+        date: override.date,
+        amount: override.amount,
+        entry_side: "income",
+        walletable_type: "bank_account",
+        walletable_id: 100,
+      },
+      {
+        id: override.expenseWalletTxnId,
+        date: override.date,
+        amount: override.amount,
+        entry_side: "expense",
+        walletable_type: "bank_account",
+        walletable_id: 100,
+      },
+    ]);
+    getExpenseDealsMock.mockResolvedValue([]);
+
+    const result = await computeMonthlyCashFlow(override.companyId, 2025, 10);
+
+    expect(result.externalIncome).toBe(0);
+    expect(result.externalExpenseTotal).toBe(0);
+    expect(result.appliedOverrideIds).toEqual([override.id]);
+    expect(result.status).toBe("provisional");
+  });
+
+  it("does not net out an unresolved item, but still surfaces it and marks the period provisional", async () => {
+    setupCommonMocks();
+    const unresolved = EXTERNAL_CASH_FLOW_UNRESOLVED_ITEMS.find((u) => u.id === "term49-unresolved-20251031-50000000")!;
+    getWalletTxnsMock.mockResolvedValue([
+      {
+        id: unresolved.walletTxnId,
+        date: unresolved.date,
+        amount: unresolved.amount,
+        entry_side: "income",
+        walletable_type: "bank_account",
+        walletable_id: 100,
+      },
+    ]);
+    getExpenseDealsMock.mockResolvedValue([]);
+
+    const result = await computeMonthlyCashFlow(unresolved.companyId, 2025, 10);
+
+    // 未解決明細は控除しない(無理に分類・補正しない)。raw incomeにそのまま残る
+    expect(result.externalIncome).toBe(unresolved.amount);
+    expect(result.unresolvedItems.map((u) => u.id)).toEqual([unresolved.id]);
+    expect(result.status).toBe("provisional");
+  });
+
+  it("does not apply an override/unresolved item from another company (companyId境界)", async () => {
+    setupCommonMocks();
+    const override = EXTERNAL_CASH_FLOW_OVERRIDES.find((o) => o.id === "term49-pair-20251030-5000000")!;
+    getWalletTxnsMock.mockResolvedValue([
+      {
+        id: override.incomeWalletTxnId,
+        date: override.date,
+        amount: override.amount,
+        entry_side: "income",
+        walletable_type: "bank_account",
+        walletable_id: 100,
+      },
+    ]);
+    getExpenseDealsMock.mockResolvedValue([]);
+
+    const result = await computeMonthlyCashFlow(999999, 2025, 10);
+
+    expect(result.externalIncome).toBe(override.amount);
+    expect(result.appliedOverrideIds).toEqual([]);
+    expect(result.status).toBe("final");
   });
 });

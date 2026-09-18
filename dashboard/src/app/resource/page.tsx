@@ -66,8 +66,9 @@ export default async function ResourcePage() {
             )}
           </div>
 
-          {/* 勤怠状況の上に50px空ける(ユーザー確定、2026-09-18) */}
+          {/* 勤怠状況の上に50px空け、区切り線を入れる(ユーザー確定、2026-09-18) */}
           <div className="mt-[50px] flex flex-col gap-6">
+            <hr className="border-t border-[var(--border-hairline)]" />
             {attendance && <AttendanceSection data={attendance} />}
             {attendanceError && (
               <p className="text-center text-sm text-[var(--text-muted)]">

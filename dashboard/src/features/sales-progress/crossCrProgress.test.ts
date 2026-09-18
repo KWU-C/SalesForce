@@ -194,7 +194,7 @@ describe("buildCrossCrProgress — 期中(currentMonth=11月、12月以降は未
     expect(col(8).orderCumulativeRate).toBeCloseTo(expectedRate(gpSum, targetSum), 5);
   });
 
-  it("合計行の実績は「現在月(11月)まで」の累積で、目標(表示欄)は月行の1ヶ月分と違い年間フル目標(12ヶ月分)を使う", () => {
+  it("合計行の実績は「現在月(11月)まで」のデータしか無い場合、9〜11月の合計になる。目標(表示欄)は月行の1ヶ月分と違い年間フル目標(12ヶ月分)を使う", () => {
     const total = totalRow[0];
     const nov = col(11);
 
@@ -207,6 +207,24 @@ describe("buildCrossCrProgress — 期中(currentMonth=11月、12月以降は未
     // 累計%は月行・合計行とも常に年間フル目標が分母のため、11月行と合計行は一致する
     expect(total.orderCumulativeRate).toBeCloseTo(nov.orderCumulativeRate!, 5);
     expect(total.orderCumulativeRate).toBeCloseTo(expectedRate(gpSumThroughNov, 15_000 * 12), 5);
+  });
+});
+
+describe("buildCrossCrProgress — 合計行は現在月より先の実績も合算する(2026-09-18修正: 期首直後などcurrentMonthに縛られない)", () => {
+  it("現在月(9月)より先(1月)まで既に実績が入っている場合、合計行の受注/完了は現在月止まりにせず全実績を合算する", () => {
+    // upToFiscalIndex=5 → 9,10,11,12,1月まで実データあり(先付けの受注・完了)。currentMonth=9のみ経過
+    const progressByCr = [
+      buildCrProgress("CR1", 15_000, CR1_ORDER, CR1_COMPLETED, 5),
+      buildCrProgress("CR2", 20_000, CR2_ORDER, CR2_COMPLETED, 5),
+      buildCrProgress("CR3", 10_000, CR3_ORDER, CR3_COMPLETED, 5),
+    ];
+    const { totalRow } = buildCrossCrProgress(progressByCr, 9, TERM_49);
+    const total = totalRow.find((c) => c.crId === "CR1")!;
+
+    const gpSumThroughJan = sumRange(CR1_ORDER, [9, 10, 11, 12, 1]);
+    // 修正前は9月単月(15,000)だけが反映され、10月〜1月の先付け実績が抜け落ちていた
+    expect(total.orderGrossProfit).toBe(gpSumThroughJan);
+    expect(total.orderGrossProfit).not.toBe(sumRange(CR1_ORDER, [9]));
   });
 });
 

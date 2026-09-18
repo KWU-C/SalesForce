@@ -1,6 +1,6 @@
 import { getConcreteCrIdsForTerm } from "@/domain/types";
 import type { CrProgress, MonthlyProgress } from "@/domain/types";
-import { FISCAL_MONTH_ORDER, fiscalMonthIndex } from "@/config/fiscalPeriods";
+import { FISCAL_MONTH_ORDER } from "@/config/fiscalPeriods";
 import { summarizePeriod } from "./aggregate";
 
 /**
@@ -78,20 +78,17 @@ function buildMonthColumn(
 }
 
 /**
- * 合計行の目標は、各月行の「目標」(1ヶ月分)とは違い、年間フル目標(12ヶ月分、
- * 按分しない)を使う（ユーザー確定、2026-09-13）。累計%の考え方はbuildMonthColumnと
- * 統一されている(どちらも分母は常に年間フル目標)。
- * 「経過月までの実績の積み上げが、年間目標に対してどこまで来ているか」を表す。
+ * 合計行は目標・実績とも年間フル12ヶ月分(FISCAL_MONTH_ORDER)を合算する
+ * （ユーザー確定、2026-09-18。以前は実績側だけ「9月〜現在月」までに絞っていたため、
+ * 期の始まったばかりの時期に先付けの実績(未到来月の受注・完了)が既に入っていても
+ * 合計行に反映されず、「目標だけ合算されて実績は合算されていない」ように見える
+ * 不整合があった。ページ上部の「累計（通年受注）」カード等、他の集計は元々
+ * 現在月に関係なく実在する全月データを合算しており、それと矛盾しない挙動に統一する）。
  */
-function buildTotalColumn(
-  crId: string,
-  crLabel: string,
-  progress: CrProgress,
-  cumulativeMonths: number[]
-): CrossCrColumn {
-  const orderCumulative = summarizePeriod("", cumulativeMonths, progress.order);
-  const completedCumulative = summarizePeriod("", cumulativeMonths, progress.completed);
-  const annualTarget = summarizePeriod("", FISCAL_MONTH_ORDER, progress.order).targetGrossProfit;
+function buildTotalColumn(crId: string, crLabel: string, progress: CrProgress): CrossCrColumn {
+  const orderCumulative = summarizePeriod("", FISCAL_MONTH_ORDER, progress.order);
+  const completedCumulative = summarizePeriod("", FISCAL_MONTH_ORDER, progress.completed);
+  const annualTarget = orderCumulative.targetGrossProfit;
 
   return {
     crId,
@@ -111,12 +108,10 @@ function buildTotalColumn(
  * 表専用のSalesforce取得・集計は行わず、既存のprogressByCr(グラフ・月次表と
  * 同じ配列)とsummarizePeriod(既存の累積計算ロジック)だけを再利用する。
  *
- * 各月行の累積実績は「9月〜その行の月」までの範囲で計算し(FULL_YEARを使うと
- * 未到来月の実績まで0扱いで混ざってしまうため、必ず月ごとにスライスした範囲を渡す)、
- * 合計行の実績は「9月〜現在月」までの累積(途中期なら年度末までではなく現在月まで)。
- * 累計%の分母は月行・合計行とも常に年間フル目標(12ヶ月分、按分しない)で統一する
- * （ユーザー確定、2026-09-13。「経過月までの実績の積み上げが、年間目標に対して
- * どこまで来ているか」を月行・合計行問わず一貫して表す）。
+ * 各月行の累積実績は「9月〜その行の月」までの範囲で計算する(FULL_YEARを使うと
+ * 未到来月の実績まで0扱いで混ざってしまうため、必ず月ごとにスライスした範囲を渡す)。
+ * 合計行は実在する全月(9月〜8月の12ヶ月)の実績・目標をそのまま合算する
+ * （ユーザー確定、2026-09-18。buildTotalColumn参照）。
  */
 export function buildCrossCrProgress(
   progressByCr: CrProgress[],
@@ -136,10 +131,9 @@ export function buildCrossCrProgress(
     };
   });
 
-  const totalCumulativeMonths = FISCAL_MONTH_ORDER.slice(0, fiscalMonthIndex(currentMonth));
   const totalRow: CrossCrColumn[] = crossCrList.map((cr) => {
     const progress = progressByCr.find((p) => p.crId === cr.id)!;
-    return buildTotalColumn(cr.id, cr.label, progress, totalCumulativeMonths);
+    return buildTotalColumn(cr.id, cr.label, progress);
   });
 
   return { monthRows, totalRow };

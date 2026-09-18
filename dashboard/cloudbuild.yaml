@@ -87,17 +87,33 @@ steps:
 
   # 経営ダッシュボードの当月分スナップショットを毎日18:00(Asia/Tokyo)に自動更新する
   # Cloud Run Job。Webサービス(直前のdeployステップ)と全く同じソースイメージを使い、
-  # 起動コマンドだけ上書きする(Web用は`npm start`のまま、Job用は
+  # 実行内容だけ上書きする(Web用は`npm start`のまま、Job用は
   # `node dist/jobs/scheduledFinanceRefresh.js`に分離、ユーザー確定、2026-09-18)。
   # dist/jobs/scheduledFinanceRefresh.jsは`npm run build`(=`next build && npm run
   # build:job`)がesbuildで生成する単一ファイルの事前コンパイル済みJSで、実行時に
   # tsx等のTypeScriptトランスパイラを一切必要としない(tsxはローカル動作確認用の
-  # devDependencyのみに留める、ユーザー確定、2026-09-18)。Cloud Run Jobは受信用URLを
-  # 持たず、Cloud Scheduler→Cloud Run Admin API(jobs.run)経由でのみ起動される。
-  # IAP・OAuth・Cloud Run IAM(run.invoker等)はWebサービス側の設定に一切触れない、
-  # 別リソース・別IAM面(このJobを起動する権限は、下のservice-accountとは別の
-  # Scheduler専用SAへ、Job単体スコープでrun.invokerとして個別に付与する。
-  # インフラ手順側で対応)。
+  # devDependencyのみに留める、ユーザー確定、2026-09-18)。
+  #
+  # 重要: --commandは指定せず、`node ...`を丸ごと--argsに入れる(ユーザー確定、
+  # 2026-09-18、実地の起動失敗を受けての修正)。buildpacksが作るイメージのENTRYPOINTは
+  # `/cnb/lifecycle/launcher`で、buildpacksが用意したPATH等の実行環境はこのlauncherが
+  # 起動時に自分で組み立てる。ここで--command=nodeのように指定するとENTRYPOINT自体を
+  # 丸ごと置き換えてしまい、launcherを経由しない生の(PATH未設定の)環境でnodeをexec
+  # しようとして即座に失敗する(実際にCloud Run上で「Application exec likely failed」
+  # 「Application failed to start」で起動できず、アプリ側のログが一行も出ない形で
+  # 再現した、2026-09-18)。--commandを空にして--argsだけに`node,dist/jobs/...js`を
+  # 渡すと、argv[0]("node")がbuildpacksのプロセスタイプ名と一致しないため、launcherが
+  # 「生のコマンド行」として解釈し、buildpacks環境を適用した上でexecしてくれる
+  # (Cloud Native Buildpacksの公式に文書化された挙動)。`--command=""`を明示しているのは、
+  # `gcloud run jobs deploy`は既存Jobの更新時、指定しなかったフィールドを前回の値の
+  # ままにする(差分更新)ため、省略するだけでは前回の`--command=node`が残ってしまう
+  # 可能性があるため(空文字を渡すと当該フィールドをリセットする、gcloud公式仕様)。
+  #
+  # Cloud Run Jobは受信用URLを持たず、Cloud Scheduler→Cloud Run Admin API(jobs.run)
+  # 経由でのみ起動される。IAP・OAuth・Cloud Run IAM(run.invoker等)はWebサービス側の
+  # 設定に一切触れない、別リソース・別IAM面(このJobを起動する権限は、下の
+  # service-accountとは別のScheduler専用SAへ、Job単体スコープでrun.invokerとして
+  # 個別に付与する。インフラ手順側で対応)。
   - id: deploy-job
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
@@ -120,8 +136,8 @@ steps:
         gcloud run jobs deploy "$job" \
           --image="$image" \
           --region="$region" \
-          --command=node \
-          --args=dist/jobs/scheduledFinanceRefresh.js \
+          --command="" \
+          --args=node,dist/jobs/scheduledFinanceRefresh.js \
           --set-env-vars=FREEE_TOKEN_DOC_ID=${_SERVICE_NAME} \
           --set-secrets=FREEE_CLIENT_ID=freee-client-id:latest,FREEE_CLIENT_SECRET=freee-client-secret:latest \
           --task-timeout=540s \

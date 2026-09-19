@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_INFLOW } from "./cashInflow";
+import { EMPTY_OUTFLOW } from "./cashOutflow";
 import { FISCAL_MONTH_ORDER } from "@/config/fiscalPeriods";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
 import type { MonthlyCashFlow } from "./types";
@@ -38,9 +39,6 @@ function makeMonth(overrides: Partial<MonthResult> = {}): MonthResult {
     externalExpenseTotal: 400_000,
     calculationVersion: "test-version",
     status: "final",
-    appliedOverrideIds: [],
-    unresolvedItems: [],
-    tentativeCandidates: [],
     expenseByCategory: { ...EMPTY_CATEGORIES, labor: 300_000, outsourcing: 100_000 },
     operatingCashFlow: 100_000,
     financingCashFlow: -50_000,
@@ -71,13 +69,13 @@ describe("computeTermCashFlowTotal", () => {
     }
   });
 
-  it("exports the term's journals only once (期首日〜期末日) and shares them with all 12 monthly computations", async () => {
+  it("exports the journals only once (前期の期首〜期末、債務の原因科目を辿る根拠を含む) and shares them with all 12 monthly computations", async () => {
     computeMonthlyCashFlowMock.mockResolvedValue(makeMonth());
 
     await computeTermCashFlowTotal(999, 49);
 
     expect(getJournalsCsvMock).toHaveBeenCalledTimes(1);
-    expect(getJournalsCsvMock).toHaveBeenCalledWith(999, "2025-09-01", "2026-08-31");
+    expect(getJournalsCsvMock).toHaveBeenCalledWith(999, "2024-09-01", "2026-08-31");
   });
 
   it("term inflow is exactly the sum of the 12 monthly inflows (通期専用の別計算なし)", async () => {
@@ -149,34 +147,31 @@ describe("computeTermCashFlowTotal", () => {
     expect(result.fiscalYear).toBe(2026);
   });
 
-  it("marks the term provisional when any single month is provisional (override/unresolved item present), and collects overrides/unresolved items across months", async () => {
+  it("marks the term provisional when any single month is provisional (証拠付き補完・除外の適用または未分類あり)", async () => {
     computeMonthlyCashFlowMock.mockImplementation(async (_companyId: number, _fiscalYear: number, month: number) =>
-      makeMonth(
-        month === 10
-          ? {
-              status: "provisional",
-              appliedOverrideIds: ["term49-pair-20251030-5000000"],
-              unresolvedItems: [
-                {
-                  id: "term49-unresolved-20251031-50000000",
-                  companyId: 11314786,
-                  walletTxnId: 1,
-                  side: "income",
-                  amount: 50_000_000,
-                  date: "2025-10-31",
-                  reason: "test",
-                },
-              ],
-            }
-          : {}
-      )
+      makeMonth(month === 10 ? { status: "provisional" } : {})
     );
 
     const result = await computeTermCashFlowTotal(1, 49);
 
     expect(result.status).toBe("provisional");
-    expect(result.appliedOverrideIds).toEqual(["term49-pair-20251030-5000000"]);
-    expect(result.unresolvedItems).toHaveLength(1);
+  });
+
+  it("term outflow is exactly the sum of the 12 monthly outflows, and the term operating cash flow is the sum of the months", async () => {
+    computeMonthlyCashFlowMock.mockImplementation(async (_c: number, _fy: number, month: number) => {
+      const labor = month * 100;
+      const outflow = { ...EMPTY_OUTFLOW, labor, unclassified: 3, total: labor + 3 };
+      return makeMonth({ outflow, externalExpenseTotal: outflow.total, operatingCashFlow: month });
+    });
+
+    const result = await computeTermCashFlowTotal(1, 49);
+    const expectedLabor = FISCAL_MONTH_ORDER.reduce((s, m) => s + m * 100, 0);
+
+    expect(result.outflow?.labor).toBe(expectedLabor);
+    expect(result.outflow?.unclassified).toBe(36);
+    expect(result.outflow?.total).toBe(expectedLabor + 36);
+    expect(result.externalExpenseTotal).toBe(result.outflow?.total);
+    expect(result.operatingCashFlow).toBe(FISCAL_MONTH_ORDER.reduce((s, m) => s + m, 0));
   });
 
   it("stays final when every month is clean", async () => {
@@ -185,7 +180,5 @@ describe("computeTermCashFlowTotal", () => {
     const result = await computeTermCashFlowTotal(1, 50);
 
     expect(result.status).toBe("final");
-    expect(result.appliedOverrideIds).toEqual([]);
-    expect(result.unresolvedItems).toEqual([]);
   });
 });

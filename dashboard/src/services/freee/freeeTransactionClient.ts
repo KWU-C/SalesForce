@@ -12,47 +12,6 @@ export interface FreeeWalletTxn {
   walletable_id: number;
 }
 
-export interface FreeeTransferDestinationLeg {
-  type: "bank_account" | "credit_card" | "wallet";
-  id: number;
-  /** 受取先の実額。手数料等により送金元の`amount`と一致しないケースがある(2026-09-18確認) */
-  amount: number;
-}
-
-export interface FreeeTransfer {
-  id: number;
-  /** 送金元の額面。受取側では手数料分が差し引かれることがあるため、受取側の実額照合には
-   * 使わずto_walletables[].amountを使うこと(externalCashFlow.ts参照) */
-  amount: number;
-  date: string;
-  from_walletable_type: "bank_account" | "credit_card" | "wallet";
-  from_walletable_id: number;
-  to_walletable_type: "bank_account" | "credit_card" | "wallet";
-  to_walletable_id: number;
-  /** 受取レグの内訳。通常1要素だが、freeeのAPI仕様上は配列 */
-  to_walletables?: FreeeTransferDestinationLeg[];
-}
-
-export interface FreeeDealDetail {
-  account_item_id: number;
-  amount: number;
-}
-
-export interface FreeeDealPayment {
-  date: string;
-  amount: number;
-  from_walletable_id: number | null;
-}
-
-export interface FreeeDeal {
-  id: number;
-  type: "income" | "expense";
-  issue_date: string;
-  details: FreeeDealDetail[];
-  // 未決済(status=unsettled)のdealはこのキー自体が存在しないことがある(実データで確認済み)
-  payments?: FreeeDealPayment[];
-}
-
 export interface FreeeAccountItem {
   id: number;
   name: string;
@@ -112,41 +71,6 @@ export async function getWalletTxns(
     { company_id: companyId, start_date: startDate, end_date: endDate },
     "wallet_txns"
   );
-}
-
-export async function getTransfers(companyId: number, startDate: string, endDate: string): Promise<FreeeTransfer[]> {
-  return freeeGetPaginated<FreeeTransfer>(
-    "/api/1/transfers",
-    { company_id: companyId, start_date: startDate, end_date: endDate },
-    "transfers"
-  );
-}
-
-/** type別の取引(deal)を発生日で取得する(収入/支出共通)。 */
-export async function getDeals(
-  companyId: number,
-  type: "income" | "expense",
-  startIssueDate: string,
-  endIssueDate: string
-): Promise<FreeeDeal[]> {
-  return freeeGetPaginated<FreeeDeal>(
-    "/api/1/deals",
-    { company_id: companyId, type, start_issue_date: startIssueDate, end_issue_date: endIssueDate },
-    "deals"
-  );
-}
-
-/**
- * 支出取引(type=expense)を発生日で取得する。発生日と実際の決済日はずれることが
- * あるため(実データで確認済み)、対象月より広めの発生日範囲で取得し、呼び出し側で
- * payments[].dateが対象月かどうかを判定すること。
- */
-export async function getExpenseDeals(
-  companyId: number,
-  startIssueDate: string,
-  endIssueDate: string
-): Promise<FreeeDeal[]> {
-  return getDeals(companyId, "expense", startIssueDate, endIssueDate);
 }
 
 export async function getAccountItems(companyId: number): Promise<FreeeAccountItem[]> {

@@ -3,9 +3,10 @@ import { computeMonthlyCashFlow } from "./monthlyCashFlow";
 import { getJournalsCsv } from "@/services/freee/freeeJournalsClient";
 import { sumInflows } from "./cashInflow";
 import type { CashInflowBreakdown } from "./cashInflow";
-import { parseJournalCsv } from "./journalCsv";
+import { sumOutflows } from "./cashOutflow";
+import type { CashOutflowBreakdown } from "./cashOutflow";
+import { journalExportRange, parseJournalCsv } from "./journalCsv";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
-import type { ExternalCashFlowOverride, UnresolvedCashFlowItem } from "@/config/externalCashFlowOverrides";
 import type { ExternalCashFlowStatus } from "./externalCashFlow";
 
 /**
@@ -29,20 +30,16 @@ export interface TermCashFlowTotal {
   externalIncome: number;
   /** 12か月分の入金区分別内訳の単純合計(通期専用の別計算は無い)。v2以前の保存分には無い */
   inflow?: CashInflowBreakdown;
+  /** 12か月分の出金区分別内訳の単純合計。v2以前の保存分には無い */
+  outflow?: CashOutflowBreakdown;
   externalExpenseTotal: number;
   /**
    * externalIncome/externalExpenseTotal算出に使った恒久ロジックのバージョン
    * (12か月すべて同じ実行タイミングで計算するため単一の値になる)。
    */
   calculationVersion: string;
-  /** 12か月のうち1か月でもprovisional(override適用・未解決明細ありなど)を含めばprovisional */
+  /** 12か月のうち1か月でもprovisional(49期固有の証拠付き補完・除外の適用、または未分類あり)ならprovisional */
   status: ExternalCashFlowStatus;
-  /** 12か月分の適用overrideIDをまとめたもの(監査用) */
-  appliedOverrideIds: string[];
-  /** 12か月分の未解決明細をまとめたもの(控除していない) */
-  unresolvedItems: UnresolvedCashFlowItem[];
-  /** 12か月分のtentative候補をまとめたもの(控除していない) */
-  tentativeCandidates: ExternalCashFlowOverride[];
   expenseByCategory: Record<ExpenseCategory, number>;
   operatingCashFlow: number;
   financingCashFlow: number;
@@ -79,14 +76,13 @@ export interface TermCashFlowComputation {
  * (50期が終わった時点でもそのまま使える設計)。
  *
  * 入金側v3(2026-09-19): 仕訳帳のエクスポートは非同期ジョブで1回あたり数秒〜数分かかるため、
- * 期全体(期首日〜期末日)を1回だけエクスポートし、各月はその伝票を日付で絞って使う
+ * 前期の期首〜対象期の期末(債務の原因科目を辿る根拠を含む)を1回だけエクスポートし、各月はその伝票を日付で絞って使う
  * (通期=12か月合計という構造は変わらない。エクスポートの回数だけを減らす)。
  */
 export async function computeTermCashFlow(companyId: number, term: number): Promise<TermCashFlowComputation> {
   const fiscalYear = freeeFiscalYearForTerm(term);
-  const journalGroups = parseJournalCsv(
-    await getJournalsCsv(companyId, `${fiscalYear}-09-01`, `${fiscalYear + 1}-08-31`)
-  );
+  const range = journalExportRange(fiscalYear);
+  const journalGroups = parseJournalCsv(await getJournalsCsv(companyId, range.start, range.end));
   // 12か月分をPromise.allで並列実行すると、1か月あたり6本のfreee APIリクエストが
   // 同時に72本前後飛び、freeeのレート制限(429)に実データで抵触することを確認した
   // (2026-09-18)。この関数は「終わった期」を手動更新ボタンから稀にしか呼ばないため、
@@ -111,6 +107,7 @@ export async function computeTermCashFlow(companyId: number, term: number): Prom
   }
 
   const inflows = results.map((m) => m.inflow).filter((i): i is CashInflowBreakdown => i !== undefined);
+  const outflows = results.map((m) => m.outflow).filter((o): o is CashOutflowBreakdown => o !== undefined);
 
   return {
     months,
@@ -122,12 +119,10 @@ export async function computeTermCashFlow(companyId: number, term: number): Prom
       cashChange: first.cashOpening !== null && last.cashClosing !== null ? last.cashClosing - first.cashOpening : null,
       externalIncome: sum((m) => m.externalIncome),
       inflow: inflows.length === results.length ? sumInflows(inflows) : undefined,
+      outflow: outflows.length === results.length ? sumOutflows(outflows) : undefined,
       externalExpenseTotal: sum((m) => m.externalExpenseTotal),
       calculationVersion: first.calculationVersion,
       status: results.some((m) => m.status === "provisional") ? "provisional" : "final",
-      appliedOverrideIds: results.flatMap((m) => m.appliedOverrideIds),
-      unresolvedItems: results.flatMap((m) => m.unresolvedItems),
-      tentativeCandidates: results.flatMap((m) => m.tentativeCandidates),
       expenseByCategory,
       operatingCashFlow: sum((m) => m.operatingCashFlow),
       financingCashFlow: sum((m) => m.financingCashFlow),

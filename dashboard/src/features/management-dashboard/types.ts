@@ -1,7 +1,7 @@
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
-import type { ExternalCashFlowOverride, UnresolvedCashFlowItem } from "@/config/externalCashFlowOverrides";
 import type { ExternalCashFlowStatus } from "./externalCashFlow";
 import type { CashInflowBreakdown } from "./cashInflow";
+import type { CashOutflowBreakdown } from "./cashOutflow";
 
 /**
  * 月次資金収支(会社版家計簿)のスナップショット。Firestore(monthlyCashFlowSnapshots)へ
@@ -37,32 +37,32 @@ export interface MonthlyCashFlow {
   inflow?: CashInflowBreakdown;
   /** 外部支出合計(自社口座間振替を除く) */
   externalExpenseTotal: number;
+  /**
+   * 出金の区分別内訳(人件費・外注費・税金社保・諸経費・その他・借入元本・利息・積立資産移動・未分類と、
+   * 合計に含めない参考の内部移動・ネットゼロ往復・出金訂正)。v2以前の保存分には無い
+   */
+  outflow?: CashOutflowBreakdown;
 
   /**
-   * externalIncome/externalExpenseTotalを算出した恒久ロジックのバージョン
-   * (externalCashFlow.ts の EXTERNAL_CASH_FLOW_CALCULATION_VERSION)。保存済み
-   * スナップショットのこの値が現在のバージョンと異なる場合はキャッシュミス扱いにし、
-   * 次回の更新で自動的に再計算する(ユーザー確定、2026-09-18)。
+   * externalIncome/externalExpenseTotalを算出したロジックのバージョン
+   * (externalCashFlow.ts の EXTERNAL_CASH_FLOW_CALCULATION_VERSION)。保存済みスナップショットの
+   * この値が現在のバージョンと異なる場合は「旧ロジック」として表示し、更新操作で再計算する
    */
   calculationVersion: string;
   /**
-   * "provisional": この期間に未解決明細・tentative候補・overrideのいずれかが
-   * 適用されている(49期のようなfreee移行期はほぼ常にこれになる)。
-   * "final": 恒久ロジック(口座境界+公式transfer実額照合)のみで機械的に確定できた
-   * (50期以降、override無しで済む期間を想定)。
+   * "provisional": 49期固有の証拠付き補完・除外を適用した、または未分類が残る期間。
+   * "final": 恒久ロジックだけで確定でき、未分類も無い期間。
    */
   status: ExternalCashFlowStatus;
-  /** この期間内で確定(confidence=confirmed)として適用されたoverrideのID一覧(監査用) */
-  appliedOverrideIds: string[];
-  /** この期間内で内部振替か外部入金か無理に分類していない未解決明細(控除していない) */
-  unresolvedItems: UnresolvedCashFlowItem[];
-  /** この期間内の、確定に至っていないoverride候補(参考情報。控除していない) */
-  tentativeCandidates: ExternalCashFlowOverride[];
 
   /** 区分別の支出内訳(二重計上なし、1取引=1区分で代表分類) */
   expenseByCategory: Record<ExpenseCategory, number>;
 
-  /** 営業キャッシュ収支 = externalIncome - (通常運営区分の支出合計) */
+  /**
+   * 営業キャッシュ収支 = 営業入金(inflow.operating) - 営業支出(人件費+外注費+税金社会保険等+諸経費+その他)。
+   * 借入・保険資産回収等・その他入金、借入返済・利息・積立資産移動・未分類の出金は含めない
+   * (ユーザー確定、2026-09-19)。v2以前の保存分は外部入金全体を起点にした値
+   */
   operatingCashFlow: number;
   /**
    * 財務キャッシュ収支 = -(借入元本返済)。利息は含まない(ユーザー確定、2026-09-15。

@@ -14,10 +14,14 @@
  *   (opt-in。将来新しいwalletable(電子マネー等)が増えても自動で巻き込まれない)
  */
 export const CASH_WALLETABLE_ALLOWLIST: {
-  /** wallet型のうち、現金同等物と確認済みでraw income/expenseに含めるwalletable_id */
+  /** wallet型のうち、現金同等物と確認済みで入出金の集計に含めるwalletable_id */
   walletIds: number[];
 } = {
-  walletIds: [],
+  // 5980023=「現金」(小口現金)。試算表の「現金・預金」に含まれ、含めないと月初+入金-出金=月末が
+  // 小口現金の外部入出金の分だけ合わない(49期通期で-3,536,494円。含めると全月0、
+  // output/claude49-verify/EXPENSE_AUDIT.md、ユーザー確定 2026-09-19)。銀行↔現金の引出・入金は
+  // 内部移動になる。受取手形・電子債権(7615514)・Amazonビジネス(7503642)は現金同等物ではないので含めない
+  walletIds: [5980023],
 };
 
 export function isCashWalletable(walletable: { type: string; id: number }): boolean {

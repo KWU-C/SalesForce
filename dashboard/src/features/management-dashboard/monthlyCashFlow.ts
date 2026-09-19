@@ -1,32 +1,15 @@
 import { getTrialBs } from "@/services/freee/freeeAccountingClient";
-import {
-  getAccountItems,
-  getExpenseDeals,
-  getTransfers,
-  getWalletTxns,
-  getWalletables,
-} from "@/services/freee/freeeTransactionClient";
-import type { FreeeDeal } from "@/services/freee/freeeTransactionClient";
-import { classifyExpenseAccountItem } from "@/config/freeeExpenseClassification";
+import { getAccountItems, getWalletTxns, getWalletables } from "@/services/freee/freeeTransactionClient";
+import { getJournalsCsv } from "@/services/freee/freeeJournalsClient";
+import { OPERATING_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
 import { isCashWalletable } from "@/config/cashAccountBoundary";
-import { getJournalsCsv } from "@/services/freee/freeeJournalsClient";
-import { computeExternalCashFlow } from "./externalCashFlow";
-import { computeCashInflow } from "./cashInflow";
-import { parseJournalCsv } from "./journalCsv";
+import { EXTERNAL_CASH_FLOW_CALCULATION_VERSION } from "./externalCashFlow";
+import type { ExternalCashFlowStatus } from "./externalCashFlow";
+import { computeJournalCashFlow } from "./journalCashFlow";
+import { journalExportRange, parseJournalCsv } from "./journalCsv";
 import type { JournalGroup } from "./journalCsv";
 import type { MonthlyCashFlow } from "./types";
-
-const EMPTY_CATEGORY_TOTALS: Record<ExpenseCategory, number> = {
-  labor: 0,
-  outsourcing: 0,
-  taxSocial: 0,
-  financing: 0,
-  interest: 0,
-  assetTransfer: 0,
-  otherOperating: 0,
-  other: 0,
-};
 
 /** 暦月(1-12)の月初日・月末日(yyyy-mm-dd)。fiscalYearはfreeeのfiscal_year(期首の西暦年) */
 function monthDateRange(fiscalYear: number, calendarMonth: number): { start: string; end: string } {
@@ -37,96 +20,21 @@ function monthDateRange(fiscalYear: number, calendarMonth: number): { start: str
   return { start: toDateOnly(start), end: toDateOnly(end) };
 }
 
-/** dealsの発生日を対象月より広めに遡って取得する幅(月数)。決済が発生日から数ヶ月遅れるケースをカバーする */
-const ISSUE_DATE_LOOKBACK_MONTHS = 4;
-
-function subtractMonths(dateStr: string, months: number): string {
-  const d = new Date(`${dateStr}T00:00:00Z`);
-  d.setUTCMonth(d.getUTCMonth() - months);
-  return d.toISOString().slice(0, 10);
-}
-
 /**
- * dealの明細のうち最も金額の大きい行の勘定科目で、取引全体を代表分類する
- * (1取引=1区分。二重計上を避けるための方針、実データ検証済み)。
- */
-function representativeCategory(deal: FreeeDeal, idToName: Map<number, string>): ExpenseCategory {
-  if (deal.details.length === 0) return "other";
-  const mainDetail = deal.details.reduce((a, b) => (Math.abs(b.amount) > Math.abs(a.amount) ? b : a));
-  const name = idToName.get(mainDetail.account_item_id) ?? "";
-  return classifyExpenseAccountItem(name);
-}
-
-/**
- * 借入返済dealは、1つのdeal内に借入金(元本)と支払利息が別明細行で計上され、
- * 金額の大きい元本行が代表科目に選ばれる(実データ確認済み、2026-09-15)。
- * これをそのまま「financing」1区分に計上すると、借入残高の減少(元本)と
- * 借入コスト(利息)が区別できなくなるため、dealの明細行の金額比で
- * payment.amountをfinancing(元本)とinterest(利息)に按分する。
- * 利息行が無い通常の借入金dealはfinancingへ全額計上(従来通り)。
- * 実データ検証: 5件の返済dealで元本明細の合計・利息明細の合計がそれぞれ
- * payment.amountの合計と1円単位で一致することを確認済み。
- */
-function splitLoanRepaymentPayment(
-  deal: FreeeDeal,
-  paymentAmount: number,
-  idToName: Map<number, string>
-): { financing: number; interest: number } {
-  let principalTotal = 0;
-  let interestTotal = 0;
-  for (const detail of deal.details) {
-    const name = idToName.get(detail.account_item_id) ?? "";
-    const category = classifyExpenseAccountItem(name);
-    if (category === "financing") principalTotal += Math.abs(detail.amount);
-    else if (category === "interest") interestTotal += Math.abs(detail.amount);
-  }
-  const lineTotal = principalTotal + interestTotal;
-  if (lineTotal === 0) return { financing: paymentAmount, interest: 0 };
-
-  const financingShare = Math.round((paymentAmount * principalTotal) / lineTotal);
-  return { financing: financingShare, interest: paymentAmount - financingShare };
-}
-
-/**
- * 指定月の資金収支(会社版家計簿)をfreeeの実データから再構成する。
+ * 指定月の資金収支(会社版家計簿)を、freeeの仕訳帳を一次データとして再構成する
+ * (入出金v3、ユーザー確定 2026-09-19)。
  *
- * 入金側v3(2026-09-19): 外部入金(キャッシュイン)は銀行明細ではなく仕訳帳
- * (`/api/1/journals` CSV)の現金・預金借方行を相手科目で区分した合計(cashInflow.ts、
- * output/claude49-verify/REPORT.md)。営業入金・借入・保険資産回収等・その他・未分類に分け、
- * 内部移動・ネットゼロ往復は参考表示として合計から外す。外部支出は下記のv2ロジックのまま。
- *
- * 手法(2026-09-18改訂。output/freee49-audit/REPORT.md(通称Codexレポート)による
- * 監査を踏まえた恒久ロジック。以下は外部支出と区分別支出に現在も使うv2の記述):
- * - 外部入金・外部支出は wallet_txns(口座境界はcashAccountBoundary.ts。bank_account型は
- *   常時対象、wallet型はallowlistに載ったもののみ対象。カード種別は対象外)から算出し、
- *   externalCashFlow.ts(computeExternalCashFlow)で以下を控除する。
- *   1. 公式transfers(自社口座間振替)。ただしincome側はtransfer.to_walletables[].amount
- *      (受取先の実額、手数料控除後)、expense側はtransfer.amount(送金元の額面)で、
- *      それぞれ(date, walletable, amount)の1:1消費マッチングにより照合する
- *      (2026-09-15時点の「一律控除」は、振替先がカード等でwallet_txnsが生成されない
- *      ケースを歪めることが判明したため廃止。片側マッチングへの単純な置き換えも
- *      実データ検証でtrial_bs差額が悪化したため、実額照合の精度を上げる方向で解決)。
- *   2. externalCashFlowOverrides.tsの証拠付きoverride(confidence=confirmedのみ)。
- *      freeeのtransfers APIに登録されていない非公式な内部振替を、仕訳(manual_journals)
- *      の貸借照合で1件ずつ裏取りした個別レコードとして適用する。ハードコードの定数では
- *      なく、ID・根拠・confidence付きのレコードとして保持し、恒久ロジックと明確に分離する。
- *   未解決の明細(evidence不十分なもの)はoverride化せず、controlされたunresolvedItems/
- *   tentativeCandidatesとして結果に残す(無理に分類・補正しない、ユーザー確定2026-09-18)。
- *   このためexternalIncome/externalExpenseTotalは「恒久ロジック＋確定overrideまでの
- *   算出値」であり、未解決分を含む可能性がある点に注意(status="provisional"で判別可能)。
- * - 支出の区分内訳は、個々のwallet_txnとdealを1件ずつ突合するのではなく、
- *   dealsのpayments(決済)のうち対象月に決済されたものを区分ごとに合算する
- *   (1件ずつの突合はdeal側の決済日とwallet_txn側の記帳日がずれるケースがあり
- *   信頼できなかったため、集計レベルでの比較に変更。検証の結果、区分別合計は
- *   外部支出総額の約101.7%を説明でき、実用的な精度と判断)
- * - 区分分類の対象walletableは現金・預金+クレジットカード(categorizableWalletableIds)。
- *   一方、外部入金・外部支出(wallet_txnsベース)は現金・預金のみ(cashWalletableIds)と
- *   意図的に非対称(2026-09-15修正)。カード利用はwallet_txnsを生成しないため後者には
- *   含められないが、dealとしては現金払いと同じ情報を持つため区分分類には含める。
- *   これにより、以前は「カード利用時は区分から除外され、銀行→カード引落もtransfersとして
- *   内部振替扱いになり、実支出がどの区分にも一度も計上されない」問題があったが解消した。
- *   銀行→カード引落はdeal/paymentではなくtransfersなので、ここでの二重計上にはならない
- * - 月初・月末現預金はtrial_bsの現金・預金科目群(opening/closing_balance)から算出
+ * - キャッシュイン・キャッシュアウトはともに仕訳帳(`/api/1/journals` CSV)の、集計境界
+ *   (cashAccountBoundary: 銀行口座＋現金wallet)の現金・預金行から作る(journalCashFlow.ts)。
+ *   入金は営業入金・借入・保険資産回収等・その他・未分類、出金は人件費・外注費・税金社保・諸経費・その他・
+ *   借入元本・支払利息・積立資産移動・未分類に区分する。自社口座間の資金移動と、帳簿に無い銀行明細の
+ *   往復(ネットゼロ)は入出金に含めない。
+ * - 月初・月末現預金は試算表(trial_bs)の現金・預金科目群。仕訳帳は試算表の現金・預金の借方/貸方と
+ *   1円単位で一致するため、月初現預金＋キャッシュイン−キャッシュアウト＝月末現預金が成り立つ。
+ *   成り立たない場合は差額を調整せず、そのまま検算差額として表示する(UIの「検算差額」行)。
+ * - 営業キャッシュ収支＝営業入金−営業支出(人件費・外注費・税金社会保険等・諸経費・その他)。
+ *   借入・保険資産回収等・その他入金、借入返済・利息・積立資産移動・未分類の出金は含めない。
+ * - 銀行明細(wallet_txns)は、帳簿に無い往復(ネットゼロ)の存在確認にだけ使う。
  */
 export async function computeMonthlyCashFlow(
   companyId: number,
@@ -135,75 +43,46 @@ export async function computeMonthlyCashFlow(
   options: { journalGroups?: JournalGroup[] } = {}
 ): Promise<Omit<MonthlyCashFlow, "fiscalYear" | "month" | "fetchedAt">> {
   const { start, end } = monthDateRange(fiscalYear, calendarMonth);
-  const wideStart = subtractMonths(start, ISSUE_DATE_LOOKBACK_MONTHS);
 
-  // 仕訳帳(入金側v3)。事前取得済み(期の通期計算が1回のエクスポートを12か月に共有する)なら
-  // 渡された伝票を使う。無ければこの月分をエクスポートする(非同期ジョブで数秒〜数分かかる)
+  // 仕訳帳。事前取得済み(期の通期計算が1回のエクスポートを12か月に共有する)なら渡された伝票を使う。
+  // 無ければ前期〜当期の範囲をエクスポートする(非同期ジョブで数秒〜数分かかる)
   const journalGroupsPromise: Promise<JournalGroup[]> = options.journalGroups
     ? Promise.resolve(options.journalGroups)
-    : getJournalsCsv(companyId, start, end).then(parseJournalCsv);
+    : (() => {
+        const range = journalExportRange(fiscalYear);
+        return getJournalsCsv(companyId, range.start, range.end).then(parseJournalCsv);
+      })();
 
-  const [walletTxns, transfers, trialBs, accountItems, walletables, expenseDeals, allJournalGroups] = await Promise.all([
+  const [walletTxns, trialBs, accountItems, walletables, allJournalGroups] = await Promise.all([
     getWalletTxns(companyId, start, end),
-    getTransfers(companyId, start, end),
     getTrialBs(companyId, { fiscalYear, startMonth: calendarMonth, endMonth: calendarMonth }),
     getAccountItems(companyId),
     getWalletables(companyId),
-    getExpenseDeals(companyId, wideStart, end),
     journalGroupsPromise,
   ]);
 
-  const idToName = new Map(accountItems.map((i) => [i.id, i.name]));
-  // 支出の区分分類(expenseByCategory)は、現金・預金(cashAccountBoundary)に加えて
-  // クレジットカード払いのdealも対象にする(2026-09-15修正)。カード利用時はwallet_txnsを
-  // 生成しないため外部入金・外部支出(wallet_txnsベース)には含められないが、deal自体は
-  // 通常の現金払いと同じ明細情報を持つため、同じ代表科目分類で人件費/外注費/税金社会保険等/
-  // 諸経費/その他へ計上できる。銀行口座からカード会社への引落はtransfersであり
-  // deal/paymentではないため、ここでの分類対象には含まれない(二重計上にならない)
-  const categorizableWalletableIds = new Set(
-    walletables.filter((w) => isCashWalletable(w) || w.type === "credit_card").map((w) => w.id)
-  );
-
   const cashTxns = walletTxns.filter((w) => isCashWalletable({ type: w.walletable_type, id: w.walletable_id }));
-  const cashIncome = cashTxns.filter((w) => w.entry_side === "income");
-  const cashExpense = cashTxns.filter((w) => w.entry_side === "expense");
-  const externalCashFlow = computeExternalCashFlow(companyId, cashIncome, cashExpense, transfers);
-  // 入金側v3: 外部入金は仕訳帳の相手科目による区分の合計(inflow.total)。従来(v2)の銀行明細ベースの
-  // 外部入金(computeExternalCashFlowのexternalIncome)は使わない。外部支出(externalExpenseTotal)は
-  // 従来ロジックのまま(支出側は別途監査してから見直す、ユーザー確定、2026-09-19)
-  const inflow = computeCashInflow({
+  const { inflow, outflow } = computeJournalCashFlow({
     companyId,
     groups: allJournalGroups.filter((g) => g.date >= start && g.date <= end),
+    evidenceGroups: allJournalGroups,
     walletables,
     accountItems,
-    feedIncome: cashIncome,
+    feedIncome: cashTxns.filter((w) => w.entry_side === "income"),
+    feedExpense: cashTxns.filter((w) => w.entry_side === "expense"),
   });
-  const externalIncome = inflow.total;
-  const { externalExpenseTotal } = externalCashFlow;
 
-  const expenseByCategory: Record<ExpenseCategory, number> = { ...EMPTY_CATEGORY_TOTALS };
-  for (const deal of expenseDeals) {
-    // 未決済(status=unsettled)のdealはpaymentsキー自体が存在しないことがある(実データで確認)
-    for (const payment of deal.payments ?? []) {
-      if (payment.date < start || payment.date > end) continue;
-      if (payment.from_walletable_id === null || !categorizableWalletableIds.has(payment.from_walletable_id)) continue;
-      const category = representativeCategory(deal, idToName);
-      if (category === "financing" || category === "interest") {
-        const { financing, interest } = splitLoanRepaymentPayment(deal, payment.amount, idToName);
-        expenseByCategory.financing += financing;
-        expenseByCategory.interest += interest;
-      } else {
-        expenseByCategory[category] += payment.amount;
-      }
-    }
-  }
-
-  const operatingExpense =
-    expenseByCategory.labor +
-    expenseByCategory.outsourcing +
-    expenseByCategory.taxSocial +
-    expenseByCategory.otherOperating +
-    expenseByCategory.other;
+  const expenseByCategory: Record<ExpenseCategory, number> = {
+    labor: outflow.labor,
+    outsourcing: outflow.outsourcing,
+    taxSocial: outflow.taxSocial,
+    otherOperating: outflow.otherOperating,
+    other: outflow.other,
+    financing: outflow.financing,
+    interest: outflow.interest,
+    assetTransfer: outflow.assetTransfer,
+  };
+  const operatingExpense = OPERATING_CATEGORIES.reduce((sum, c) => sum + expenseByCategory[c], 0);
 
   const cashLeaves = trialBs.balances.filter(
     (b) => b.account_category_name === "現金・預金" && !!b.account_item_name
@@ -211,20 +90,27 @@ export async function computeMonthlyCashFlow(
   const cashOpening = cashLeaves.length > 0 ? cashLeaves.reduce((s, b) => s + b.opening_balance, 0) : null;
   const cashClosing = cashLeaves.length > 0 ? cashLeaves.reduce((s, b) => s + b.closing_balance, 0) : null;
 
+  // 49期固有の証拠付き補完・除外を適用した、または未分類が残る期間は暫定
+  const status: ExternalCashFlowStatus =
+    inflow.appliedEvidenceIds.length > 0 ||
+    outflow.appliedEvidenceIds.length > 0 ||
+    inflow.unclassified !== 0 ||
+    outflow.unclassified !== 0
+      ? "provisional"
+      : "final";
+
   return {
     cashOpening,
     cashClosing,
     cashChange: cashOpening !== null && cashClosing !== null ? cashClosing - cashOpening : null,
-    externalIncome,
+    externalIncome: inflow.total,
+    externalExpenseTotal: outflow.total,
     inflow,
-    externalExpenseTotal,
-    calculationVersion: externalCashFlow.calculationVersion,
-    status: externalCashFlow.status,
-    appliedOverrideIds: externalCashFlow.appliedOverrideIds,
-    unresolvedItems: externalCashFlow.unresolvedItems,
-    tentativeCandidates: externalCashFlow.tentativeCandidates,
+    outflow,
+    calculationVersion: EXTERNAL_CASH_FLOW_CALCULATION_VERSION,
+    status,
     expenseByCategory,
-    operatingCashFlow: externalIncome - operatingExpense,
+    operatingCashFlow: inflow.operating - operatingExpense,
     /** 借入元本返済のみ(利息は含まない、ユーザー確定2026-09-15。借入状況の今期返済と同じ「元本」の定義) */
     financingCashFlow: -expenseByCategory.financing,
     /** 当月支払利息。借入コストとして元本返済とは別枠 */

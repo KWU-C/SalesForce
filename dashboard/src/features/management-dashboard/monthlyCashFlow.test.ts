@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EXTERNAL_CASH_FLOW_OVERRIDES, EXTERNAL_CASH_FLOW_UNRESOLVED_ITEMS } from "@/config/externalCashFlowOverrides";
+import { EXTERNAL_CASH_FLOW_CALCULATION_VERSION } from "./externalCashFlow";
+import type { JournalGroup, JournalLine } from "./journalCsv";
 
 const getTrialBsMock = vi.fn();
 const getWalletTxnsMock = vi.fn();
-const getTransfersMock = vi.fn();
 const getAccountItemsMock = vi.fn();
 const getWalletablesMock = vi.fn();
-const getExpenseDealsMock = vi.fn();
 const getJournalsCsvMock = vi.fn();
 
 vi.mock("@/services/freee/freeeAccountingClient", () => ({
@@ -14,448 +13,216 @@ vi.mock("@/services/freee/freeeAccountingClient", () => ({
 }));
 vi.mock("@/services/freee/freeeTransactionClient", () => ({
   getWalletTxns: getWalletTxnsMock,
-  getTransfers: getTransfersMock,
   getAccountItems: getAccountItemsMock,
   getWalletables: getWalletablesMock,
-  getExpenseDeals: getExpenseDealsMock,
 }));
-
 vi.mock("@/services/freee/freeeJournalsClient", () => ({
   getJournalsCsv: getJournalsCsvMock,
 }));
 
 const { computeMonthlyCashFlow } = await import("./monthlyCashFlow");
-import type { JournalGroup } from "./journalCsv";
-
-/** 銀行口座(普通預金A/B)への入金伝票。counterCreditsは相手科目の貸方、extraDebitsは差引の非現金借方 */
-function receiptGroup(
-  date: string,
-  walletName: string,
-  cashAmount: number,
-  counterCredits: { account: string; amount: number }[],
-  extraDebits: { account: string; amount: number }[] = []
-): JournalGroup {
-  return {
-    date,
-    debits: [
-      { account: "現金及び預金", subAccount: walletName, amount: cashAmount, memo: "" },
-      ...extraDebits.map((d) => ({ account: d.account, subAccount: "", amount: d.amount, memo: "" })),
-    ],
-    credits: counterCredits.map((c) => ({ account: c.account, subAccount: "", amount: c.amount, memo: "" })),
-  };
-}
+import { journalExportRange } from "./journalCsv";
 
 afterEach(() => {
   vi.restoreAllMocks();
   getTrialBsMock.mockReset();
   getWalletTxnsMock.mockReset();
-  getTransfersMock.mockReset();
   getAccountItemsMock.mockReset();
   getWalletablesMock.mockReset();
-  getExpenseDealsMock.mockReset();
   getJournalsCsvMock.mockReset();
 });
 
-function setupCommonMocks() {
+const line = (account: string, amount: number, subAccount = "", memo = ""): JournalLine => ({
+  account,
+  subAccount,
+  amount,
+  memo,
+});
+const cash = (wallet: string, amount: number, memo = "") => line("現金及び預金", amount, wallet, memo);
+const group = (date: string, debits: JournalLine[], credits: JournalLine[]): JournalGroup => ({ date, debits, credits });
+
+function cashLeaf(name: string, opening: number, closing: number) {
+  return {
+    hierarchy_level: 3,
+    account_item_name: name,
+    account_category_name: "現金・預金",
+    opening_balance: opening,
+    closing_balance: closing,
+    debit_amount: 0,
+    credit_amount: 0,
+    composition_ratio: 0,
+  };
+}
+
+function setupCommonMocks(balances = [cashLeaf("普通預金A", 10_000, 10_000), cashLeaf("現金", 500, 500)]) {
   getAccountItemsMock.mockResolvedValue([
-    { id: 8, name: "売掛金", account_category: "売上債権" },
-    { id: 9, name: "受取手形", account_category: "売上債権" },
-    { id: 1, name: "給料手当" },
-    { id: 2, name: "業務委託費" },
-    { id: 3, name: "長期借入金" },
-    { id: 4, name: "保険積立金" },
-    { id: 5, name: "通信費" },
-    { id: 6, name: "預り金" },
-    { id: 7, name: "支払利息" },
+    { id: 1, name: "売掛金", account_category: "売上債権" },
+    { id: 2, name: "給料手当", account_category: "販売管理費" },
+    { id: 3, name: "業務委託費", account_category: "販売管理費" },
+    { id: 4, name: "通信費", account_category: "販売管理費" },
+    { id: 5, name: "長期借入金", account_category: "固定負債" },
+    { id: 6, name: "支払利息", account_category: "営業外費用" },
+    { id: 7, name: "保険積立金", account_category: "投資その他の資産" },
+    { id: 8, name: "雑収入", account_category: "営業外収益" },
+    { id: 9, name: "仮払金", account_category: "他流動資産" },
+    { id: 10, name: "未払金", account_category: "他流動負債" },
+    { id: 11, name: "租税公課", account_category: "販売管理費" },
+    { id: 12, name: "預り金", account_category: "他流動負債" },
   ]);
   getWalletablesMock.mockResolvedValue([
     { id: 100, type: "bank_account", name: "普通預金A" },
     { id: 101, type: "bank_account", name: "普通預金B" },
     { id: 200, type: "credit_card", name: "カード" },
-    { id: 300, type: "wallet", name: "受取手形・電子債権" },
+    { id: 5980023, type: "wallet", name: "現金" },
   ]);
-  getTrialBsMock.mockResolvedValue({
-    company_id: 1,
-    fiscal_year: 2025,
-    balances: [
-      { hierarchy_level: 3, account_item_name: "現金", account_category_name: "現金・預金", opening_balance: 1000, closing_balance: 1200, debit_amount: 0, credit_amount: 0, composition_ratio: 0 },
-    ],
-  });
-  getTransfersMock.mockResolvedValue([]);
-  // 仕訳帳(入金側v3)。個別のテストがjournalGroupsオプションで伝票を渡す。渡さない場合は伝票なし
+  getTrialBsMock.mockResolvedValue({ company_id: 1, fiscal_year: 2025, balances });
+  getWalletTxnsMock.mockResolvedValue([]);
   getJournalsCsvMock.mockResolvedValue("");
 }
 
-describe("computeMonthlyCashFlow", () => {
-  it("excludes credit_card wallet_txns and computes external income/expense net of transfers", async () => {
+describe("journalExportRange", () => {
+  it("covers the previous term's start through the target term's end (債務の原因科目を辿る根拠を含む)", () => {
+    expect(journalExportRange(2025)).toEqual({ start: "2024-09-01", end: "2026-08-31" });
+  });
+});
+
+describe("computeMonthlyCashFlow: 入出金v3(仕訳帳)", () => {
+  it("computes キャッシュイン/キャッシュアウト from the journals of the target month only", async () => {
     setupCommonMocks();
+    const groups = [
+      group("2026-08-15", [cash("普通預金A", 500)], [line("売掛金", 500)]),
+      group("2026-08-16", [line("給料手当", 300)], [cash("普通預金A", 300)]),
+      group("2026-07-31", [cash("普通預金A", 9_999)], [line("売掛金", 9_999)]), // 前月
+      group("2026-09-01", [line("給料手当", 8_888)], [cash("普通預金A", 8_888)]), // 翌月
+    ];
+
+    const r = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: groups });
+
+    expect(r.externalIncome).toBe(500);
+    expect(r.inflow?.operating).toBe(500);
+    expect(r.externalExpenseTotal).toBe(300);
+    expect(r.outflow?.labor).toBe(300);
+  });
+
+  it("uses journals outside the month as evidence for tracing a payable settlement (支払は前月の費用の精算)", async () => {
+    setupCommonMocks();
+    const groups = [
+      group("2026-07-31", [line("業務委託費", 800)], [line("未払金", 800, "株式会社A")]),
+      group("2026-08-20", [line("未払金", 800, "株式会社A")], [cash("普通預金A", 800)]),
+    ];
+
+    const r = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: groups });
+
+    expect(r.outflow?.outsourcing).toBe(800);
+    expect(r.outflow?.unclassified).toBe(0);
+  });
+
+  it("fetches the previous+current term's journals when none are passed", async () => {
+    setupCommonMocks();
+
+    await computeMonthlyCashFlow(1, 2025, 8);
+
+    expect(getJournalsCsvMock).toHaveBeenCalledWith(1, "2024-09-01", "2026-08-31");
+  });
+
+  it("makes 月初現預金 + キャッシュイン − キャッシュアウト = 月末現預金 hold when the journals are complete", async () => {
+    // 月初: 普通預金A 10,000 + 現金 500。入金700(売掛金)、出金: 給料手当300・現金払いの通信費50。口座↔現金の移動200は入出金に含めない
+    setupCommonMocks([cashLeaf("普通預金A", 10_000, 10_000 + 700 - 300 - 200), cashLeaf("現金", 500, 500 + 200 - 50)]);
+    const groups = [
+      group("2026-08-05", [cash("普通預金A", 700)], [line("売掛金", 700)]),
+      group("2026-08-06", [line("給料手当", 300)], [cash("普通預金A", 300)]),
+      group("2026-08-07", [cash("現金", 200)], [cash("普通預金A", 200)]),
+      group("2026-08-08", [line("通信費", 50)], [cash("現金", 50)]),
+    ];
+
+    const r = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: groups });
+
+    expect(r.cashOpening).toBe(10_500);
+    expect(r.cashClosing).toBe(10_500 + 700 - 350);
+    expect(r.cashOpening! + r.externalIncome - r.externalExpenseTotal).toBe(r.cashClosing);
+    expect(r.cashChange).toBe(r.externalIncome - r.externalExpenseTotal);
+  });
+
+  it("does NOT adjust a reconciliation gap: a journal missing from the export shows up as a nonzero difference", async () => {
+    setupCommonMocks([cashLeaf("普通預金A", 10_000, 10_700), cashLeaf("現金", 500, 500)]);
+
+    const r = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: [] });
+
+    // 入出金0なのに預金が700増えている → 差額700をそのまま残す(「その他」等で埋めない)
+    expect(r.cashChange).toBe(700);
+    expect(r.cashChange! - (r.externalIncome - r.externalExpenseTotal)).toBe(700);
+  });
+
+  it("営業キャッシュ収支 = 営業入金 − 営業支出(人件費+外注費+税金社保+諸経費+その他); borrowing/insurance/other inflows and financing/interest/asset/unclassified outflows are excluded", async () => {
+    setupCommonMocks();
+    const groups = [
+      // 入金: 営業1,000 / 借入5,000 / 保険等400 / その他30
+      group("2026-08-02", [cash("普通預金A", 1_000)], [line("売掛金", 1_000)]),
+      group("2026-08-02", [cash("普通預金A", 5_000)], [line("長期借入金", 5_000)]),
+      group("2026-08-02", [cash("普通預金A", 400)], [line("保険積立金", 400)]),
+      group("2026-08-02", [cash("普通預金A", 30)], [line("雑収入", 30)]),
+      // 出金: 営業支出 人件費100・外注費200・税金40・諸経費10 / 元本600・利息70・積立90・未分類7
+      group("2026-08-03", [line("給料手当", 100)], [cash("普通預金A", 100)]),
+      group("2026-08-03", [line("業務委託費", 200)], [cash("普通預金A", 200)]),
+      group("2026-08-03", [line("租税公課", 40)], [cash("普通預金A", 40)]),
+      group("2026-08-03", [line("通信費", 10)], [cash("普通預金A", 10)]),
+      group("2026-08-03", [line("長期借入金", 600)], [cash("普通預金A", 600)]),
+      group("2026-08-03", [line("支払利息", 70)], [cash("普通預金A", 70)]),
+      group("2026-08-03", [line("保険積立金", 90)], [cash("普通預金A", 90)]),
+      group("2026-08-03", [line("仮払金", 7)], [cash("普通預金A", 7)]),
+    ];
+
+    const r = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: groups });
+
+    expect(r.externalIncome).toBe(1_000 + 5_000 + 400 + 30);
+    expect(r.externalExpenseTotal).toBe(100 + 200 + 40 + 10 + 600 + 70 + 90 + 7);
+    expect(r.operatingCashFlow).toBe(1_000 - (100 + 200 + 40 + 10));
+    expect(r.financingCashFlow).toBe(-600);
+    expect(r.interestCashFlow).toBe(-70);
+    expect(r.assetTransferCashFlow).toBe(-90);
+    expect(r.outflow?.unclassified).toBe(7);
+    expect(r.expenseByCategory.labor).toBe(100);
+    expect(r.expenseByCategory.outsourcing).toBe(200);
+    expect(r.expenseByCategory.taxSocial).toBe(40);
+    expect(r.expenseByCategory.otherOperating).toBe(10);
+    expect(r.expenseByCategory.other).toBe(0);
+  });
+
+  it("returns null cashOpening/cashClosing/cashChange (not 0) when no cash leaves are found in trial_bs", async () => {
+    setupCommonMocks([]);
+
+    const r = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: [] });
+
+    expect(r.cashOpening).toBeNull();
+    expect(r.cashClosing).toBeNull();
+    expect(r.cashChange).toBeNull();
+  });
+
+  it("is provisional while 未分類 remains or evidence-backed adjustments apply, and final when clean", async () => {
+    setupCommonMocks();
+    const clean = [group("2026-08-02", [cash("普通預金A", 10)], [line("売掛金", 10)])];
+    const withUnclassified = [group("2026-08-03", [line("仮払金", 7)], [cash("普通預金A", 7)])];
+
+    expect((await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: clean })).status).toBe("final");
+    expect((await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: withUnclassified })).status).toBe("provisional");
+
     getWalletTxnsMock.mockResolvedValue([
-      { id: 1, date: "2026-08-15", amount: 500, entry_side: "income", walletable_type: "bank_account", walletable_id: 100 },
-      { id: 2, date: "2026-08-15", amount: 300, entry_side: "expense", walletable_type: "bank_account", walletable_id: 100 },
-      { id: 3, date: "2026-08-16", amount: 9999, entry_side: "expense", walletable_type: "credit_card", walletable_id: 200 },
+      { id: 2045158083, date: "2026-08-10", amount: 50_000_000, entry_side: "income", walletable_type: "bank_account", walletable_id: 4469148 },
     ]);
-    getExpenseDealsMock.mockResolvedValue([]);
-
-    const result = await computeMonthlyCashFlow(1, 2025, 8, {
-      journalGroups: [receiptGroup("2026-08-15", "普通預金A", 500, [{ account: "売掛金", amount: 500 }])],
-    });
-
-    // 入金側v3: 外部入金は仕訳帳の相手科目による区分の合計。外部支出は従来どおりwallet_txnsから
-    expect(result.externalIncome).toBe(500);
-    expect(result.inflow?.operating).toBe(500);
-    expect(result.externalExpenseTotal).toBe(300);
+    getWalletablesMock.mockResolvedValue([
+      { id: 100, type: "bank_account", name: "普通預金A" },
+      { id: 4469148, type: "bank_account", name: "りそな" },
+    ]);
+    const tripResult = await computeMonthlyCashFlow(11314786, 2025, 8, { journalGroups: clean });
+    expect(tripResult.status).toBe("provisional");
+    expect(tripResult.inflow?.netZeroRoundTrip).toBe(50_000_000);
   });
 
-  it("removes official transfers from both income and expense sides via presence-verified matching (2026-09-18: 受取実額照合による恒久ロジック)", async () => {
+  it("records the current calculation version", async () => {
     setupCommonMocks();
-    getWalletTxnsMock.mockResolvedValue([
-      { id: 1, date: "2026-08-15", amount: 1000, entry_side: "income", walletable_type: "bank_account", walletable_id: 101 },
-      { id: 2, date: "2026-08-15", amount: 1000, entry_side: "expense", walletable_type: "bank_account", walletable_id: 100 },
-    ]);
-    getTransfersMock.mockResolvedValue([
-      {
-        id: 1,
-        amount: 1000,
-        date: "2026-08-15",
-        from_walletable_type: "bank_account",
-        from_walletable_id: 100,
-        to_walletable_type: "bank_account",
-        to_walletable_id: 101,
-        to_walletables: [{ type: "bank_account", id: 101, amount: 1000 }],
-      },
-    ]);
-    getExpenseDealsMock.mockResolvedValue([]);
 
-    // 入金側は仕訳帳の「現金→現金」伝票が内部移動になる(外部入金に含めない)
-    const transferGroup: JournalGroup = {
-      date: "2026-08-15",
-      debits: [{ account: "現金及び預金", subAccount: "普通預金B", amount: 1000, memo: "" }],
-      credits: [{ account: "現金及び預金", subAccount: "普通預金A", amount: 1000, memo: "" }],
-    };
-    const result = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: [transferGroup] });
+    const r = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: [] });
 
-    expect(result.externalIncome).toBe(0);
-    expect(result.inflow?.internalTransfer).toBe(1000);
-    expect(result.externalExpenseTotal).toBe(0);
-    expect(result.status).toBe("final");
-  });
-
-  it("only removes the receiving leg's actual amount, not the face amount, when a fee is deducted on receipt (2026-09-18: 電子債権資金化のような手数料差分ケース)", async () => {
-    setupCommonMocks();
-    getWalletTxnsMock.mockResolvedValue([
-      { id: 1, date: "2026-08-15", amount: 990, entry_side: "income", walletable_type: "bank_account", walletable_id: 101 },
-    ]);
-    getTransfersMock.mockResolvedValue([
-      {
-        id: 1,
-        amount: 1000,
-        date: "2026-08-15",
-        from_walletable_type: "bank_account",
-        from_walletable_id: 100,
-        to_walletable_type: "bank_account",
-        to_walletable_id: 101,
-        to_walletables: [{ type: "bank_account", id: 101, amount: 990 }],
-      },
-    ]);
-    getExpenseDealsMock.mockResolvedValue([]);
-
-    // 入金側v3: 電子債権の資金化(送金元wallet=境界外)は内部移動ではなく営業入金。
-    // 額面1000−手数料10=着金990を1回だけ営業入金に計上する(4,014,670円の二重控除の解消)
-    const result = await computeMonthlyCashFlow(1, 2025, 8, {
-      journalGroups: [
-        receiptGroup("2026-08-15", "普通預金B", 990, [{ account: "受取手形", amount: 1000 }], [
-          { account: "支払手数料", amount: 10 },
-        ]),
-      ],
-    });
-
-    expect(result.externalIncome).toBe(990);
-    expect(result.inflow?.operating).toBe(990);
-    expect(result.inflow?.internalTransfer).toBe(0);
-  });
-
-  it("skips deals with no payments field at all (regression guard: 未決済dealsでpaymentsキー自体が無いケース)", async () => {
-    setupCommonMocks();
-    getWalletTxnsMock.mockResolvedValue([]);
-    getExpenseDealsMock.mockResolvedValue([
-      {
-        id: 1,
-        type: "expense",
-        issue_date: "2026-08-20",
-        details: [{ account_item_id: 1, amount: 900 }],
-        // payments未定義(未決済dealsで実際に発生するケース)
-      },
-    ]);
-
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
-
-    expect(result.expenseByCategory.labor).toBe(0);
-  });
-
-  it("classifies each deal by its largest detail line and only counts payments within the target month", async () => {
-    setupCommonMocks();
-    getWalletTxnsMock.mockResolvedValue([]);
-    getExpenseDealsMock.mockResolvedValue([
-      {
-        id: 1,
-        type: "expense",
-        issue_date: "2026-08-20",
-        details: [
-          { account_item_id: 1, amount: 900 }, // 給料手当 (largest -> labor)
-          { account_item_id: 6, amount: -100 }, // 預り金
-        ],
-        payments: [{ date: "2026-08-25", amount: 800, from_walletable_id: 100 }],
-      },
-      {
-        id: 2,
-        type: "expense",
-        issue_date: "2026-05-01",
-        details: [{ account_item_id: 2, amount: 500 }], // 業務委託費 -> outsourcing
-        payments: [{ date: "2026-08-10", amount: 500, from_walletable_id: 100 }],
-      },
-      {
-        id: 3,
-        type: "expense",
-        issue_date: "2026-08-01",
-        details: [{ account_item_id: 5, amount: 300 }], // 通信費 -> otherOperating
-        payments: [{ date: "2026-09-05", amount: 300, from_walletable_id: 100 }], // 対象月(8月)外なので除外
-      },
-    ]);
-
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
-
-    expect(result.expenseByCategory.labor).toBe(800);
-    expect(result.expenseByCategory.outsourcing).toBe(500);
-    expect(result.expenseByCategory.otherOperating).toBe(0); // 9月決済分は含まれない
-  });
-
-  it("separates financing and asset-transfer cash flow from operating cash flow", async () => {
-    setupCommonMocks();
-    getWalletTxnsMock.mockResolvedValue([
-      { id: 1, date: "2026-08-15", amount: 10000, entry_side: "income", walletable_type: "bank_account", walletable_id: 100 },
-    ]);
-    getExpenseDealsMock.mockResolvedValue([
-      {
-        id: 1,
-        type: "expense",
-        issue_date: "2026-08-01",
-        details: [{ account_item_id: 3, amount: 2000 }], // 長期借入金 -> financing
-        payments: [{ date: "2026-08-05", amount: 2000, from_walletable_id: 100 }],
-      },
-      {
-        id: 2,
-        type: "expense",
-        issue_date: "2026-08-01",
-        details: [{ account_item_id: 4, amount: 500 }], // 保険積立金 -> assetTransfer
-        payments: [{ date: "2026-08-05", amount: 500, from_walletable_id: 100 }],
-      },
-      {
-        id: 3,
-        type: "expense",
-        issue_date: "2026-08-01",
-        details: [{ account_item_id: 1, amount: 1000 }], // 給料手当 -> labor (operating)
-        payments: [{ date: "2026-08-05", amount: 1000, from_walletable_id: 100 }],
-      },
-    ]);
-
-    const result = await computeMonthlyCashFlow(1, 2025, 8, {
-      journalGroups: [receiptGroup("2026-08-15", "普通預金A", 10000, [{ account: "売掛金", amount: 10000 }])],
-    });
-
-    expect(result.financingCashFlow).toBe(-2000);
-    expect(result.assetTransferCashFlow).toBe(-500);
-    // 営業CFは外部入金 - 通常運営区分(labor 1000のみ)。財務・積立は含めない
-    expect(result.operatingCashFlow).toBe(10000 - 1000);
-  });
-
-  it("splits a loan-repayment deal's payment into financing(元本) and interest(利息) by the deal's own detail-line amounts (実データ2026-09-15検証済みの按分方式)", async () => {
-    setupCommonMocks();
-    getWalletTxnsMock.mockResolvedValue([]);
-    getExpenseDealsMock.mockResolvedValue([
-      {
-        id: 1,
-        type: "expense",
-        issue_date: "2026-08-01",
-        details: [
-          { account_item_id: 3, amount: 334000 }, // 長期借入金(元本、代表科目)
-          { account_item_id: 7, amount: 14094 }, // 支払利息
-        ],
-        payments: [{ date: "2026-08-10", amount: 348094, from_walletable_id: 100 }],
-      },
-    ]);
-
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
-
-    expect(result.expenseByCategory.financing).toBe(334000);
-    expect(result.expenseByCategory.interest).toBe(14094);
-    expect(result.financingCashFlow).toBe(-334000);
-    expect(result.interestCashFlow).toBe(-14094);
-    // 元本と利息の合計は支払額と1円単位で一致する(端数はinterest側に寄せる実装)
-    expect(result.expenseByCategory.financing + result.expenseByCategory.interest).toBe(348094);
-  });
-
-  it("keeps interest at 0 when a financing deal has no interest detail line (regression guard)", async () => {
-    setupCommonMocks();
-    getWalletTxnsMock.mockResolvedValue([]);
-    getExpenseDealsMock.mockResolvedValue([
-      {
-        id: 1,
-        type: "expense",
-        issue_date: "2026-08-01",
-        details: [{ account_item_id: 3, amount: 2000 }], // 長期借入金のみ
-        payments: [{ date: "2026-08-05", amount: 2000, from_walletable_id: 100 }],
-      },
-    ]);
-
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
-
-    expect(result.expenseByCategory.financing).toBe(2000);
-    expect(result.expenseByCategory.interest).toBe(0);
-  });
-
-  it("categorizes a credit-card-paid deal into its account item's category (2026-09-15: カード利用の計上漏れ修正)", async () => {
-    setupCommonMocks();
-    getWalletTxnsMock.mockResolvedValue([]);
-    getExpenseDealsMock.mockResolvedValue([
-      {
-        id: 1,
-        type: "expense",
-        issue_date: "2026-08-01",
-        details: [{ account_item_id: 5, amount: 3000 }], // 通信費 -> otherOperating
-        payments: [{ date: "2026-08-05", amount: 3000, from_walletable_id: 200 }], // credit_card払い
-      },
-    ]);
-
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
-
-    expect(result.expenseByCategory.otherOperating).toBe(3000);
-  });
-
-  it("does not double-count a credit-card deal when the bank later settles the card via a transfer (transfers are never scanned for categorization)", async () => {
-    setupCommonMocks();
-    getWalletTxnsMock.mockResolvedValue([
-      { id: 1, date: "2026-08-20", amount: 3000, entry_side: "expense", walletable_type: "bank_account", walletable_id: 100 },
-    ]);
-    // 銀行(100)からクレジットカード(200)への引落
-    getTransfersMock.mockResolvedValue([
-      {
-        id: 1,
-        amount: 3000,
-        date: "2026-08-20",
-        from_walletable_type: "bank_account",
-        from_walletable_id: 100,
-        to_walletable_type: "credit_card",
-        to_walletable_id: 200,
-        to_walletables: [{ type: "credit_card", id: 200, amount: 3000 }],
-      },
-    ]);
-    getExpenseDealsMock.mockResolvedValue([
-      {
-        id: 1,
-        type: "expense",
-        issue_date: "2026-08-01",
-        details: [{ account_item_id: 5, amount: 3000 }], // 通信費 -> otherOperating
-        payments: [{ date: "2026-08-05", amount: 3000, from_walletable_id: 200 }], // カード利用時に計上
-      },
-    ]);
-
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
-
-    // カード利用分はdealとして1回だけ計上される(transfersは分類の対象外のため二重計上なし)
-    expect(result.expenseByCategory.otherOperating).toBe(3000);
-    // 銀行→カードの引落transferは、公式transferとして送金元(銀行)側で実額照合され外部支出から相殺される(資金移動として扱う、再度支出計上しない)
-    expect(result.externalExpenseTotal).toBe(0);
-  });
-
-  it("returns null cashOpening/cashClosing (not 0) when no cash leaves are found in trial_bs", async () => {
-    setupCommonMocks();
-    getTrialBsMock.mockResolvedValue({ company_id: 1, fiscal_year: 2025, balances: [] });
-    getWalletTxnsMock.mockResolvedValue([]);
-    getExpenseDealsMock.mockResolvedValue([]);
-
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
-
-    expect(result.cashOpening).toBeNull();
-    expect(result.cashClosing).toBeNull();
-    expect(result.cashChange).toBeNull();
-  });
-
-  it("applies a confirmed evidence-backed override (49期の非公式内部振替) and marks the period provisional", async () => {
-    setupCommonMocks();
-    const override = EXTERNAL_CASH_FLOW_OVERRIDES.find((o) => o.id === "term49-pair-20251030-5000000")!;
-    getWalletTxnsMock.mockResolvedValue([
-      {
-        id: override.incomeWalletTxnId,
-        date: override.date,
-        amount: override.amount,
-        entry_side: "income",
-        walletable_type: "bank_account",
-        walletable_id: 100,
-      },
-      {
-        id: override.expenseWalletTxnId,
-        date: override.date,
-        amount: override.amount,
-        entry_side: "expense",
-        walletable_type: "bank_account",
-        walletable_id: 100,
-      },
-    ]);
-    getExpenseDealsMock.mockResolvedValue([]);
-
-    const result = await computeMonthlyCashFlow(override.companyId, 2025, 10);
-
-    expect(result.externalIncome).toBe(0);
-    expect(result.externalExpenseTotal).toBe(0);
-    expect(result.appliedOverrideIds).toEqual([override.id]);
-    expect(result.status).toBe("provisional");
-  });
-
-  it("does not net out an unresolved item, but still surfaces it and marks the period provisional", async () => {
-    setupCommonMocks();
-    const unresolved = EXTERNAL_CASH_FLOW_UNRESOLVED_ITEMS.find((u) => u.id === "term49-unresolved-20251031-50000000")!;
-    getWalletTxnsMock.mockResolvedValue([
-      {
-        id: unresolved.walletTxnId,
-        date: unresolved.date,
-        amount: unresolved.amount,
-        entry_side: "income",
-        walletable_type: "bank_account",
-        walletable_id: 100,
-      },
-    ]);
-    getExpenseDealsMock.mockResolvedValue([]);
-
-    const result = await computeMonthlyCashFlow(unresolved.companyId, 2025, 10);
-
-    // 帳簿に無い往復は、仕訳帳ベースの入金側v3には最初から現れない(外部入金に含まれない)。
-    // 参考表示(ネットゼロ往復)として別掲し、未解決明細としても提示し続ける
-    expect(result.externalIncome).toBe(0);
-    expect(result.inflow?.netZeroRoundTrip).toBe(unresolved.amount);
-    expect(result.unresolvedItems.map((u) => u.id)).toEqual([unresolved.id]);
-    expect(result.status).toBe("provisional");
-  });
-
-  it("does not apply an override/unresolved item from another company (companyId境界)", async () => {
-    setupCommonMocks();
-    const override = EXTERNAL_CASH_FLOW_OVERRIDES.find((o) => o.id === "term49-pair-20251030-5000000")!;
-    getWalletTxnsMock.mockResolvedValue([
-      {
-        id: override.incomeWalletTxnId,
-        date: override.date,
-        amount: override.amount,
-        entry_side: "income",
-        walletable_type: "bank_account",
-        walletable_id: 100,
-      },
-    ]);
-    getExpenseDealsMock.mockResolvedValue([]);
-
-    const result = await computeMonthlyCashFlow(999999, 2025, 10);
-
-    expect(result.externalIncome).toBe(0);
-    expect(result.inflow?.netZeroRoundTrip).toBe(0);
-    expect(result.appliedOverrideIds).toEqual([]);
-    expect(result.status).toBe("final");
+    expect(r.calculationVersion).toBe(EXTERNAL_CASH_FLOW_CALCULATION_VERSION);
   });
 });

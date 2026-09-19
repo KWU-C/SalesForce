@@ -45,7 +45,6 @@ const LABOR_ITEMS: readonly string[] = [
   "賞与",
   "雑給",
   "[製]雑給",
-  "未払金",
 ];
 
 // 「外注費」は今期使われておらず、実際の計上は「業務委託費」(実データで確認済み)
@@ -81,9 +80,9 @@ const ASSET_TRANSFER_ITEMS: readonly string[] = ["保険積立金", "前払費�
 
 // 諸経費: 通常の運営経費(ホワイトリスト)。ここに無い科目は「その他」扱い
 const OTHER_OPERATING_ITEMS: readonly string[] = [
+  "地代家賃",
   "賃借料・地代家賃",
   "賃借料",
-  "地代家賃",
   "[製]賃借料",
   "リース料",
   "通信費",
@@ -120,13 +119,35 @@ const OTHER_OPERATING_ITEMS: readonly string[] = [
   "荷造運賃",
 ];
 
+function matchDirect(name: string): ExpenseCategory | null {
+  if (LABOR_ITEMS.includes(name)) return "labor";
+  if (OUTSOURCING_ITEMS.includes(name)) return "outsourcing";
+  if (TAX_SOCIAL_ITEMS.includes(name)) return "taxSocial";
+  if (FINANCING_ITEMS.includes(name)) return "financing";
+  if (INTEREST_ITEMS.includes(name)) return "interest";
+  if (ASSET_TRANSFER_ITEMS.includes(name)) return "assetTransfer";
+  if (OTHER_OPERATING_ITEMS.includes(name)) return "otherOperating";
+  return null;
+}
+
+const MANUFACTURING_PREFIX = "[製]";
+
+/**
+ * 勘定科目名が区分リストのどれに載っているかを返す。載っていなければnull
+ * (呼び出し側が、損益科目なら「その他」、貸借対照表科目なら「未分類」に振り分ける)。
+ * 製造原価版の科目「[製]xxx」は、リストに直接無ければ同名の通常科目と同じ区分にする
+ * (例: 「[製]賞与」は人件費、「[製]地代家賃」は諸経費)。
+ */
+export function matchExpenseCategory(accountItemName: string): ExpenseCategory | null {
+  const direct = matchDirect(accountItemName);
+  if (direct !== null) return direct;
+  if (accountItemName.startsWith(MANUFACTURING_PREFIX)) {
+    const base = accountItemName.slice(MANUFACTURING_PREFIX.length);
+    return matchDirect(base);
+  }
+  return null;
+}
+
 export function classifyExpenseAccountItem(accountItemName: string): ExpenseCategory {
-  if (LABOR_ITEMS.includes(accountItemName)) return "labor";
-  if (OUTSOURCING_ITEMS.includes(accountItemName)) return "outsourcing";
-  if (TAX_SOCIAL_ITEMS.includes(accountItemName)) return "taxSocial";
-  if (FINANCING_ITEMS.includes(accountItemName)) return "financing";
-  if (INTEREST_ITEMS.includes(accountItemName)) return "interest";
-  if (ASSET_TRANSFER_ITEMS.includes(accountItemName)) return "assetTransfer";
-  if (OTHER_OPERATING_ITEMS.includes(accountItemName)) return "otherOperating";
-  return "other";
+  return matchExpenseCategory(accountItemName) ?? "other";
 }

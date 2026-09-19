@@ -46,7 +46,7 @@ type RowDef =
       bold?: boolean;
       note?: boolean;
       groupStart?: boolean;
-      /** 入金の区分別内訳の行。旧ロジック(v3より前)で保存されたスナップショットには値が無く「未再計算」と表示する */
+      /** 入金・出金の区分別内訳の行。旧ロジック(v3より前)で保存されたスナップショットには値が無く「未再計算」と表示する */
       inflowDetail?: boolean;
       get: (cf: MonthlyCashFlow) => number | null;
     };
@@ -98,20 +98,51 @@ const ROWS: RowDef[] = [
   { kind: "value", label: CATEGORY_LABEL.other, indent: true, get: (cf) => cf.expenseByCategory.other },
   {
     kind: "value",
-    label: "内訳合計",
+    label: "営業支出合計",
     bold: true,
     get: (cf) => OPERATING_CATEGORIES.reduce((sum, c) => sum + cf.expenseByCategory[c], 0),
   },
-  { kind: "value", label: "営業キャッシュ収支", bold: true, get: (cf) => cf.operatingCashFlow },
-  { kind: "section", label: "財務・将来準備", groupStart: true },
+  { kind: "value", label: "営業キャッシュ収支（営業入金−営業支出）", bold: true, get: (cf) => cf.operatingCashFlow },
+  { kind: "section", label: "財務・将来準備・未分類", groupStart: true },
   { kind: "value", label: CATEGORY_LABEL.financing, indent: true, get: (cf) => cf.financingCashFlow },
   { kind: "value", label: CATEGORY_LABEL.interest, indent: true, get: (cf) => cf.interestCashFlow },
   { kind: "value", label: "借入関連支出合計", bold: true, get: (cf) => cf.financingCashFlow + cf.interestCashFlow },
   { kind: "value", label: CATEGORY_LABEL.assetTransfer, indent: true, get: (cf) => cf.assetTransferCashFlow },
-  { kind: "value", label: "外部支出（実績）", bold: true, get: (cf) => cf.externalExpenseTotal },
   {
     kind: "value",
-    label: "調整・未分類差額(支出側は監査前)",
+    label: "未分類（出金）",
+    indent: true,
+    inflowDetail: true,
+    get: (cf) => cf.outflow?.unclassified ?? null,
+  },
+  { kind: "value", label: "キャッシュアウト合計（外部支出）", bold: true, get: (cf) => cf.externalExpenseTotal },
+  {
+    kind: "value",
+    label: "うち帳簿補完(銀行明細欠落期間)",
+    indent: true,
+    note: true,
+    inflowDetail: true,
+    get: (cf) => cf.outflow?.ledgerOnly ?? null,
+  },
+  {
+    kind: "value",
+    label: "(参考)内部移動 ※合計に含めず",
+    indent: true,
+    note: true,
+    inflowDetail: true,
+    get: (cf) => cf.outflow?.internalTransfer ?? null,
+  },
+  {
+    kind: "value",
+    label: "(参考)ネットゼロ往復 ※帳簿未計上・合計に含めず",
+    indent: true,
+    note: true,
+    inflowDetail: true,
+    get: (cf) => cf.outflow?.netZeroRoundTrip ?? null,
+  },
+  {
+    kind: "value",
+    label: "検算差額（現金増減−(入金−出金)）",
     note: true,
     get: (cf) => (cf.cashChange === null ? null : cf.cashChange - (cf.externalIncome - cf.externalExpenseTotal)),
   },
@@ -193,7 +224,7 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                     {col.cashFlow && col.cashFlow.calculationVersion !== EXTERNAL_CASH_FLOW_CALCULATION_VERSION && (
                       <span
                         className="rounded bg-[var(--status-warning)] px-1 py-0.5 text-[10px] font-bold text-white"
-                        title="入金の区分内訳(営業入金等)は旧ロジックで保存された値のため未反映です。「更新」で再計算されます"
+                        title="入金・出金の区分内訳は旧ロジックで保存された値のため未反映です(合計も旧ロジックの値)。「更新」で再計算されます"
                       >
                         旧ロジック
                       </span>
@@ -202,9 +233,9 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                       <span
                         className="rounded bg-[var(--status-warning)] px-1 py-0.5 text-[10px] font-bold text-white"
                         title={
-                          col.cashFlow.unresolvedItems.length > 0
-                            ? `未解決明細${col.cashFlow.unresolvedItems.length}件あり(外部入金・外部支出に含む。分類未確定)`
-                            : "証拠付きoverride適用済み、または確定に至っていない候補あり"
+                          (col.cashFlow.inflow?.unclassified ?? 0) !== 0 || (col.cashFlow.outflow?.unclassified ?? 0) !== 0
+                            ? "未分類の入金・出金あり(仕訳科目でも摘要ルールでも判定できないため分類していない)"
+                            : "49期固有の証拠付き補完・除外(銀行明細欠落の帳簿補完、帳簿未計上の往復)を適用済み"
                         }
                       >
                         暫定

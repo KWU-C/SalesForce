@@ -22,6 +22,8 @@ interface ExpenseCompositionSectionProps {
   expenseByCategory: Record<ExpenseCategory, number>;
   /** 外部支出総額(振替除く)。比率の分母 */
   externalExpenseTotal: number;
+  /** 未分類の出金(仕訳科目でも摘要ルールでも判定できないもの)。旧ロジックの保存分では未定義 */
+  unclassified?: number;
 }
 
 interface PieTooltipEntry {
@@ -84,6 +86,7 @@ function CategoryRow({
 export function ExpenseCompositionSection({
   expenseByCategory,
   externalExpenseTotal,
+  unclassified,
 }: ExpenseCompositionSectionProps) {
   const operatingColor1 = useCssVar("--series-category-1", "#00b5be");
   const operatingColor2 = useCssVar("--series-category-2", "#a892f4");
@@ -93,6 +96,7 @@ export function ExpenseCompositionSection({
   const financingColor1 = useCssVar("--text-muted", "#8a8578");
   const financingColor2 = useCssVar("--series-category-5", "#c7ac41");
   const financingColor3 = useCssVar("--border-hairline", "#c9c4b8");
+  const unclassifiedColor = useCssVar("--status-warning", "#d9822b");
   const surface = useCssVar("--surface-1", "#fcfcfb");
 
   const colorByCategory: Record<ExpenseCategory, string> = {
@@ -109,6 +113,7 @@ export function ExpenseCompositionSection({
   const allCategories: ExpenseCategory[] = [...OPERATING_CATEGORIES, ...FINANCING_AND_RESERVE_CATEGORIES];
   const pieData = allCategories
     .map((c) => ({ name: CATEGORY_LABEL[c], value: expenseByCategory[c], color: colorByCategory[c] }))
+    .concat(unclassified ? [{ name: "未分類", value: unclassified, color: unclassifiedColor }] : [])
     .filter((d) => d.value > 0);
 
   return (
@@ -167,6 +172,24 @@ export function ExpenseCompositionSection({
                 color={colorByCategory[c]}
               />
             ))}
+
+            {unclassified !== undefined && (
+              <>
+                <p className="mb-1 mt-3 text-xs font-medium text-[var(--text-muted)]">未分類</p>
+                <div className="flex items-center justify-between gap-3 py-1 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: unclassifiedColor }} />
+                    <span className="text-[var(--text-secondary)]">判定できない出金</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-medium tabular-nums text-[var(--text-primary)]">{formatYen(unclassified)}</span>
+                    <span className="ml-2 tabular-nums text-[var(--text-muted)]">
+                      {externalExpenseTotal > 0 ? formatPercent((unclassified / externalExpenseTotal) * 100) : "—"}
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

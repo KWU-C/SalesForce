@@ -149,3 +149,12 @@ export function parseJournalCsv(text: string): JournalGroup[] {
   if (compound !== null) throw new Error("journal_csv_unexpected_sequence");
   return groups;
 }
+
+/**
+ * 仕訳帳をエクスポートする範囲(前期の期首〜対象期の期末)。入出金の分類は対象月の伝票だが、
+ * 債務(未払金・買掛金)の支払は前月・前期に発生した費用の精算であるため、原因科目を辿る根拠として
+ * 前期〜当期の全伝票を使う。期の通期計算・月次計算のどちらも同じ範囲を使う。
+ */
+export function journalExportRange(fiscalYear: number): { start: string; end: string } {
+  return { start: `${fiscalYear - 1}-09-01`, end: `${fiscalYear + 1}-08-31` };
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computeCashInflow, EMPTY_INFLOW, sumInflows } from "./cashInflow";
+import { EMPTY_INFLOW, sumInflows } from "./cashInflow";
+import { computeJournalCashFlow } from "./journalCashFlow";
 import type { JournalGroup, JournalLine } from "./journalCsv";
 import type { FreeeAccountItem, FreeeWalletTxn, FreeeWalletable } from "@/services/freee/freeeTransactionClient";
 
@@ -49,13 +50,14 @@ function group(date: string, debits: JournalLine[], credits: JournalLine[]): Jou
 }
 
 function compute(groups: JournalGroup[], feedIncome: FreeeWalletTxn[] = []) {
-  return computeCashInflow({
+  return computeJournalCashFlow({
     companyId: COMPANY,
     groups,
     walletables: WALLETABLES,
     accountItems: ACCOUNT_ITEMS,
     feedIncome,
-  });
+    feedExpense: [],
+  }).inflow;
 }
 
 describe("computeCashInflow: 区分", () => {
@@ -71,7 +73,7 @@ describe("computeCashInflow: 区分", () => {
 
   it("classifies by account category, so a new receivable-category account needs no code change; 貸倒引当金 is not an operating receipt", () => {
     const items: FreeeAccountItem[] = [...ACCOUNT_ITEMS, { id: 99, name: "新設の売掛科目", account_category: "売上債権" }];
-    const r = computeCashInflow({
+    const r = computeJournalCashFlow({
       companyId: COMPANY,
       groups: [
         group("2026-08-10", [cash(SMBC, 300)], [line("新設の売掛科目", 300)]),
@@ -80,7 +82,8 @@ describe("computeCashInflow: 区分", () => {
       walletables: WALLETABLES,
       accountItems: items,
       feedIncome: [],
-    });
+      feedExpense: [],
+    }).inflow;
 
     expect(r.operating).toBe(300);
     expect(r.other).toBe(50);
@@ -199,13 +202,14 @@ describe("computeCashInflow: 内部移動・境界", () => {
     expect(r.total).toBe(3_541);
   });
 
-  it("does not treat a receipt into a non-boundary wallet (現金/受取手形・電子債権 wallet) as bank inflow", () => {
+  it("counts a receipt into the 現金 wallet (allow-listed as a cash equivalent) but not into the 受取手形・電子債権 wallet", () => {
     const r = compute([
       group("2026-08-10", [cash("現金", 5_000)], [line("売掛金", 5_000)]),
       group("2026-08-10", [cash("受取手形・電子債権", 700)], [line("売掛金", 700)]),
     ]);
 
-    expect(r.total).toBe(0);
+    expect(r.operating).toBe(5_000);
+    expect(r.total).toBe(5_000);
   });
 
   it("counts an electronic-receivable cash-in (資金化) once as 営業入金 at the bank, net of the deducted fee", () => {
@@ -305,6 +309,40 @@ describe("computeCashInflow: 49期固有の証拠付き補完・除外", () => {
     expect(withTrip.total).toBe(0);
     expect(withTrip.appliedEvidenceIds).toEqual(["term49-net-zero-20251031-50000000"]);
     expect(withoutTrip.netZeroRoundTrip).toBe(0);
+  });
+});
+
+describe("computeCashInflow: 規則B(入金として記帳された出金の訂正)", () => {
+  const socialPayment = (amount: number) =>
+    group("2026-06-01", [line("未払金", amount)], [cash(SMBC, amount, "CR1 646080535363308479ｺｳｻﾞﾌﾘｶｴ ｼﾔｶｲﾎｹﾝﾘﾖｳ")]);
+  const correction = group(
+    "2026-06-01",
+    [cash(SMBC, 115_436, "646080535363308479ｺｳｻﾞﾌﾘｶｴ ｼﾔｶｲﾎｹﾝﾘﾖｳ"), line("[製]給料手当", 11_196)],
+    [line("仮払金", 126_632)]
+  );
+
+  it("does not count an unclassifiable cash debit as inflow when a same-day, same-account payment shares its bank description (it corrects that outflow)", () => {
+    const r = compute([socialPayment(1_000_000), socialPayment(999_043), correction]);
+
+    expect(r.total).toBe(0);
+    expect(r.unclassified).toBe(0);
+    expect(r.reclassifiedAsOutflowCorrection).toBe(115_436);
+  });
+
+  it("keeps it as 未分類 inflow when no same-day payment shares its bank description", () => {
+    const r = compute([correction]);
+
+    expect(r.unclassified).toBe(115_436);
+    expect(r.reclassifiedAsOutflowCorrection).toBe(0);
+  });
+
+  it("does not treat a classifiable inflow (e.g. 売掛金) as a correction even if a same-day payment shares the description", () => {
+    const receipt = group("2026-06-01", [cash(SMBC, 500, "646080535363308479ｺｳｻﾞﾌﾘｶｴ ｼﾔｶｲﾎｹﾝﾘﾖｳ")], [line("売掛金", 500)]);
+
+    const r = compute([socialPayment(1_000), receipt]);
+
+    expect(r.operating).toBe(500);
+    expect(r.reclassifiedAsOutflowCorrection).toBe(0);
   });
 });
 

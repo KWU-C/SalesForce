@@ -229,11 +229,10 @@ export default async function ManagementPage() {
           cashChange: termTotal.cashChange,
           externalIncome: termTotal.externalIncome,
           externalExpenseTotal: termTotal.externalExpenseTotal,
+          inflow: termTotal.inflow,
+          outflow: termTotal.outflow,
           calculationVersion: termTotal.calculationVersion,
           status: termTotal.status,
-          appliedOverrideIds: termTotal.appliedOverrideIds,
-          unresolvedItems: termTotal.unresolvedItems,
-          tentativeCandidates: termTotal.tentativeCandidates,
           expenseByCategory: termTotal.expenseByCategory,
           operatingCashFlow: termTotal.operatingCashFlow,
           financingCashFlow: termTotal.financingCashFlow,
@@ -295,6 +294,7 @@ export default async function ManagementPage() {
                 {currentCashFlow && (
                   <ExpenseCompositionSection
                     expenseByCategory={currentCashFlow.expenseByCategory}
+                    unclassified={currentCashFlow.outflow?.unclassified}
                     externalExpenseTotal={currentCashFlow.externalExpenseTotal}
                   />
                 )}

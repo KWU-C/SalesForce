@@ -7,8 +7,11 @@
  *
  * v3(2026-09-19): 入金・出金とも、銀行明細＋公式振替＋override(v2)ではなく、仕訳帳の相手科目による
  * 区分(journalCashFlow.ts)に変更。現金walletを集計境界に追加。営業キャッシュ収支は営業入金を起点に再定義。
+ *
+ * v3.1(2026-09-19): 「人件費」を「給与・人件費」に改称。退職金・[製]退職金(その他から)と指定業務委託3名
+ * (外注費から)を給与・人件費へ移し、内訳「うち従業員給与計」を追加。営業支出合計は変わらない。
  */
-export const EXTERNAL_CASH_FLOW_CALCULATION_VERSION = "external-cashflow-v3-2026-09-19";
+export const EXTERNAL_CASH_FLOW_CALCULATION_VERSION = "external-cashflow-v3.1-2026-09-19";
 
 /**
  * "provisional": 49期固有の証拠付き補完・除外(帳簿補完、ネットゼロ往復)を適用した、または未分類が

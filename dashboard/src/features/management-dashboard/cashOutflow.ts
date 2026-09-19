@@ -11,11 +11,44 @@ export interface UnclassifiedOutflowItem {
 }
 
 /**
+ * 「給与・人件費」の内訳(参考表示。合計はCashOutflowBreakdown.laborと一致する)。
+ * 「うち従業員給与計」＝employeeSalary＋employeeBonus＋指定業務委託の合計(contractors)。
+ * 役員報酬・役員賞与(executive)、退職金(retirement)は含めない。
+ */
+export interface LaborDetail {
+  employeeSalary: number;
+  employeeBonus: number;
+  /** 役員報酬・役員賞与 */
+  executive: number;
+  retirement: number;
+  /** 指定業務委託(氏名→金額)。外注費から給与・人件費へ移した分 */
+  contractors: Record<string, number>;
+}
+
+export const EMPTY_LABOR_DETAIL: LaborDetail = {
+  employeeSalary: 0,
+  employeeBonus: 0,
+  executive: 0,
+  retirement: 0,
+  contractors: {},
+};
+
+/** うち従業員給与計 = 従業員給与 + 従業員賞与 + 指定業務委託 */
+export function employeeSalarySubtotal(detail: LaborDetail): number {
+  return (
+    detail.employeeSalary +
+    detail.employeeBonus +
+    Object.values(detail.contractors).reduce((s, v) => s + v, 0)
+  );
+}
+
+/**
  * 出金(キャッシュアウト)の区分別内訳。仕訳帳の「現金・預金(集計境界内)の貸方行」を、同じ伝票内の
  * 借方科目で分類した値。total(=外部支出)は9区分の合計。通期は12か月の単純合計
  * (通期専用の別計算は無い)。
  */
 export interface CashOutflowBreakdown {
+  /** 給与・人件費(旧称: 人件費)。内訳はlaborDetail */
   labor: number;
   outsourcing: number;
   taxSocial: number;
@@ -41,6 +74,8 @@ export interface CashOutflowBreakdown {
   /** 参考: 債務(未払金・買掛金)の精算のうち、原因科目を辿って分類した額/摘要ルールで分類した額(補助判定) */
   payableTraced: number;
   payableByMemoRule: number;
+  /** 給与・人件費の内訳(参考表示)。v3.1より前の保存分には無い */
+  laborDetail: LaborDetail;
   unclassifiedItems: UnclassifiedOutflowItem[];
   appliedEvidenceIds: string[];
 }
@@ -63,6 +98,7 @@ export const EMPTY_OUTFLOW: CashOutflowBreakdown = {
   ledgerOnly: 0,
   payableTraced: 0,
   payableByMemoRule: 0,
+  laborDetail: EMPTY_LABOR_DETAIL,
   unclassifiedItems: [],
   appliedEvidenceIds: [],
 };
@@ -101,7 +137,25 @@ export function sumOutflows(outflows: CashOutflowBreakdown[]): CashOutflowBreakd
     ledgerOnly: sum((o) => o.ledgerOnly),
     payableTraced: sum((o) => o.payableTraced),
     payableByMemoRule: sum((o) => o.payableByMemoRule),
+    laborDetail: sumLaborDetails(outflows.map((o) => o.laborDetail)),
     unclassifiedItems: outflows.flatMap((o) => o.unclassifiedItems),
     appliedEvidenceIds: outflows.flatMap((o) => o.appliedEvidenceIds),
   };
+}
+
+export function sumLaborDetails(details: (LaborDetail | undefined)[]): LaborDetail {
+  const contractors: Record<string, number> = {};
+  let employeeSalary = 0;
+  let employeeBonus = 0;
+  let executive = 0;
+  let retirement = 0;
+  for (const d of details) {
+    if (!d) continue;
+    employeeSalary += d.employeeSalary;
+    employeeBonus += d.employeeBonus;
+    executive += d.executive;
+    retirement += d.retirement;
+    for (const [name, amount] of Object.entries(d.contractors)) contractors[name] = (contractors[name] ?? 0) + amount;
+  }
+  return { employeeSalary, employeeBonus, executive, retirement, contractors };
 }

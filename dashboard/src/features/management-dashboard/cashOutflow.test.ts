@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_OUTFLOW, sumOutflows } from "./cashOutflow";
+import { EMPTY_OUTFLOW, employeeSalarySubtotal, sumLaborDetails, sumOutflows } from "./cashOutflow";
 import { computeJournalCashFlow } from "./journalCashFlow";
 import type { JournalGroup, JournalLine } from "./journalCsv";
 import type { FreeeAccountItem, FreeeWalletTxn, FreeeWalletable } from "@/services/freee/freeeTransactionClient";
@@ -383,5 +383,239 @@ describe("sumOutflows", () => {
     expect(sum.internalTransfer).toBe(7);
     expect(sum.appliedEvidenceIds).toEqual(["x"]);
     expect(sum.unclassifiedItems).toHaveLength(1);
+  });
+});
+
+describe("computeJournalCashFlow: 給与・人件費の内訳と指定業務委託(v3.1)", () => {
+  const accrual = (partner: string, debits: [string, number, string?][], payable = "未払金") => {
+    const total = debits.reduce((s, [, a]) => s + a, 0);
+    return group(
+      "2026-07-31",
+      debits.map(([account, amount, item]) => line(account, amount, item ?? "")),
+      [line(payable, total, partner)]
+    );
+  };
+  const settlement = (partner: string, amount: number, payable = "未払金", memo = "") =>
+    group("2026-08-20", [line(payable, amount, partner, memo)], [cash(SMBC, amount, memo)]);
+
+  const laborOf = (groups: JournalGroup[], evidenceGroups?: JournalGroup[]) =>
+    compute(groups, { evidenceGroups });
+
+  it("moves a designated contractor's 業務委託費 settlement (partner name exact match) from 外注費 to 給与・人件費", () => {
+    const evidence = [accrual("松田徹", [["業務委託費", 1_000, "【業務委託】松田徹/デザイン"]], "未払金")];
+
+    const r = laborOf([settlement("松田徹", 1_000)], evidence);
+
+    expect(r.labor).toBe(1_000);
+    expect(r.outsourcing).toBe(0);
+    expect(r.laborDetail.contractors).toEqual({ 松田徹: 1_000 });
+    expect(r.laborDetail.employeeSalary).toBe(0);
+  });
+
+  it("moves only the 業務委託費 part of a designated partner's accrual mix; other expenses of that partner stay where they were", () => {
+    const evidence = [
+      accrual("福場幸司郎", [
+        ["業務委託費", 800, "【業務委託】福場幸司郎/コピー"],
+        ["通信費", 200, "【通信】"],
+      ]),
+    ];
+
+    const r = laborOf([settlement("福場幸司郎", 1_000)], evidence);
+
+    expect(r.laborDetail.contractors).toEqual({ 福場幸司郎: 800 });
+    expect(r.labor).toBe(800);
+    expect(r.otherOperating).toBe(200);
+    expect(r.outsourcing).toBe(0);
+  });
+
+  it("does not treat a different partner with a similar name (日比 秀一) as 日比由美", () => {
+    const evidence = [
+      accrual("日比 秀一", [["業務委託費", 500, "【業務委託】日比 秀一/デザイン"]]),
+      accrual("日比由美", [["業務委託費", 300, "【業務委託】日比由美/デザイン"]]),
+    ];
+
+    const r = laborOf([settlement("日比 秀一", 500), settlement("日比由美", 300)], evidence);
+
+    expect(r.outsourcing).toBe(500);
+    expect(r.laborDetail.contractors).toEqual({ 日比由美: 300 });
+  });
+
+  it("does NOT use free-text memo to identify a designated contractor (name in memo of another partner's payment)", () => {
+    const evidence = [accrual("株式会社X", [["業務委託費", 700, "【業務委託】株式会社X/制作"]])];
+
+    const r = laborOf([settlement("株式会社X", 700, "未払金", "日比由美さん分のご依頼")], evidence);
+
+    expect(r.outsourcing).toBe(700);
+    expect(r.labor).toBe(0);
+  });
+
+  it("uses the item name (【業務委託】氏名/…) as the secondary key for a direct cash payment, but not a memo that merely contains the name", () => {
+    const direct = group(
+      "2025-10-10",
+      [line("[製]業務委託費", 1_000, "【業務委託】松田徹/デザイン", "松田徹 10月分"), line("預り金", 100, "【業務委託】源泉所得税")],
+      [cash(SMBC, 900)]
+    );
+    const memoOnly = group("2025-10-11", [line("[製]業務委託費", 400, "【業務委託】株式会社Y/制作", "福場幸司郎 の紹介")], [cash(SMBC, 400)]);
+
+    const r = compute([direct, memoOnly]);
+
+    // 現金900は借方(業務委託費1,000+預り金100)の比で按分される
+    expect(r.laborDetail.contractors["松田徹"]).toBe(818);
+    expect(r.laborDetail.contractors["福場幸司郎"]).toBeUndefined();
+    expect(r.outsourcing).toBe(400);
+  });
+
+  it("classifies 退職金 and [製]退職金 as 給与・人件費 (退職金), while a retirement payable booked against 長期借入金 stays 借入元本返済", () => {
+    const r = compute([
+      group("2026-04-30", [line("[製]退職金", 500_000)], [cash(SMBC, 500_000)]),
+      group("2026-05-29", [line("退職金", 300_000)], [cash(SMBC, 300_000)]),
+      group("2025-09-01", [line("長期借入金", 200_000, "生山久展")], [cash(SMBC, 200_000)]),
+    ]);
+
+    expect(r.laborDetail.retirement).toBe(800_000);
+    expect(r.labor).toBe(800_000);
+    expect(r.financing).toBe(200_000);
+    expect(r.other).toBe(0);
+  });
+
+  it("splits 給与・人件費 into 従業員給与/従業員賞与/役員(報酬・賞与)/退職金, and keeps 社会保険→税金・社保, 福利厚生費→諸経費", () => {
+    const r = compute([
+      group("2025-12-05", [line("[製]給料手当", 1_000), line("雑給", 50)], [cash(SMBC, 1_050)]),
+      group("2025-12-05", [line("[製]賞与", 400), line("賞与", 100)], [cash(SMBC, 500)]),
+      group("2025-12-05", [line("役員報酬", 300), line("役員賞与", 70)], [cash(SMBC, 370)]),
+      group("2025-12-05", [line("法定福利費", 90)], [cash(SMBC, 90)]),
+      group("2025-12-05", [line("福利厚生費", 30)], [cash(SMBC, 30)]),
+    ]);
+
+    expect(r.laborDetail.employeeSalary).toBe(1_050);
+    expect(r.laborDetail.employeeBonus).toBe(500);
+    expect(r.laborDetail.executive).toBe(370);
+    expect(r.labor).toBe(1_050 + 500 + 370);
+    expect(r.taxSocial).toBe(90);
+    expect(r.otherOperating).toBe(30);
+  });
+
+  it("うち従業員給与計 = 従業員給与 + 従業員賞与 + 指定業務委託; excludes 役員・退職金・社会保険・福利厚生費", () => {
+    const evidence = [accrual("松田徹", [["業務委託費", 200, "【業務委託】松田徹/デザイン"]])];
+    const r = laborOf(
+      [
+        group("2025-12-05", [line("給料手当", 1_000)], [cash(SMBC, 1_000)]),
+        group("2025-12-05", [line("賞与", 500)], [cash(SMBC, 500)]),
+        group("2025-12-05", [line("役員報酬", 300)], [cash(SMBC, 300)]),
+        group("2025-12-05", [line("退職金", 70)], [cash(SMBC, 70)]),
+        group("2025-12-05", [line("法定福利費", 90)], [cash(SMBC, 90)]),
+        group("2025-12-05", [line("福利厚生費", 30)], [cash(SMBC, 30)]),
+        settlement("松田徹", 200),
+      ],
+      evidence
+    );
+
+    expect(employeeSalarySubtotal(r.laborDetail)).toBe(1_000 + 500 + 200);
+    expect(r.labor).toBe(1_000 + 500 + 300 + 70 + 200);
+  });
+
+  it("classifies a payroll transfer by tag: 取締役タグ・【給与】現金渡し are 役員, other department tags are 従業員給与", () => {
+    const pay = (memo: string, amount: number) => settlement("", amount, "未払金", memo);
+
+    const r = compute([pay("CR1 ﾌﾘｺﾐ", 4_000), pay("管理部 ﾌﾘｺﾐ", 600), pay("取締役 ﾌﾘｺﾐ", 3_000), pay("【給与】未払金（給与現金支給分） 役員報酬 現金渡し", 200)]);
+
+    expect(r.laborDetail.employeeSalary).toBe(4_600);
+    expect(r.laborDetail.executive).toBe(3_200);
+    expect(r.labor).toBe(7_800);
+  });
+
+  it("separates the bonus payable (発生仕訳の未払金) from the same month's payroll transfers into 従業員賞与, without changing 給与・人件費", () => {
+    const bonusAccrual = group(
+      "2026-07-07",
+      [line("[製]賞与", 5_000)],
+      [line("預り金", 1_000), line("未払金", 4_000)]
+    );
+    const execBonusAccrual = group("2026-07-07", [line("役員賞与", 700)], [line("預り金", 250), line("未払金", 450)]);
+    const transfers = [
+      settlement("", 10_000, "未払金", "CR1 ﾌﾘｺﾐ"), // 通常の給与6,000+賞与4,000
+      settlement("", 3_450, "未払金", "取締役 ﾌﾘｺﾐ"), // 役員報酬3,000+役員賞与450
+    ];
+
+    const r = compute([bonusAccrual, execBonusAccrual, ...transfers]);
+
+    expect(r.laborDetail.employeeBonus).toBe(4_000);
+    expect(r.laborDetail.employeeSalary).toBe(6_000);
+    expect(r.laborDetail.executive).toBe(3_450);
+    expect(r.labor).toBe(13_450);
+  });
+
+  it("営業支出合計 is unchanged by the reclassification over 12 months (指定業務委託・退職金を給与・人件費へ移すだけ)", () => {
+    const evidence = [accrual("松田徹", [["業務委託費", 100, "【業務委託】松田徹/デザイン"]]), accrual("株式会社Z", [["業務委託費", 100, "【業務委託】株式会社Z/制作"]])];
+    let expectedOperating = 0;
+    let actualOperating = 0;
+    for (let month = 1; month <= 12; month++) {
+      const mm = String(month).padStart(2, "0");
+      const groups = [
+        group(`2026-${mm}-05`, [line("給料手当", 1_000 + month)], [cash(SMBC, 1_000 + month)]),
+        settlement("松田徹", 100 + month),
+        settlement("株式会社Z", 100 + month),
+        group(`2026-${mm}-06`, [line("退職金", 10 + month)], [cash(SMBC, 10 + month)]),
+        group(`2026-${mm}-07`, [line("通信費", 5)], [cash(SMBC, 5)]),
+        group(`2026-${mm}-08`, [line("租税公課", 7)], [cash(SMBC, 7)]),
+        group(`2026-${mm}-09`, [line("特殊な経費", 3)], [cash(SMBC, 3)]),
+        group(`2026-${mm}-10`, [line("長期借入金", 50)], [cash(SMBC, 50)]),
+      ];
+      const r = compute(groups, { evidenceGroups: evidence });
+      expectedOperating += 1_000 + month + 2 * (100 + month) + (10 + month) + 5 + 7 + 3;
+      actualOperating += r.labor + r.outsourcing + r.taxSocial + r.otherOperating + r.other;
+      expect(r.labor + r.outsourcing + r.taxSocial + r.otherOperating + r.other).toBe(
+        1_000 + month + 2 * (100 + month) + (10 + month) + 5 + 7 + 3
+      );
+      expect(r.outsourcing).toBe(100 + month); // 指定業務委託(松田徹)だけが外注費から抜ける
+      expect(r.other).toBe(3); // 退職金はその他から抜け、本来のその他(特殊な経費)だけが残る
+    }
+    expect(actualOperating).toBe(expectedOperating);
+  });
+
+  it("keeps the legacy category integers exactly when a journal mixes designated-contractor and other 外注費 lines (二段階按分)", () => {
+    const mixed = group(
+      "2026-03-10",
+      [
+        line("[製]業務委託費", 333, "【業務委託】松田徹/デザイン"),
+        line("[製]業務委託費", 333, "【業務委託】株式会社Q/制作"),
+        line("通信費", 334),
+      ],
+      [cash(SMBC, 1_000)]
+    );
+
+    const r = compute([mixed]);
+
+    expect(r.labor + r.outsourcing).toBe(666);
+    expect(r.otherOperating).toBe(334);
+    expect(r.total).toBe(1_000);
+  });
+
+  it("keeps the legacy integers when a journal mixes 退職金 with other 諸経費/その他 lines (退職金は旧区分ではその他として按分)", () => {
+    const mixed = group(
+      "2026-04-30",
+      [line("通信費", 1), line("退職金", 1), line("特殊な経費", 1)],
+      [cash(SMBC, 100)]
+    );
+
+    const r = compute([mixed]);
+
+    // 旧区分: 諸経費 1/3=33、その他(退職金+特殊な経費) 2/3=67。退職金はそのうち給与・人件費へ移るだけ
+    expect(r.otherOperating).toBe(33);
+    expect(r.labor + r.other).toBe(67);
+    expect(r.total).toBe(100);
+  });
+});
+
+describe("sumLaborDetails / employeeSalarySubtotal", () => {
+  it("merges contractor maps and sums the reference detail", () => {
+    const a = { employeeSalary: 100, employeeBonus: 10, executive: 5, retirement: 1, contractors: { 松田徹: 3 } };
+    const b = { employeeSalary: 200, employeeBonus: 0, executive: 7, retirement: 0, contractors: { 松田徹: 2, 日比由美: 4 } };
+
+    const sum = sumLaborDetails([a, b, undefined]);
+
+    expect(sum.contractors).toEqual({ 松田徹: 5, 日比由美: 4 });
+    expect(employeeSalarySubtotal(sum)).toBe(300 + 10 + 9);
+    expect(sum.executive).toBe(12);
+    expect(sum.retirement).toBe(1);
   });
 });

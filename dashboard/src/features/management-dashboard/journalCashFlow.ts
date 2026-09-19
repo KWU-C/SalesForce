@@ -15,10 +15,16 @@ import {
   type CashInflowCategory,
 } from "@/config/cashInflowClassification";
 import {
+  designatedContractorByItem,
+  designatedContractorByPartner,
+  EMPLOYEE_BONUS_ACCOUNTS,
+  EXECUTIVE_PAY_ACCOUNTS,
+  EXECUTIVE_PAYROLL_MEMO_PREFIXES,
   isBankFeedUnavailable,
   OTHER_OUTFLOW_PL_CATEGORIES,
   PAYABLE_ACCOUNTS,
   PAYROLL_MEMO_DEPARTMENT_PREFIXES,
+  RETIREMENT_ACCOUNTS,
   PAYROLL_MEMO_LABEL_TOKEN,
   PAYROLL_MEMO_TRANSFER_TOKEN,
   SOCIAL_INSURANCE_MEMO_TOKENS,
@@ -27,7 +33,7 @@ import { matchExpenseCategory } from "@/config/freeeExpenseClassification";
 import { isCashWalletable } from "@/config/cashAccountBoundary";
 import type { FreeeAccountItem, FreeeWalletTxn, FreeeWalletable } from "@/services/freee/freeeTransactionClient";
 import type { CashInflowBreakdown, UnclassifiedInflowItem } from "./cashInflow";
-import type { CashOutflowBreakdown, OutflowCategory, UnclassifiedOutflowItem } from "./cashOutflow";
+import type { CashOutflowBreakdown, LaborDetail, OutflowCategory, UnclassifiedOutflowItem } from "./cashOutflow";
 import type { JournalGroup, JournalLine } from "./journalCsv";
 
 export interface ComputeJournalCashFlowParams {
@@ -119,8 +125,77 @@ function buildOutflowCategoryOf(accountItems: FreeeAccountItem[]) {
   };
 }
 
+/**
+ * 出金の集計単位(バケット)。区分(OutflowCategory)そのものか、「給与・人件費」の内訳を表す
+ * `labor:employeeSalary|employeeBonus|executive|retirement|contractor:{氏名}`。
+ * 内訳は区分に集約すると必ず「labor」になる(合計は変わらない、参考表示のためだけの細分)。
+ */
+type OutflowBucket = string;
+
+const LABOR_PREFIX = "labor:";
+const CONTRACTOR_PREFIX = "labor:contractor:";
+
+function bucketCategory(bucket: OutflowBucket): OutflowCategory {
+  return bucket.startsWith(LABOR_PREFIX) ? "labor" : (bucket as OutflowCategory);
+}
+
+/**
+ * v3.1より前の区分(指定業務委託は外注費、退職金はその他)。1伝票の現金支払額はまず旧区分に按分し、
+ * その額を旧区分の中でバケットに細分する(二段階按分)。これにより、旧区分ごとの整数金額が
+ * 変更前と完全に同じになり、指定業務委託と退職金を給与・人件費へ移しても営業支出合計は
+ * 構造的に変わらない(円未満の按分誤差も新たに生じない)。
+ */
+function legacyCategory(bucket: OutflowBucket): OutflowCategory {
+  if (bucket.startsWith(CONTRACTOR_PREFIX)) return "outsourcing";
+  if (bucket === `${LABOR_PREFIX}retirement`) return "other";
+  return bucketCategory(bucket);
+}
+
+/** 二段階按分: 旧区分へ按分 → 各旧区分の額をその区分に属するバケットへ按分 */
+function allocateTwoStage(total: number, weights: Map<OutflowBucket, number>): Map<OutflowBucket, number> {
+  const legacyWeights = new Map<OutflowCategory, number>();
+  for (const [bucket, weight] of weights) {
+    const c = legacyCategory(bucket);
+    legacyWeights.set(c, (legacyWeights.get(c) ?? 0) + weight);
+  }
+  const result = new Map<OutflowBucket, number>();
+  for (const [category, amount] of allocate(total, legacyWeights)) {
+    const members = new Map<OutflowBucket, number>();
+    for (const [bucket, weight] of weights) if (legacyCategory(bucket) === category) members.set(bucket, weight);
+    for (const [bucket, share] of allocate(amount, members)) result.set(bucket, (result.get(bucket) ?? 0) + share);
+  }
+  return result;
+}
+
+function stripManufacturingPrefix(accountName: string): string {
+  return accountName.startsWith("[製]") ? accountName.slice("[製]".length) : accountName;
+}
+
+/**
+ * 借方科目 → バケット。区分が「給与・人件費」なら内訳(役員/賞与/退職金/従業員給与)、
+ * 「外注費」で指定業務委託(副キー: 品目名、主キー: 取引先名)に該当すれば給与・人件費の指定業務委託。
+ * itemName=借方行の補助科目(品目名)、partnerName=同じ伝票の債務(未払金・買掛金)の取引先名(無ければ空)。
+ */
+function makeBucketOf(outflowCategoryOf: (accountName: string) => OutflowCategory) {
+  return (accountName: string, itemName: string, partnerName: string): OutflowBucket => {
+    const category = outflowCategoryOf(accountName);
+    if (category === "outsourcing") {
+      const contractor = designatedContractorByPartner(partnerName) ?? designatedContractorByItem(itemName);
+      return contractor !== null ? `${CONTRACTOR_PREFIX}${contractor}` : category;
+    }
+    if (category === "labor") {
+      const base = stripManufacturingPrefix(accountName);
+      if (EXECUTIVE_PAY_ACCOUNTS.includes(base)) return `${LABOR_PREFIX}executive`;
+      if (EMPLOYEE_BONUS_ACCOUNTS.includes(base)) return `${LABOR_PREFIX}employeeBonus`;
+      if (RETIREMENT_ACCOUNTS.includes(base)) return `${LABOR_PREFIX}retirement`;
+      return `${LABOR_PREFIX}employeeSalary`;
+    }
+    return category;
+  };
+}
+
 interface PayableMix {
-  weights: Map<OutflowCategory, number>;
+  weights: Map<OutflowBucket, number>;
   method: "trace" | "memo";
 }
 
@@ -131,9 +206,9 @@ function payableKey(account: string, subAccount: string): string {
 /** 債務(未払金・買掛金)の(債務科目, 取引先)ごとに、発生仕訳の借方科目の構成(区分別金額)を集める */
 function buildPayableEvidence(
   groups: JournalGroup[],
-  outflowCategoryOf: (accountName: string) => OutflowCategory
-): Map<string, Map<OutflowCategory, number>> {
-  const evidence = new Map<string, Map<OutflowCategory, number>>();
+  bucketOf: (accountName: string, itemName: string, partnerName: string) => OutflowBucket
+): Map<string, Map<OutflowBucket, number>> {
+  const evidence = new Map<string, Map<OutflowBucket, number>>();
   for (const group of groups) {
     if (group.credits.some((l) => l.account === CASH_JOURNAL_ACCOUNT)) continue; // 支払伝票は発生ではない
     const debitLines = group.debits.filter(
@@ -148,9 +223,9 @@ function buildPayableEvidence(
     for (const credit of group.credits) {
       if (!PAYABLE_ACCOUNTS.includes(credit.account) || credit.amount <= 0) continue;
       const key = payableKey(credit.account, credit.subAccount);
-      const mix = evidence.get(key) ?? new Map<OutflowCategory, number>();
+      const mix = evidence.get(key) ?? new Map<OutflowBucket, number>();
       for (const debit of debitLines) {
-        const category = outflowCategoryOf(debit.account);
+        const category = bucketOf(debit.account, debit.subAccount, credit.subAccount);
         mix.set(category, (mix.get(category) ?? 0) + (credit.amount * debit.amount) / debitTotal);
       }
       evidence.set(key, mix);
@@ -166,21 +241,29 @@ function buildPayableEvidence(
  * 3. どれにも当たらなければnull(呼び出し側が未分類にする)
  * 補助科目が空欄の債務は取引先が特定できず、空欄全体の構成は個別の支払の根拠にならないため使わない。
  */
-function payableMix(line: JournalLine, evidence: Map<string, Map<OutflowCategory, number>>): PayableMix | null {
+function payableMix(line: JournalLine, evidence: Map<string, Map<OutflowBucket, number>>): PayableMix | null {
   if (line.subAccount !== "") {
     const mix = evidence.get(payableKey(line.account, line.subAccount));
     if (mix && mix.size > 0) return { weights: new Map(mix), method: "trace" };
   }
   const memo = line.memo;
   if (SOCIAL_INSURANCE_MEMO_TOKENS.some((t) => memo.includes(t))) {
-    return { weights: new Map<OutflowCategory, number>([["taxSocial", 1]]), method: "memo" };
+    return { weights: new Map<OutflowBucket, number>([["taxSocial", 1]]), method: "memo" };
   }
   const isPayroll =
     line.account === "未払金" &&
     line.subAccount === "" &&
     ((PAYROLL_MEMO_DEPARTMENT_PREFIXES.some((p) => memo.startsWith(p)) && memo.includes(PAYROLL_MEMO_TRANSFER_TOKEN)) ||
       memo.includes(PAYROLL_MEMO_LABEL_TOKEN));
-  if (isPayroll) return { weights: new Map<OutflowCategory, number>([["labor", 1]]), method: "memo" };
+  if (isPayroll) {
+    // 取締役タグの振込・「【給与】」の現金渡し(役員報酬)は役員、それ以外の給与振込は従業員給与
+    const executive =
+      EXECUTIVE_PAYROLL_MEMO_PREFIXES.some((p) => memo.startsWith(p)) || memo.includes(PAYROLL_MEMO_LABEL_TOKEN);
+    return {
+      weights: new Map<OutflowBucket, number>([[executive ? `${LABOR_PREFIX}executive` : `${LABOR_PREFIX}employeeSalary`, 1]]),
+      method: "memo",
+    };
+  }
   return null;
 }
 
@@ -208,7 +291,7 @@ interface GroupWork {
   isAtSourceDeduction: boolean;
   outflowInternal: number;
   outflowExternal: number;
-  outflowAllocation: Map<OutflowCategory, number>;
+  outflowAllocation: Map<OutflowBucket, number>;
   outflowLedgerOnly: number;
   /** 入金として記帳されているが出金の訂正と判定したときの、訂正先の出金伝票 */
   correctionTargets: GroupWork[];
@@ -236,7 +319,8 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
   const { companyId, groups, walletables, accountItems, feedIncome, feedExpense } = params;
   const inflowCategoryOf = buildInflowCategoryOf(accountItems);
   const outflowCategoryOf = buildOutflowCategoryOf(accountItems);
-  const evidence = buildPayableEvidence(params.evidenceGroups ?? groups, outflowCategoryOf);
+  const bucketOf = makeBucketOf(outflowCategoryOf);
+  const evidence = buildPayableEvidence(params.evidenceGroups ?? groups, bucketOf);
   const walletableByName = new Map<string, FreeeWalletable>();
   for (const w of walletables) if (w.name) walletableByName.set(w.name, w);
 
@@ -354,9 +438,9 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     w.outflowExternal = w.cashOutBoundary - w.outflowInternal;
     if (w.outflowExternal <= 0) continue;
 
-    const weights = new Map<OutflowCategory, number>();
+    const weights = new Map<OutflowBucket, number>();
     const unclassifiedReasons: { weight: number; item: Pick<UnclassifiedOutflowItem, "reason" | "account"> }[] = [];
-    const addWeight = (category: OutflowCategory, amount: number) =>
+    const addWeight = (category: OutflowBucket, amount: number) =>
       weights.set(category, (weights.get(category) ?? 0) + amount);
     for (const debit of w.group.debits) {
       if (debit.account === CASH_JOURNAL_ACCOUNT || debit.account === COMPOUND_PLACEHOLDER_ACCOUNT) continue;
@@ -381,7 +465,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
         if (mix.method === "trace") payableTraced += debit.amount;
         else payableByMemoRule += debit.amount;
       } else {
-        const category = outflowCategoryOf(debit.account);
+        const category = bucketOf(debit.account, debit.subAccount, "");
         addWeight(category, debit.amount);
         if (category === "unclassified") {
           unclassifiedReasons.push({ weight: debit.amount, item: { reason: "balance_sheet_account", account: debit.account } });
@@ -389,10 +473,10 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
       }
     }
     if (weights.size === 0) {
-      w.outflowAllocation = new Map<OutflowCategory, number>([["unclassified", w.outflowExternal]]);
+      w.outflowAllocation = new Map<OutflowBucket, number>([["unclassified", w.outflowExternal]]);
       unclassifiedOutflowItems.push({ date: w.group.date, amount: w.outflowExternal, reason: "no_debit_account", account: "" });
     } else {
-      w.outflowAllocation = allocate(w.outflowExternal, weights);
+      w.outflowAllocation = allocateTwoStage(w.outflowExternal, weights);
       const unclassifiedAmount = w.outflowAllocation.get("unclassified") ?? 0;
       if (unclassifiedAmount !== 0) {
         const main = unclassifiedReasons.sort((a, b) => b.weight - a.weight)[0]?.item ?? {
@@ -411,7 +495,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
 
   // ---- 規則B: 分類できない入金が同日・同口座の出金伝票と銀行摘要末尾で一致 → 出金の訂正
   let reclassifiedAsCorrection = 0;
-  const correctionByCategory = new Map<OutflowCategory, number>();
+  const correctionByCategory = new Map<OutflowBucket, number>();
   for (const w of works) {
     if (w.inflowExternal <= 0) continue;
     const onlyUnclassified =
@@ -432,7 +516,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     );
     if (targets.length === 0) continue;
     w.correctionTargets = targets;
-    const targetWeights = new Map<OutflowCategory, number>();
+    const targetWeights = new Map<OutflowBucket, number>();
     for (const t of targets) for (const [k, v] of t.outflowAllocation) targetWeights.set(k, (targetWeights.get(k) ?? 0) + v);
     for (const [k, v] of allocate(w.inflowExternal, targetWeights)) {
       correctionByCategory.set(k, (correctionByCategory.get(k) ?? 0) + v);
@@ -516,7 +600,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     appliedEvidenceIds: inflowEvidenceIds,
   };
 
-  // ---- 出金の集計
+  // ---- 出金の集計(バケット→区分。給与・人件費は内訳も集計する)
   const outflowTotals: Record<OutflowCategory, number> = {
     labor: 0,
     outsourcing: 0,
@@ -528,14 +612,51 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     assetTransfer: 0,
     unclassified: 0,
   };
+  const laborBuckets = new Map<OutflowBucket, number>();
+  const addBucket = (bucket: OutflowBucket, amount: number) => {
+    outflowTotals[bucketCategory(bucket)] += amount;
+    if (bucket.startsWith(LABOR_PREFIX)) laborBuckets.set(bucket, (laborBuckets.get(bucket) ?? 0) + amount);
+  };
   let outflowInternal = 0;
   let deductionsExcluded = 0;
   for (const w of works) {
     outflowInternal += w.outflowInternal;
     if (w.isAtSourceDeduction) deductionsExcluded += w.cashOutBoundary;
-    for (const [category, amount] of w.outflowAllocation) outflowTotals[category] += amount;
+    for (const [bucket, amount] of w.outflowAllocation) addBucket(bucket, amount);
   }
-  for (const [category, amount] of correctionByCategory) outflowTotals[category] -= amount;
+  for (const [bucket, amount] of correctionByCategory) addBucket(bucket, -amount);
+
+  // 賞与の分離: 賞与は発生仕訳(借方=賞与、現金貸方なし、貸方=未払金)で計上され、支払は他の給与と同じ
+  // 部門別の給与振込(摘要ルール)に混ざる。発生月の未払金(=手取りの賞与)を、同月の従業員給与から従業員賞与へ
+  // 付け替える(合計は変わらない)。役員賞与だけの仕訳は役員(役員報酬・役員賞与で1区分)のままで移動不要
+  let employeeBonusPayable = 0;
+  for (const group of groups) {
+    if (group.credits.some((l) => l.account === CASH_JOURNAL_ACCOUNT)) continue;
+    const bonusDebits = group.debits.filter(
+      (l) => l.amount > 0 && EMPLOYEE_BONUS_ACCOUNTS.includes(stripManufacturingPrefix(l.account))
+    );
+    if (bonusDebits.length === 0) continue;
+    employeeBonusPayable += group.credits.filter((l) => l.account === "未払金").reduce((s, l) => s + l.amount, 0);
+  }
+  const salaryKey = `${LABOR_PREFIX}employeeSalary`;
+  const bonusKey = `${LABOR_PREFIX}employeeBonus`;
+  const shift = Math.min(employeeBonusPayable, Math.max(0, laborBuckets.get(salaryKey) ?? 0));
+  if (shift > 0) {
+    laborBuckets.set(salaryKey, (laborBuckets.get(salaryKey) ?? 0) - shift);
+    laborBuckets.set(bonusKey, (laborBuckets.get(bonusKey) ?? 0) + shift);
+  }
+
+  const contractors: Record<string, number> = {};
+  for (const [bucket, amount] of laborBuckets) {
+    if (bucket.startsWith(CONTRACTOR_PREFIX)) contractors[bucket.slice(CONTRACTOR_PREFIX.length)] = amount;
+  }
+  const laborDetail: LaborDetail = {
+    employeeSalary: laborBuckets.get(salaryKey) ?? 0,
+    employeeBonus: laborBuckets.get(bonusKey) ?? 0,
+    executive: laborBuckets.get(`${LABOR_PREFIX}executive`) ?? 0,
+    retirement: laborBuckets.get(`${LABOR_PREFIX}retirement`) ?? 0,
+    contractors,
+  };
   const outflowTotal = OUTFLOW_CATEGORY_KEYS.reduce((s, k) => s + outflowTotals[k], 0);
   const outflow: CashOutflowBreakdown = {
     ...outflowTotals,
@@ -547,6 +668,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     ledgerOnly: Math.round(ledgerOnlyTotal),
     payableTraced,
     payableByMemoRule,
+    laborDetail,
     unclassifiedItems: unclassifiedOutflowItems,
     appliedEvidenceIds: outflowEvidenceIds,
   };

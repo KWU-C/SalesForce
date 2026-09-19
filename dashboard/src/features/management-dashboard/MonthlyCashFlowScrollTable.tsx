@@ -2,13 +2,14 @@ import { formatYen } from "@/utils/format";
 import { EXTERNAL_CASH_FLOW_CALCULATION_VERSION } from "./externalCashFlow";
 import { OPERATING_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
+import { employeeSalarySubtotal } from "./cashOutflow";
 import { RefreshMonthButton } from "./RefreshMonthButton";
 import { RefreshTermButton } from "./RefreshTermButton";
 import { SectionBanner } from "./SectionBanner";
 import type { MonthlyCashFlow } from "./types";
 
 const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
-  labor: "人件費",
+  labor: "給与・人件費",
   outsourcing: "外注費",
   taxSocial: "税金・社会保険等",
   otherOperating: "諸経費",
@@ -92,6 +93,15 @@ const ROWS: RowDef[] = [
   },
   { kind: "section", label: "支出" },
   { kind: "value", label: CATEGORY_LABEL.labor, indent: true, get: (cf) => cf.expenseByCategory.labor },
+  {
+    kind: "value",
+    label: "うち従業員給与計",
+    indent: true,
+    note: true,
+    inflowDetail: true,
+    // 従業員給与＋従業員賞与＋指定業務委託。役員報酬・役員賞与、退職金、社会保険、福利厚生費は含めない(参考内訳、合計に二重加算しない)
+    get: (cf) => (cf.outflow?.laborDetail ? employeeSalarySubtotal(cf.outflow.laborDetail) : null),
+  },
   { kind: "value", label: CATEGORY_LABEL.outsourcing, indent: true, get: (cf) => cf.expenseByCategory.outsourcing },
   { kind: "value", label: CATEGORY_LABEL.taxSocial, indent: true, get: (cf) => cf.expenseByCategory.taxSocial },
   { kind: "value", label: CATEGORY_LABEL.otherOperating, indent: true, get: (cf) => cf.expenseByCategory.otherOperating },
@@ -299,7 +309,7 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                       className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)} px-3 py-1.5 text-right tabular-nums ${valueClass}`}
                     >
                       {col.cashFlow
-                        ? row.inflowDetail && col.cashFlow.inflow === undefined
+                        ? row.inflowDetail && row.get(col.cashFlow) === null
                           ? "未再計算"
                           : formatCell(row.get(col.cashFlow))
                         : "データ未設定"}

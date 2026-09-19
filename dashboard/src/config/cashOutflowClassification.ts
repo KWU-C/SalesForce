@@ -73,3 +73,54 @@ export function isBankFeedUnavailable(walletableId: number, date: string): boole
   if (!gap) return false;
   return gap.endDate === null || date <= gap.endDate;
 }
+
+/**
+ * 「給与・人件費」の内訳区分(参考表示用)。仕訳の借方科目([製]付きは同名の通常科目と同じ)で決める。
+ * - 役員: 役員報酬・役員賞与
+ * - 従業員賞与: 賞与
+ * - 退職金: 退職金
+ * - 従業員給与: 上記以外の給与・人件費の科目(給料手当・雑給など)
+ * 「うち従業員給与計」＝従業員給与＋従業員賞与＋指定業務委託。役員・退職金・社会保険・福利厚生費は含めない
+ * (ユーザー確定、2026-09-19)。
+ */
+export const EXECUTIVE_PAY_ACCOUNTS: readonly string[] = ["役員報酬", "役員賞与"];
+export const EMPLOYEE_BONUS_ACCOUNTS: readonly string[] = ["賞与"];
+export const RETIREMENT_ACCOUNTS: readonly string[] = ["退職金"];
+
+/** 取締役(役員)の給与振込を示す摘要の先頭タグ、および「【給与】」の現金渡し(役員報酬) */
+export const EXECUTIVE_PAYROLL_MEMO_PREFIXES: readonly string[] = ["取締役 "];
+
+/**
+ * 指定業務委託(元社員で契約社員的な位置付けの3名)。経営ダッシュボード上は「外注費」ではなく
+ * 「給与・人件費」に分類し、「うち従業員給与計」に含める(ユーザー確定、2026-09-19)。
+ * 判定は次の2つだけで、自由記述の摘要による氏名判定は使わない(別の取引先の摘要に氏名が出るため)。
+ * - 主キー: 未払金・買掛金の補助科目(=取引先名)の完全一致
+ * - 副キー: 現金の直接払いでは、業務委託費の借方の補助科目(=品目名)が「【業務委託】{氏名}/」で始まる
+ * 仕訳帳CSVには取引先IDが無いため照合は氏名で行う。partnerIdは記録用(freee取引先ID)。
+ * 氏名が変わると一致しなくなり、その分は外注費に残る(安全側)。「日比 秀一」は別人で、氏名の完全一致で区別する。
+ */
+export interface DesignatedLaborContractor {
+  name: string;
+  partnerId: number;
+}
+export const DESIGNATED_LABOR_CONTRACTORS: readonly DesignatedLaborContractor[] = [
+  { name: "松田徹", partnerId: 109745131 },
+  { name: "福場幸司郎", partnerId: 109730300 },
+  { name: "日比由美", partnerId: 109731640 },
+];
+export const CONTRACTOR_ITEM_PREFIX = "【業務委託】";
+export const CONTRACTOR_ITEM_SEPARATOR = "/";
+
+export function designatedContractorByPartner(partnerName: string): string | null {
+  const trimmed = partnerName.trim();
+  return DESIGNATED_LABOR_CONTRACTORS.find((c) => c.name === trimmed)?.name ?? null;
+}
+
+export function designatedContractorByItem(itemName: string): string | null {
+  const trimmed = itemName.trim();
+  return (
+    DESIGNATED_LABOR_CONTRACTORS.find((c) =>
+      trimmed.startsWith(`${CONTRACTOR_ITEM_PREFIX}${c.name}${CONTRACTOR_ITEM_SEPARATOR}`)
+    )?.name ?? null
+  );
+}

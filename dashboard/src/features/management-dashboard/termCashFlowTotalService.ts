@@ -3,7 +3,8 @@ import {
   saveTermCashFlowSnapshot,
 } from "@/repositories/termCashFlowSnapshotRepository";
 import { getFreeeCompanyId } from "@/repositories/freeeAuthRepository";
-import { computeTermCashFlowTotal } from "./termCashFlowTotal";
+import { saveMonthlyCashFlowSnapshot } from "@/repositories/monthlyCashFlowSnapshotRepository";
+import { computeTermCashFlow } from "./termCashFlowTotal";
 import type { TermCashFlowTotal } from "./termCashFlowTotal";
 
 /**
@@ -14,6 +15,10 @@ import type { TermCashFlowTotal } from "./termCashFlowTotal";
  * 再計算することは無い(ユーザー確定、2026-09-18)。forceRefreshは、終わった期の値を
  * 手動で直したい場合の「更新」ボタン用にのみ用意する(ユーザー確定、2026-09-18)。
  * freee未接続の場合はnull。
+ *
+ * 計算した12か月分の月次結果も、月次スナップショットとして同時に保存する(入金側v3、2026-09-19)。
+ * 通期は12か月の単純合計であり、同じ計算結果から月次と通期の両方を保存することで、
+ * 表示上の月次と通期が必ず一致する(別々に計算して食い違うことがない)。
  */
 export async function getOrComputeTermCashFlowTotal(
   term: number,
@@ -27,8 +32,12 @@ export async function getOrComputeTermCashFlowTotal(
   const companyId = await getFreeeCompanyId();
   if (companyId === null) return null;
 
-  const values = await computeTermCashFlowTotal(companyId, term);
-  const snapshot: TermCashFlowTotal = { ...values, computedAt: new Date() };
+  const { total, months } = await computeTermCashFlow(companyId, term);
+  const now = new Date();
+  for (const { month, values } of months) {
+    await saveMonthlyCashFlowSnapshot({ fiscalYear: total.fiscalYear, month, ...values, fetchedAt: now });
+  }
+  const snapshot: TermCashFlowTotal = { ...total, computedAt: now };
   await saveTermCashFlowSnapshot(snapshot);
   return snapshot;
 }

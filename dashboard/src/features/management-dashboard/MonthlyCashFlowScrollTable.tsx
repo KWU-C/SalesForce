@@ -1,4 +1,5 @@
 import { formatYen } from "@/utils/format";
+import { EXTERNAL_CASH_FLOW_CALCULATION_VERSION } from "./externalCashFlow";
 import { OPERATING_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
 import { RefreshMonthButton } from "./RefreshMonthButton";
@@ -45,13 +46,50 @@ type RowDef =
       bold?: boolean;
       note?: boolean;
       groupStart?: boolean;
+      /** 入金の区分別内訳の行。旧ロジック(v3より前)で保存されたスナップショットには値が無く「未再計算」と表示する */
+      inflowDetail?: boolean;
       get: (cf: MonthlyCashFlow) => number | null;
     };
 
 const ROWS: RowDef[] = [
   { kind: "value", label: "月初現預金", bold: true, get: (cf) => cf.cashOpening },
   { kind: "section", label: "入金", groupStart: true },
-  { kind: "value", label: "外部入金", indent: true, get: (cf) => cf.externalIncome },
+  { kind: "value", label: "キャッシュイン合計", bold: true, get: (cf) => cf.externalIncome },
+  { kind: "value", label: "営業入金", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.operating ?? null },
+  {
+    kind: "value",
+    label: "うち帳簿補完(銀行明細欠落)",
+    indent: true,
+    note: true,
+    inflowDetail: true,
+    get: (cf) => cf.inflow?.operatingLedgerOnly ?? null,
+  },
+  { kind: "value", label: "借入による入金", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.borrowing ?? null },
+  {
+    kind: "value",
+    label: "保険・資産回収等",
+    indent: true,
+    inflowDetail: true,
+    get: (cf) => cf.inflow?.assetRecovery ?? null,
+  },
+  { kind: "value", label: "その他", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.other ?? null },
+  { kind: "value", label: "未分類", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.unclassified ?? null },
+  {
+    kind: "value",
+    label: "(参考)内部移動 ※合計に含めず",
+    indent: true,
+    note: true,
+    inflowDetail: true,
+    get: (cf) => cf.inflow?.internalTransfer ?? null,
+  },
+  {
+    kind: "value",
+    label: "(参考)ネットゼロ往復 ※帳簿未計上・合計に含めず",
+    indent: true,
+    note: true,
+    inflowDetail: true,
+    get: (cf) => cf.inflow?.netZeroRoundTrip ?? null,
+  },
   { kind: "section", label: "支出" },
   { kind: "value", label: CATEGORY_LABEL.labor, indent: true, get: (cf) => cf.expenseByCategory.labor },
   { kind: "value", label: CATEGORY_LABEL.outsourcing, indent: true, get: (cf) => cf.expenseByCategory.outsourcing },
@@ -73,7 +111,7 @@ const ROWS: RowDef[] = [
   { kind: "value", label: "外部支出（実績）", bold: true, get: (cf) => cf.externalExpenseTotal },
   {
     kind: "value",
-    label: "調整・未分類差額",
+    label: "調整・未分類差額(支出側は監査前)",
     note: true,
     get: (cf) => (cf.cashChange === null ? null : cf.cashChange - (cf.externalIncome - cf.externalExpenseTotal)),
   },
@@ -152,6 +190,14 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                         当月
                       </span>
                     )}
+                    {col.cashFlow && col.cashFlow.calculationVersion !== EXTERNAL_CASH_FLOW_CALCULATION_VERSION && (
+                      <span
+                        className="rounded bg-[var(--status-warning)] px-1 py-0.5 text-[10px] font-bold text-white"
+                        title="入金の区分内訳(営業入金等)は旧ロジックで保存された値のため未反映です。「更新」で再計算されます"
+                      >
+                        旧ロジック
+                      </span>
+                    )}
                     {col.cashFlow?.status === "provisional" && (
                       <span
                         className="rounded bg-[var(--status-warning)] px-1 py-0.5 text-[10px] font-bold text-white"
@@ -221,7 +267,11 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                       key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
                       className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)} px-3 py-1.5 text-right tabular-nums ${valueClass}`}
                     >
-                      {col.cashFlow ? formatCell(row.get(col.cashFlow)) : "データ未設定"}
+                      {col.cashFlow
+                        ? row.inflowDetail && col.cashFlow.inflow === undefined
+                          ? "未再計算"
+                          : formatCell(row.get(col.cashFlow))
+                        : "データ未設定"}
                     </td>
                   ))}
                 </tr>

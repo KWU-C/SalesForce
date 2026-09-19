@@ -10,10 +10,14 @@ import {
 /**
  * 外部入金・外部支出の「恒久ロジック」バージョン。境界定義・照合ロジック・overrideの
  * 適用方法を変えたら必ずインクリメントする。monthlyCashFlowSnapshotsはこの値が
- * 保存済みスナップショットと異なる場合キャッシュミス扱いにし、次回の更新(定時Job/
- * 手動更新ボタン)で自動的に再計算させる(ユーザー確定、2026-09-18)。
+ * 保存済みスナップショットと異なる場合は「旧ロジック」として表示し、次回の更新
+ * (定時Job/手動更新ボタン)で再計算させる(ユーザー確定、2026-09-18。v3で、仕訳帳エクスポートが
+ * 重く非同期のため、ページ表示時の自動再計算ではなく更新操作での再計算に変更、2026-09-19)。
+ *
+ * v3(2026-09-19): 外部入金を銀行明細ベースから、仕訳帳の相手科目による区分(営業・借入・
+ * 保険資産回収等・その他・未分類、cashInflow.ts)へ変更。外部支出はv2のまま。
  */
-export const EXTERNAL_CASH_FLOW_CALCULATION_VERSION = "external-cashflow-v2-2026-09-18";
+export const EXTERNAL_CASH_FLOW_CALCULATION_VERSION = "external-cashflow-v3-2026-09-19";
 
 export type ExternalCashFlowStatus = "provisional" | "final";
 

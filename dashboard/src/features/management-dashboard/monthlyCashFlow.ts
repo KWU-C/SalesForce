@@ -10,7 +10,11 @@ import type { FreeeDeal } from "@/services/freee/freeeTransactionClient";
 import { classifyExpenseAccountItem } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
 import { isCashWalletable } from "@/config/cashAccountBoundary";
+import { getJournalsCsv } from "@/services/freee/freeeJournalsClient";
 import { computeExternalCashFlow } from "./externalCashFlow";
+import { computeCashInflow } from "./cashInflow";
+import { parseJournalCsv } from "./journalCsv";
+import type { JournalGroup } from "./journalCsv";
 import type { MonthlyCashFlow } from "./types";
 
 const EMPTY_CATEGORY_TOTALS: Record<ExpenseCategory, number> = {
@@ -86,8 +90,13 @@ function splitLoanRepaymentPayment(
 /**
  * 指定月の資金収支(会社版家計簿)をfreeeの実データから再構成する。
  *
+ * 入金側v3(2026-09-19): 外部入金(キャッシュイン)は銀行明細ではなく仕訳帳
+ * (`/api/1/journals` CSV)の現金・預金借方行を相手科目で区分した合計(cashInflow.ts、
+ * output/claude49-verify/REPORT.md)。営業入金・借入・保険資産回収等・その他・未分類に分け、
+ * 内部移動・ネットゼロ往復は参考表示として合計から外す。外部支出は下記のv2ロジックのまま。
+ *
  * 手法(2026-09-18改訂。output/freee49-audit/REPORT.md(通称Codexレポート)による
- * 監査を踏まえた恒久ロジック):
+ * 監査を踏まえた恒久ロジック。以下は外部支出と区分別支出に現在も使うv2の記述):
  * - 外部入金・外部支出は wallet_txns(口座境界はcashAccountBoundary.ts。bank_account型は
  *   常時対象、wallet型はallowlistに載ったもののみ対象。カード種別は対象外)から算出し、
  *   externalCashFlow.ts(computeExternalCashFlow)で以下を控除する。
@@ -122,18 +131,26 @@ function splitLoanRepaymentPayment(
 export async function computeMonthlyCashFlow(
   companyId: number,
   fiscalYear: number,
-  calendarMonth: number
+  calendarMonth: number,
+  options: { journalGroups?: JournalGroup[] } = {}
 ): Promise<Omit<MonthlyCashFlow, "fiscalYear" | "month" | "fetchedAt">> {
   const { start, end } = monthDateRange(fiscalYear, calendarMonth);
   const wideStart = subtractMonths(start, ISSUE_DATE_LOOKBACK_MONTHS);
 
-  const [walletTxns, transfers, trialBs, accountItems, walletables, expenseDeals] = await Promise.all([
+  // 仕訳帳(入金側v3)。事前取得済み(期の通期計算が1回のエクスポートを12か月に共有する)なら
+  // 渡された伝票を使う。無ければこの月分をエクスポートする(非同期ジョブで数秒〜数分かかる)
+  const journalGroupsPromise: Promise<JournalGroup[]> = options.journalGroups
+    ? Promise.resolve(options.journalGroups)
+    : getJournalsCsv(companyId, start, end).then(parseJournalCsv);
+
+  const [walletTxns, transfers, trialBs, accountItems, walletables, expenseDeals, allJournalGroups] = await Promise.all([
     getWalletTxns(companyId, start, end),
     getTransfers(companyId, start, end),
     getTrialBs(companyId, { fiscalYear, startMonth: calendarMonth, endMonth: calendarMonth }),
     getAccountItems(companyId),
     getWalletables(companyId),
     getExpenseDeals(companyId, wideStart, end),
+    journalGroupsPromise,
   ]);
 
   const idToName = new Map(accountItems.map((i) => [i.id, i.name]));
@@ -151,7 +168,18 @@ export async function computeMonthlyCashFlow(
   const cashIncome = cashTxns.filter((w) => w.entry_side === "income");
   const cashExpense = cashTxns.filter((w) => w.entry_side === "expense");
   const externalCashFlow = computeExternalCashFlow(companyId, cashIncome, cashExpense, transfers);
-  const { externalIncome, externalExpenseTotal } = externalCashFlow;
+  // 入金側v3: 外部入金は仕訳帳の相手科目による区分の合計(inflow.total)。従来(v2)の銀行明細ベースの
+  // 外部入金(computeExternalCashFlowのexternalIncome)は使わない。外部支出(externalExpenseTotal)は
+  // 従来ロジックのまま(支出側は別途監査してから見直す、ユーザー確定、2026-09-19)
+  const inflow = computeCashInflow({
+    companyId,
+    groups: allJournalGroups.filter((g) => g.date >= start && g.date <= end),
+    walletables,
+    accountItems,
+    feedIncome: cashIncome,
+  });
+  const externalIncome = inflow.total;
+  const { externalExpenseTotal } = externalCashFlow;
 
   const expenseByCategory: Record<ExpenseCategory, number> = { ...EMPTY_CATEGORY_TOTALS };
   for (const deal of expenseDeals) {
@@ -188,6 +216,7 @@ export async function computeMonthlyCashFlow(
     cashClosing,
     cashChange: cashOpening !== null && cashClosing !== null ? cashClosing - cashOpening : null,
     externalIncome,
+    inflow,
     externalExpenseTotal,
     calculationVersion: externalCashFlow.calculationVersion,
     status: externalCashFlow.status,

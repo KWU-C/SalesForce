@@ -56,12 +56,16 @@ export interface FreeeDeal {
 export interface FreeeAccountItem {
   id: number;
   name: string;
+  /** 勘定科目カテゴリ名(例: 売上債権・販売管理費・投資その他の資産)。入金の相手科目分類に使う(cashInflow.ts) */
+  account_category?: string;
   walletable_id?: number;
 }
 
 export interface FreeeWalletable {
   id: number;
   type: "bank_account" | "credit_card" | "wallet";
+  /** 口座名。仕訳帳CSVの現金・預金行の補助科目名と一致する(cashInflow.tsで口座を特定するキー) */
+  name?: string;
 }
 
 async function freeeGet<T>(path: string, params: Record<string, string | number | undefined>): Promise<T> {

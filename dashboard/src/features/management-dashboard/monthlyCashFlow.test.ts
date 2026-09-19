@@ -7,6 +7,7 @@ const getTransfersMock = vi.fn();
 const getAccountItemsMock = vi.fn();
 const getWalletablesMock = vi.fn();
 const getExpenseDealsMock = vi.fn();
+const getJournalsCsvMock = vi.fn();
 
 vi.mock("@/services/freee/freeeAccountingClient", () => ({
   getTrialBs: getTrialBsMock,
@@ -19,7 +20,30 @@ vi.mock("@/services/freee/freeeTransactionClient", () => ({
   getExpenseDeals: getExpenseDealsMock,
 }));
 
+vi.mock("@/services/freee/freeeJournalsClient", () => ({
+  getJournalsCsv: getJournalsCsvMock,
+}));
+
 const { computeMonthlyCashFlow } = await import("./monthlyCashFlow");
+import type { JournalGroup } from "./journalCsv";
+
+/** 銀行口座(普通預金A/B)への入金伝票。counterCreditsは相手科目の貸方、extraDebitsは差引の非現金借方 */
+function receiptGroup(
+  date: string,
+  walletName: string,
+  cashAmount: number,
+  counterCredits: { account: string; amount: number }[],
+  extraDebits: { account: string; amount: number }[] = []
+): JournalGroup {
+  return {
+    date,
+    debits: [
+      { account: "現金及び預金", subAccount: walletName, amount: cashAmount, memo: "" },
+      ...extraDebits.map((d) => ({ account: d.account, subAccount: "", amount: d.amount, memo: "" })),
+    ],
+    credits: counterCredits.map((c) => ({ account: c.account, subAccount: "", amount: c.amount, memo: "" })),
+  };
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -29,10 +53,13 @@ afterEach(() => {
   getAccountItemsMock.mockReset();
   getWalletablesMock.mockReset();
   getExpenseDealsMock.mockReset();
+  getJournalsCsvMock.mockReset();
 });
 
 function setupCommonMocks() {
   getAccountItemsMock.mockResolvedValue([
+    { id: 8, name: "売掛金", account_category: "売上債権" },
+    { id: 9, name: "受取手形", account_category: "売上債権" },
     { id: 1, name: "給料手当" },
     { id: 2, name: "業務委託費" },
     { id: 3, name: "長期借入金" },
@@ -42,8 +69,10 @@ function setupCommonMocks() {
     { id: 7, name: "支払利息" },
   ]);
   getWalletablesMock.mockResolvedValue([
-    { id: 100, type: "bank_account" },
-    { id: 200, type: "credit_card" },
+    { id: 100, type: "bank_account", name: "普通預金A" },
+    { id: 101, type: "bank_account", name: "普通預金B" },
+    { id: 200, type: "credit_card", name: "カード" },
+    { id: 300, type: "wallet", name: "受取手形・電子債権" },
   ]);
   getTrialBsMock.mockResolvedValue({
     company_id: 1,
@@ -53,6 +82,8 @@ function setupCommonMocks() {
     ],
   });
   getTransfersMock.mockResolvedValue([]);
+  // 仕訳帳(入金側v3)。個別のテストがjournalGroupsオプションで伝票を渡す。渡さない場合は伝票なし
+  getJournalsCsvMock.mockResolvedValue("");
 }
 
 describe("computeMonthlyCashFlow", () => {
@@ -65,9 +96,13 @@ describe("computeMonthlyCashFlow", () => {
     ]);
     getExpenseDealsMock.mockResolvedValue([]);
 
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
+    const result = await computeMonthlyCashFlow(1, 2025, 8, {
+      journalGroups: [receiptGroup("2026-08-15", "普通預金A", 500, [{ account: "売掛金", amount: 500 }])],
+    });
 
+    // 入金側v3: 外部入金は仕訳帳の相手科目による区分の合計。外部支出は従来どおりwallet_txnsから
     expect(result.externalIncome).toBe(500);
+    expect(result.inflow?.operating).toBe(500);
     expect(result.externalExpenseTotal).toBe(300);
   });
 
@@ -91,9 +126,16 @@ describe("computeMonthlyCashFlow", () => {
     ]);
     getExpenseDealsMock.mockResolvedValue([]);
 
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
+    // 入金側は仕訳帳の「現金→現金」伝票が内部移動になる(外部入金に含めない)
+    const transferGroup: JournalGroup = {
+      date: "2026-08-15",
+      debits: [{ account: "現金及び預金", subAccount: "普通預金B", amount: 1000, memo: "" }],
+      credits: [{ account: "現金及び預金", subAccount: "普通預金A", amount: 1000, memo: "" }],
+    };
+    const result = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: [transferGroup] });
 
     expect(result.externalIncome).toBe(0);
+    expect(result.inflow?.internalTransfer).toBe(1000);
     expect(result.externalExpenseTotal).toBe(0);
     expect(result.status).toBe("final");
   });
@@ -117,10 +159,19 @@ describe("computeMonthlyCashFlow", () => {
     ]);
     getExpenseDealsMock.mockResolvedValue([]);
 
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
+    // 入金側v3: 電子債権の資金化(送金元wallet=境界外)は内部移動ではなく営業入金。
+    // 額面1000−手数料10=着金990を1回だけ営業入金に計上する(4,014,670円の二重控除の解消)
+    const result = await computeMonthlyCashFlow(1, 2025, 8, {
+      journalGroups: [
+        receiptGroup("2026-08-15", "普通預金B", 990, [{ account: "受取手形", amount: 1000 }], [
+          { account: "支払手数料", amount: 10 },
+        ]),
+      ],
+    });
 
-    // 送金元の額面(1000)ではなく受取実額(990)で照合するため、全額(990)が控除される
-    expect(result.externalIncome).toBe(0);
+    expect(result.externalIncome).toBe(990);
+    expect(result.inflow?.operating).toBe(990);
+    expect(result.inflow?.internalTransfer).toBe(0);
   });
 
   it("skips deals with no payments field at all (regression guard: 未決済dealsでpaymentsキー自体が無いケース)", async () => {
@@ -207,7 +258,9 @@ describe("computeMonthlyCashFlow", () => {
       },
     ]);
 
-    const result = await computeMonthlyCashFlow(1, 2025, 8);
+    const result = await computeMonthlyCashFlow(1, 2025, 8, {
+      journalGroups: [receiptGroup("2026-08-15", "普通預金A", 10000, [{ account: "売掛金", amount: 10000 }])],
+    });
 
     expect(result.financingCashFlow).toBe(-2000);
     expect(result.assetTransferCashFlow).toBe(-500);
@@ -375,8 +428,10 @@ describe("computeMonthlyCashFlow", () => {
 
     const result = await computeMonthlyCashFlow(unresolved.companyId, 2025, 10);
 
-    // 未解決明細は控除しない(無理に分類・補正しない)。raw incomeにそのまま残る
-    expect(result.externalIncome).toBe(unresolved.amount);
+    // 帳簿に無い往復は、仕訳帳ベースの入金側v3には最初から現れない(外部入金に含まれない)。
+    // 参考表示(ネットゼロ往復)として別掲し、未解決明細としても提示し続ける
+    expect(result.externalIncome).toBe(0);
+    expect(result.inflow?.netZeroRoundTrip).toBe(unresolved.amount);
     expect(result.unresolvedItems.map((u) => u.id)).toEqual([unresolved.id]);
     expect(result.status).toBe("provisional");
   });
@@ -398,7 +453,8 @@ describe("computeMonthlyCashFlow", () => {
 
     const result = await computeMonthlyCashFlow(999999, 2025, 10);
 
-    expect(result.externalIncome).toBe(override.amount);
+    expect(result.externalIncome).toBe(0);
+    expect(result.inflow?.netZeroRoundTrip).toBe(0);
     expect(result.appliedOverrideIds).toEqual([]);
     expect(result.status).toBe("final");
   });

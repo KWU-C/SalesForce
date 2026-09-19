@@ -1,6 +1,5 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
 import type { MonthlyCashFlow } from "@/features/management-dashboard/types";
-import { EXTERNAL_CASH_FLOW_CALCULATION_VERSION } from "@/features/management-dashboard/externalCashFlow";
 
 // processMemos/freeeAuth/monthlyFinanceとは別コレクション。Dashboard表示に必要な
 // 集計値のみを保存し、freeeの生レスポンスは保存しない(ユーザー確定、2026-09-14)。
@@ -35,11 +34,12 @@ function createFirestoreStore(): MonthlyCashFlowStore {
       // 持たない。欠損値を0円と推測して埋めず、キャッシュミス扱いにして呼び出し側
       // (monthlyCashFlowService)にfreeeから再取得・再保存させる(データ未設定の推測禁止)
       if (data.interestCashFlow === undefined) return null;
-      // 外部入金・外部支出の恒久ロジックを変更した際(externalCashFlow.ts の
-      // EXTERNAL_CASH_FLOW_CALCULATION_VERSION参照)、保存済みスナップショットが
-      // 旧バージョンで計算されたものならキャッシュミス扱いにして再計算させる
-      // (ユーザー確定、2026-09-18。月次は定時Job/手動更新で自動的に最新化される)
-      if (data.calculationVersion !== EXTERNAL_CASH_FLOW_CALCULATION_VERSION) return null;
+      // 外部入金・外部支出の恒久ロジックのバージョン(externalCashFlow.ts の
+      // EXTERNAL_CASH_FLOW_CALCULATION_VERSION)が保存済みスナップショットと異なっていても、
+      // ここでは捨てずにそのまま返す。旧ロジックの値であることはcalculationVersionで判別でき、
+      // UIが「旧ロジック」と表示する。入金側v3(2026-09-19)以降、再計算は仕訳帳の非同期エクスポートを
+      // 伴い重いため、ページ表示時に自動再計算せず、更新操作(定時Job/「更新」ボタン/
+      // 「この期をfreeeから更新」)で再計算する(v2まではキャッシュミス扱いで自動再計算していた)
       return toSnapshot(data);
     },
     async save(snapshot) {

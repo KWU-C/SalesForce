@@ -5,7 +5,8 @@ import type { TermCashFlowTotal } from "./termCashFlowTotal";
 const getTermCashFlowSnapshotMock = vi.fn();
 const saveTermCashFlowSnapshotMock = vi.fn();
 const getFreeeCompanyIdMock = vi.fn();
-const computeTermCashFlowTotalMock = vi.fn();
+const computeTermCashFlowMock = vi.fn();
+const saveMonthlyCashFlowSnapshotMock = vi.fn();
 
 vi.mock("@/repositories/termCashFlowSnapshotRepository", () => ({
   getTermCashFlowSnapshot: getTermCashFlowSnapshotMock,
@@ -14,8 +15,11 @@ vi.mock("@/repositories/termCashFlowSnapshotRepository", () => ({
 vi.mock("@/repositories/freeeAuthRepository", () => ({
   getFreeeCompanyId: getFreeeCompanyIdMock,
 }));
+vi.mock("@/repositories/monthlyCashFlowSnapshotRepository", () => ({
+  saveMonthlyCashFlowSnapshot: saveMonthlyCashFlowSnapshotMock,
+}));
 vi.mock("./termCashFlowTotal", () => ({
-  computeTermCashFlowTotal: computeTermCashFlowTotalMock,
+  computeTermCashFlow: computeTermCashFlowMock,
 }));
 
 const { getOrComputeTermCashFlowTotal } = await import("./termCashFlowTotalService");
@@ -54,7 +58,8 @@ afterEach(() => {
   getTermCashFlowSnapshotMock.mockReset();
   saveTermCashFlowSnapshotMock.mockReset();
   getFreeeCompanyIdMock.mockReset();
-  computeTermCashFlowTotalMock.mockReset();
+  computeTermCashFlowMock.mockReset();
+  saveMonthlyCashFlowSnapshotMock.mockReset();
 });
 
 describe("getOrComputeTermCashFlowTotal", () => {
@@ -66,18 +71,18 @@ describe("getOrComputeTermCashFlowTotal", () => {
 
     expect(result).toEqual(cached);
     expect(getFreeeCompanyIdMock).not.toHaveBeenCalled();
-    expect(computeTermCashFlowTotalMock).not.toHaveBeenCalled();
+    expect(computeTermCashFlowMock).not.toHaveBeenCalled();
     expect(saveTermCashFlowSnapshotMock).not.toHaveBeenCalled();
   });
 
   it("computes from freee and saves permanently when there is no cache yet (one-time backfill)", async () => {
     getTermCashFlowSnapshotMock.mockResolvedValue(null);
     getFreeeCompanyIdMock.mockResolvedValue(123);
-    computeTermCashFlowTotalMock.mockResolvedValue(makeComputed({ term: 49 }));
+    computeTermCashFlowMock.mockResolvedValue({ total: makeComputed({ term: 49 }), months: [] });
 
     const result = await getOrComputeTermCashFlowTotal(49);
 
-    expect(computeTermCashFlowTotalMock).toHaveBeenCalledWith(123, 49);
+    expect(computeTermCashFlowMock).toHaveBeenCalledWith(123, 49);
     expect(saveTermCashFlowSnapshotMock).toHaveBeenCalledWith(
       expect.objectContaining({ term: 49, fiscalYear: 2025 })
     );
@@ -91,7 +96,7 @@ describe("getOrComputeTermCashFlowTotal", () => {
     const result = await getOrComputeTermCashFlowTotal(49);
 
     expect(result).toBeNull();
-    expect(computeTermCashFlowTotalMock).not.toHaveBeenCalled();
+    expect(computeTermCashFlowMock).not.toHaveBeenCalled();
     expect(saveTermCashFlowSnapshotMock).not.toHaveBeenCalled();
   });
 
@@ -101,21 +106,44 @@ describe("getOrComputeTermCashFlowTotal", () => {
 
     await getOrComputeTermCashFlowTotal(49);
 
-    expect(computeTermCashFlowTotalMock).not.toHaveBeenCalled();
+    expect(computeTermCashFlowMock).not.toHaveBeenCalled();
   });
 
   it("with forceRefresh:true, recomputes and overwrites even when a cache entry exists (manual 更新 button path)", async () => {
     getTermCashFlowSnapshotMock.mockResolvedValue({ ...makeComputed(), computedAt: new Date("2026-09-01T00:00:00Z") });
     getFreeeCompanyIdMock.mockResolvedValue(123);
-    computeTermCashFlowTotalMock.mockResolvedValue(makeComputed({ term: 49, cashClosing: 9_999_999 }));
+    computeTermCashFlowMock.mockResolvedValue({ total: makeComputed({ term: 49, cashClosing: 9_999_999 }), months: [] });
 
     const result = await getOrComputeTermCashFlowTotal(49, { forceRefresh: true });
 
     expect(getTermCashFlowSnapshotMock).not.toHaveBeenCalled();
-    expect(computeTermCashFlowTotalMock).toHaveBeenCalledWith(123, 49);
+    expect(computeTermCashFlowMock).toHaveBeenCalledWith(123, 49);
     expect(saveTermCashFlowSnapshotMock).toHaveBeenCalledWith(
       expect.objectContaining({ term: 49, cashClosing: 9_999_999 })
     );
     expect(result?.cashClosing).toBe(9_999_999);
+  });
+
+  it("also saves the 12 computed months as monthly snapshots, so displayed months and the term total always agree (入金側v3)", async () => {
+    getTermCashFlowSnapshotMock.mockResolvedValue(null);
+    getFreeeCompanyIdMock.mockResolvedValue(123);
+    const monthValues = { cashOpening: 1, cashClosing: 2 } as never;
+    computeTermCashFlowMock.mockResolvedValue({
+      total: makeComputed({ term: 49 }),
+      months: [
+        { month: 9, values: monthValues },
+        { month: 10, values: monthValues },
+      ],
+    });
+
+    await getOrComputeTermCashFlowTotal(49);
+
+    expect(saveMonthlyCashFlowSnapshotMock).toHaveBeenCalledTimes(2);
+    expect(saveMonthlyCashFlowSnapshotMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fiscalYear: 2025, month: 9, cashOpening: 1 })
+    );
+    expect(saveMonthlyCashFlowSnapshotMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fiscalYear: 2025, month: 10 })
+    );
   });
 });

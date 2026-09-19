@@ -159,6 +159,32 @@ export const EXTERNAL_CASH_FLOW_OVERRIDES: ExternalCashFlowOverride[] = [
     dateGapDays: 0,
   },
   {
+    id: "term49-pair-20250908-2000000",
+    companyId: COMPANY_ID,
+    amount: 2_000_000,
+    date: "2025-09-08",
+    incomeWalletTxnId: 2045104229,
+    // 出金側(尼信当座3032)は銀行明細フィード開始(2025-10-30)前のため明細が無い。仕訳帳で両側を確認済み
+    confidence: "confirmed",
+    evidence:
+      "資金移動　運転資金　尼信→三井住友。仕訳帳(2025-09-05): 借)三井住友当座2,000,000/貸)尼信当座3032 2,000,000。銀行記帳日は9/08(3日差)",
+    journalId: 3295197624,
+    dateGapDays: 3,
+  },
+  {
+    id: "term49-pair-20250917-20000000",
+    companyId: COMPANY_ID,
+    amount: 20_000_000,
+    date: "2025-09-17",
+    incomeWalletTxnId: 2045104253,
+    // 出金側(りそな当座)は銀行明細フィード開始(2025-10-31)前のため明細が無い。仕訳帳で両側を確認済み
+    confidence: "confirmed",
+    evidence:
+      "資金移動　給与資金　りそな→三井住友。仕訳帳(2025-09-18): 借)三井住友当座20,000,000/貸)りそな当座1518826 20,000,000。銀行記帳日は9/17(1日差)",
+    journalId: 3295197821,
+    dateGapDays: -1,
+  },
+  {
     id: "term49-split-20251203-tsumikin-principal",
     companyId: COMPANY_ID,
     amount: 6_000_000,
@@ -173,33 +199,11 @@ export const EXTERNAL_CASH_FLOW_OVERRIDES: ExternalCashFlowOverride[] = [
 ];
 
 /**
- * confidence="tentative"のoverride候補。仕訳側の証拠(伝票)はあるが、対応する
- * 銀行出金がwallet_txns集合内に見つからず1:1マッチが成立しないため、確定させない
- * (2026-09-18時点)。externalIncome/externalExpenseTotalには反映しない。
- * 人手確認で確定した場合はEXTERNAL_CASH_FLOW_OVERRIDESへ昇格させ、ここから削除する。
+ * confidence="tentative"のoverride候補。現在は無し(2026-09-19、49期の2件は仕訳帳の貸借で確定し
+ * EXTERNAL_CASH_FLOW_OVERRIDESへ昇格した)。将来、仕訳側の証拠はあるが銀行出金が1:1で
+ * 対応付けられない候補が出たら、確定するまでここに置く(externalExpenseTotalには反映しない)。
  */
-export const EXTERNAL_CASH_FLOW_TENTATIVE_CANDIDATES: ExternalCashFlowOverride[] = [
-  {
-    id: "term49-tentative-20250908-2000000",
-    companyId: COMPANY_ID,
-    amount: 2_000_000,
-    date: "2025-09-08",
-    incomeWalletTxnId: 2045104229,
-    confidence: "tentative",
-    evidence: "伝票3295197624(09/05、摘要「運転資金」)に仕訳上の対応は見えるが、出金側のwallet_txnが population内に見つからない",
-    journalId: 3295197624,
-  },
-  {
-    id: "term49-tentative-20250917-20000000",
-    companyId: COMPANY_ID,
-    amount: 20_000_000,
-    date: "2025-09-17",
-    incomeWalletTxnId: 2045104253,
-    confidence: "tentative",
-    evidence: "伝票3295197821(09/18、摘要「給与資金」)に仕訳上の対応は見えるが、出金側のwallet_txnが population内に見つからない",
-    journalId: 3295197821,
-  },
-];
+export const EXTERNAL_CASH_FLOW_TENTATIVE_CANDIDATES: ExternalCashFlowOverride[] = [];
 
 export type UnresolvedCashFlowSide = "income" | "expense";
 
@@ -228,16 +232,6 @@ export const EXTERNAL_CASH_FLOW_UNRESOLVED_ITEMS: UnresolvedCashFlowItem[] = [
     amount: 50_000_000,
     date: "2025-10-31",
     reason:
-      "りそな/西宮、摘要「0951272」。対応する仕訳・BS変動が見つからず、内部振替・外部入金いずれの証拠も無い(Codexレポートでも未解決)。人手確認が必要",
-  },
-  {
-    id: "term49-unresolved-20251128-33119000",
-    companyId: COMPANY_ID,
-    walletTxnId: 2045104484,
-    side: "income",
-    amount: 33_119_000,
-    date: "2025-11-28",
-    reason:
-      "プルデンシャル生命振込。保険積立金減少19,972,334円＋営業外収益14,263,849円＝34,236,183円との間に1,117,183円の未説明差額がある。外部入金として計上したままだが内訳未確定",
+      "りそな/西宮、摘要「0951272」。同日・同口座・同額・同摘要の入金/出金の往復(双方status=3)。49期の仕訳帳に金額50,000,000の行が無く帳簿未計上。入金側v3の集計(仕訳帳ベース)には現れず、参考表示(ネットゼロ往復)として別掲する。性質は未確定で摘要の照会は人手確認。外部支出(v2)には残っている(支出側は別途監査)",
   },
 ];

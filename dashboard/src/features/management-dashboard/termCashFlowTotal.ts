@@ -1,5 +1,9 @@
 import { FISCAL_MONTH_ORDER, freeeFiscalYearForTerm } from "@/config/fiscalPeriods";
 import { computeMonthlyCashFlow } from "./monthlyCashFlow";
+import { getJournalsCsv } from "@/services/freee/freeeJournalsClient";
+import { sumInflows } from "./cashInflow";
+import type { CashInflowBreakdown } from "./cashInflow";
+import { parseJournalCsv } from "./journalCsv";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
 import type { ExternalCashFlowOverride, UnresolvedCashFlowItem } from "@/config/externalCashFlowOverrides";
 import type { ExternalCashFlowStatus } from "./externalCashFlow";
@@ -23,6 +27,8 @@ export interface TermCashFlowTotal {
   cashClosing: number | null;
   cashChange: number | null;
   externalIncome: number;
+  /** 12か月分の入金区分別内訳の単純合計(通期専用の別計算は無い)。v2以前の保存分には無い */
+  inflow?: CashInflowBreakdown;
   externalExpenseTotal: number;
   /**
    * externalIncome/externalExpenseTotal算出に使った恒久ロジックのバージョン
@@ -57,54 +63,84 @@ const EMPTY_CATEGORY_TOTALS: Record<ExpenseCategory, number> = {
   other: 0,
 };
 
+type MonthResult = Awaited<ReturnType<typeof computeMonthlyCashFlow>>;
+
+export interface TermCashFlowComputation {
+  total: Omit<TermCashFlowTotal, "computedAt">;
+  /** 12か月分の月次結果(FISCAL_MONTH_ORDER順)。通期はこの12件の単純合計。月次スナップショットの保存にも使う */
+  months: { month: number; values: MonthResult }[];
+}
+
 /**
  * 指定した事業期の12か月分をfreeeから取得・合算する。既存のcomputeMonthlyCashFlow
- * (月次資金収支)をそのまま12回呼ぶだけで、freee APIへの新規アクセス・集計ロジックの
- * 新規実装は行わない(ユーザー確定、2026-09-18、既存サービスの最大限再利用)。
+ * (月次資金収支)をそのまま12回呼ぶだけで、集計ロジックの新規実装は行わない
+ * (ユーザー確定、2026-09-18、既存サービスの最大限再利用)。
  * termにハードコードされた前提は無く、どの期についても同じ関数で計算できる
  * (50期が終わった時点でもそのまま使える設計)。
+ *
+ * 入金側v3(2026-09-19): 仕訳帳のエクスポートは非同期ジョブで1回あたり数秒〜数分かかるため、
+ * 期全体(期首日〜期末日)を1回だけエクスポートし、各月はその伝票を日付で絞って使う
+ * (通期=12か月合計という構造は変わらない。エクスポートの回数だけを減らす)。
  */
-export async function computeTermCashFlowTotal(
-  companyId: number,
-  term: number
-): Promise<Omit<TermCashFlowTotal, "computedAt">> {
+export async function computeTermCashFlow(companyId: number, term: number): Promise<TermCashFlowComputation> {
   const fiscalYear = freeeFiscalYearForTerm(term);
+  const journalGroups = parseJournalCsv(
+    await getJournalsCsv(companyId, `${fiscalYear}-09-01`, `${fiscalYear + 1}-08-31`)
+  );
   // 12か月分をPromise.allで並列実行すると、1か月あたり6本のfreee APIリクエストが
   // 同時に72本前後飛び、freeeのレート制限(429)に実データで抵触することを確認した
   // (2026-09-18)。この関数は「終わった期」を手動更新ボタンから稀にしか呼ばないため、
   // 実行時間が延びても逐次実行の方が安全(レート制限を踏んで丸ごと失敗する方が困る)。
-  const months: Awaited<ReturnType<typeof computeMonthlyCashFlow>>[] = [];
+  const months: TermCashFlowComputation["months"] = [];
   for (const calendarMonth of FISCAL_MONTH_ORDER) {
-    months.push(await computeMonthlyCashFlow(companyId, fiscalYear, calendarMonth));
+    months.push({
+      month: calendarMonth,
+      values: await computeMonthlyCashFlow(companyId, fiscalYear, calendarMonth, { journalGroups }),
+    });
   }
   // FISCAL_MONTH_ORDER = [9,10,11,12,1,2,3,4,5,6,7,8] なので先頭=期首月(9月)、末尾=期末月(8月)
-  const first = months[0];
-  const last = months[months.length - 1];
+  const results = months.map((m) => m.values);
+  const first = results[0];
+  const last = results[results.length - 1];
 
-  const sum = (get: (m: (typeof months)[number]) => number): number => months.reduce((total, m) => total + get(m), 0);
+  const sum = (get: (m: MonthResult) => number): number => results.reduce((total, m) => total + get(m), 0);
 
   const expenseByCategory = { ...EMPTY_CATEGORY_TOTALS };
   for (const category of Object.keys(expenseByCategory) as ExpenseCategory[]) {
     expenseByCategory[category] = sum((m) => m.expenseByCategory[category]);
   }
 
+  const inflows = results.map((m) => m.inflow).filter((i): i is CashInflowBreakdown => i !== undefined);
+
   return {
-    term,
-    fiscalYear,
-    cashOpening: first.cashOpening,
-    cashClosing: last.cashClosing,
-    cashChange: first.cashOpening !== null && last.cashClosing !== null ? last.cashClosing - first.cashOpening : null,
-    externalIncome: sum((m) => m.externalIncome),
-    externalExpenseTotal: sum((m) => m.externalExpenseTotal),
-    calculationVersion: first.calculationVersion,
-    status: months.some((m) => m.status === "provisional") ? "provisional" : "final",
-    appliedOverrideIds: months.flatMap((m) => m.appliedOverrideIds),
-    unresolvedItems: months.flatMap((m) => m.unresolvedItems),
-    tentativeCandidates: months.flatMap((m) => m.tentativeCandidates),
-    expenseByCategory,
-    operatingCashFlow: sum((m) => m.operatingCashFlow),
-    financingCashFlow: sum((m) => m.financingCashFlow),
-    interestCashFlow: sum((m) => m.interestCashFlow),
-    assetTransferCashFlow: sum((m) => m.assetTransferCashFlow),
+    months,
+    total: {
+      term,
+      fiscalYear,
+      cashOpening: first.cashOpening,
+      cashClosing: last.cashClosing,
+      cashChange: first.cashOpening !== null && last.cashClosing !== null ? last.cashClosing - first.cashOpening : null,
+      externalIncome: sum((m) => m.externalIncome),
+      inflow: inflows.length === results.length ? sumInflows(inflows) : undefined,
+      externalExpenseTotal: sum((m) => m.externalExpenseTotal),
+      calculationVersion: first.calculationVersion,
+      status: results.some((m) => m.status === "provisional") ? "provisional" : "final",
+      appliedOverrideIds: results.flatMap((m) => m.appliedOverrideIds),
+      unresolvedItems: results.flatMap((m) => m.unresolvedItems),
+      tentativeCandidates: results.flatMap((m) => m.tentativeCandidates),
+      expenseByCategory,
+      operatingCashFlow: sum((m) => m.operatingCashFlow),
+      financingCashFlow: sum((m) => m.financingCashFlow),
+      interestCashFlow: sum((m) => m.interestCashFlow),
+      assetTransferCashFlow: sum((m) => m.assetTransferCashFlow),
+    },
   };
+}
+
+/** 通期合計のみが必要な呼び出し用(computeTermCashFlowの薄いラッパー) */
+export async function computeTermCashFlowTotal(
+  companyId: number,
+  term: number
+): Promise<Omit<TermCashFlowTotal, "computedAt">> {
+  return (await computeTermCashFlow(companyId, term)).total;
 }

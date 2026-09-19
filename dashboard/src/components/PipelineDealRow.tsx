@@ -83,7 +83,15 @@ export function PipelineDealRow({ deal, crId, initialMemo, onMemoSaved }: Pipeli
           <p className="whitespace-pre-wrap text-[var(--text-primary)]">
             {deal.salesforceMemo || "—"}
           </p>
-          <p className={`text-[10px] ${memoStale ? "text-[var(--status-critical)]" : "text-[var(--text-muted)]"}`}>
+          {/* 更新日が2ヶ月以上前: 赤字のまま太字にし、文字の背景を#e6cdcdにする(ユーザー確定、2026-09-19)。
+              背景は文字幅に収める(self-start)。#e6cdcdは明るい色のためダークモードでも赤字が読める */}
+          <p
+            className={`text-[10px] ${
+              memoStale
+                ? "self-start rounded-sm bg-[#e6cdcd] px-1 font-bold text-[var(--status-critical)]"
+                : "text-[var(--text-muted)]"
+            }`}
+          >
             案件: 最終更新日 {formatDateTime(new Date(deal.salesforceMemoUpdatedAt))}
           </p>
           <ProcessMemoEditor

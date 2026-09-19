@@ -1,3 +1,4 @@
+import { isOvertimeAvgAlert } from "./attendance";
 import type { AttendanceRow, AttendanceSectionData } from "./attendance";
 
 function formatHours(hours: number): string {
@@ -33,7 +34,11 @@ function AttendanceTable({ title, rows }: { title: string; rows: AttendanceRow[]
               rows.map((row) => (
                 <tr key={row.name} className="border-t border-[var(--gridline)]">
                   <td className="px-3 py-2 text-[var(--text-primary)]">{row.name}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-[var(--text-primary)]">
+                  <td
+                    className={`px-3 py-2 text-right font-semibold ${
+                      isOvertimeAvgAlert(row.overtimeAvgPerDay) ? "text-[var(--status-serious)]" : "text-[var(--text-primary)]"
+                    }`}
+                  >
                     {formatAvgPerDay(row.overtimeAvgPerDay)}
                   </td>
                   <td className="px-3 py-2 text-right text-[var(--text-secondary)]">

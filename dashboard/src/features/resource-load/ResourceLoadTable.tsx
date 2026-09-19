@@ -59,10 +59,10 @@ export function ResourceLoadTable({ crLoads, anomalyCount }: { crLoads: CrResour
                 <td className={`px-3 py-2 text-right ${loadRateClassName(row.loadRate3m)}`}>
                   {formatPercent(row.loadRate3m)}
                 </td>
-                <td className="px-3 py-2 text-right text-[var(--text-secondary)]">
+                <td className="bg-[var(--surface-reference)] px-3 py-2 text-right text-[var(--text-secondary)]">
                   {formatYen(row.referenceGrossProfit1m)}
                 </td>
-                <td className="px-3 py-2 text-right text-[var(--text-secondary)]">
+                <td className="bg-[var(--surface-reference)] px-3 py-2 text-right text-[var(--text-secondary)]">
                   {formatYen(row.referenceGrossProfit3m)}
                 </td>
               </tr>

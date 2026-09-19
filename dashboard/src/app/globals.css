@@ -7,6 +7,8 @@
   --surface-1: #fcfcfb;
   /* --backgroundより一段グレー。CR別タブ下部のダッシュボード独自セクション区別用 */
   --surface-sunken: #f0efe8;
+  /* リソースの「完了参照値」列(数字部分)の背景(ユーザー確定、2026-09-19) */
+  --surface-reference: #f7f7f4;
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
   --text-muted: #898781;
@@ -48,6 +50,7 @@
 
     --surface-1: #1a1a19;
     --surface-sunken: #141412;
+    --surface-reference: #201f1d;
     --text-primary: #ffffff;
     --text-secondary: #c3c2b7;
     --text-muted: #898781;
@@ -80,6 +83,7 @@
 
   --surface-1: #1a1a19;
   --surface-sunken: #141412;
+  --surface-reference: #201f1d;
   --text-primary: #ffffff;
   --text-secondary: #c3c2b7;
   --text-muted: #898781;

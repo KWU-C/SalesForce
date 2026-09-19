@@ -6,7 +6,7 @@ vi.mock("@/config/attendanceCategory", () => ({
   ATTENDANCE_CLERICAL_NAMES: ["牛尾 郁美"],
 }));
 
-const { classifyAttendanceMember, buildAttendanceRow, buildAttendanceSection } = await import("./attendance");
+const { classifyAttendanceMember, buildAttendanceRow, buildAttendanceSection, isOvertimeAvgAlert } = await import("./attendance");
 
 describe("classifyAttendanceMember", () => {
   it("classifies excluded/shortHours/clerical members by exact name match", () => {
@@ -88,3 +88,18 @@ describe("buildAttendanceSection", () => {
     expect(section.lower.map((r) => r.name).sort()).toEqual(["牛尾 郁美", "能登 愛"].sort());
   });
 });
+
+describe("isOvertimeAvgAlert(残業平均時間2.50h以上を赤文字)", () => {
+  it("is true at exactly 2.50 and above, false below", () => {
+    expect(isOvertimeAvgAlert(2.5)).toBe(true);
+    expect(isOvertimeAvgAlert(3.1)).toBe(true);
+    expect(isOvertimeAvgAlert(2.49)).toBe(false);
+    expect(isOvertimeAvgAlert(0)).toBe(false);
+  });
+
+  it("matches the displayed value: 2.496 is displayed as 2.50h/日 so it is also flagged; 2.494 (displayed 2.49) is not", () => {
+    expect(isOvertimeAvgAlert(2.496)).toBe(true);
+    expect(isOvertimeAvgAlert(2.494)).toBe(false);
+  });
+});
+

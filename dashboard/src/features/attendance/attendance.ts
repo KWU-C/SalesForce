@@ -94,3 +94,15 @@ export function buildAttendanceSection(
 
   return { targetLeft, targetRight, lower: lowerRows };
 }
+
+/** 残業平均時間(時間/日)を赤文字にするしきい値(ユーザー確定、2026-09-19: 2.50h以上) */
+export const OVERTIME_AVG_ALERT_THRESHOLD_HOURS = 2.5;
+
+/**
+ * 残業平均時間が警告(赤文字)対象か。画面には小数第2位まで表示するため、表示値(2.50h/日)と
+ * 判定が食い違わないよう、小数第2位に丸めた値で2.50以上を判定する(2.496は表示が2.50でも対象外にならない
+ * ように、丸めた値で判定して表示と一致させる)。
+ */
+export function isOvertimeAvgAlert(overtimeAvgPerDay: number): boolean {
+  return Number(overtimeAvgPerDay.toFixed(2)) >= OVERTIME_AVG_ALERT_THRESHOLD_HOURS;
+}

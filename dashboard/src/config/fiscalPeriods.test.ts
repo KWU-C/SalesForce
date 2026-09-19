@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fiscalTermDateRange, getSelectableTerms, getCurrentFiscalPeriod, previousFiscalTermMonth } from "./fiscalPeriods";
+import { fiscalTermDateRange, getSelectableTerms, getCurrentFiscalPeriod, previousFiscalTermMonth, fiscalYearToDateMonthsLabel } from "./fiscalPeriods";
 
 describe("getCurrentFiscalPeriod", () => {
   it("returns 49期・8月 for 2026-08-06 (today at time of writing)", () => {
@@ -54,5 +54,14 @@ describe("fiscalTermDateRange", () => {
 
   it("returns 2026-09-01〜2027-08-31 for 50期", () => {
     expect(fiscalTermDateRange(50)).toEqual({ start: "2026-09-01", end: "2027-08-31" });
+  });
+});
+
+describe("fiscalYearToDateMonthsLabel", () => {
+  it("shows a single month for the term's first month, and 期首-終了月 for several months", () => {
+    expect(fiscalYearToDateMonthsLabel(9)).toBe("9月");
+    expect(fiscalYearToDateMonthsLabel(12)).toBe("9-12月");
+    expect(fiscalYearToDateMonthsLabel(2)).toBe("9-2月");
+    expect(fiscalYearToDateMonthsLabel(8)).toBe("9-8月");
   });
 });

@@ -101,3 +101,12 @@ export function fiscalTermDateRange(term: number): { start: string; end: string 
   const toDateOnly = (d: Date) => d.toISOString().slice(0, 10);
   return { start: toDateOnly(start), end: toDateOnly(end) };
 }
+
+/**
+ * 期首(9月)から指定月までの累計の対象月表記。9月だけなら「9月」、複数月なら「9-12月」「9-2月」のように
+ * 期首月-終了月(暦月)で表す(ユーザー確定、2026-09-19。経営タブ「当期累計（x月）」の表記に使う)。
+ */
+export function fiscalYearToDateMonthsLabel(endCalendarMonth: number): string {
+  const startMonth = FISCAL_MONTH_ORDER[0];
+  return endCalendarMonth === startMonth ? `${startMonth}月` : `${startMonth}-${endCalendarMonth}月`;
+}

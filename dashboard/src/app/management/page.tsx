@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { FreeeConnectForm } from "@/features/management-dashboard/FreeeConnectForm";
 import { FinancialSummaryCards } from "@/features/management-dashboard/FinancialSummaryCards";
-import type { FinancialSummary } from "@/features/management-dashboard/financialSummary";
+import type { FinancialSummarySnapshot } from "@/features/management-dashboard/financialSummary";
 import { MonthlyCashFlowScrollTable } from "@/features/management-dashboard/MonthlyCashFlowScrollTable";
 import type { MonthColumn } from "@/features/management-dashboard/MonthlyCashFlowScrollTable";
 import { getOrFetchMonthlyCashFlow } from "@/features/management-dashboard/monthlyCashFlowService";
@@ -94,7 +94,7 @@ export default async function ManagementPage() {
 
   let connectionStatus: Awaited<ReturnType<typeof getFreeeConnectionStatus>> | null = null;
   let authorizeUrl: string | null = null;
-  let financialSummary: FinancialSummary | null = null;
+  let financialSummary: FinancialSummarySnapshot | null = null;
   let financialSummaryError = false;
   let cashFlowByMonth: (MonthlyCashFlow | null)[] = [];
   let cashFlowError = false;

@@ -30,10 +30,13 @@ function statusColor(rate: number): string | undefined {
 /** 第1四半期・上半期・第3四半期・通期の累計列に敷く背景色 */
 const CUMULATIVE_COLUMN_BG = "bg-[#fdf3d0]";
 
+/** 各月の列(見出し・数字セル)の左右に縦線を引く(ユーザー確定、2026-09-19)。累計列には付けない */
+const MONTH_COLUMN_BORDER = "border-x border-[var(--border-hairline)]";
+
 function AmountCell({ value, highlight = false }: { value: number | null; highlight?: boolean }) {
   return (
     <td
-      className={`px-3 py-1.5 text-right text-[var(--text-primary)] ${highlight ? CUMULATIVE_COLUMN_BG : ""}`}
+      className={`px-3 py-1.5 text-right text-[var(--text-primary)] ${highlight ? CUMULATIVE_COLUMN_BG : MONTH_COLUMN_BORDER}`}
     >
       {value === null ? "—" : formatThousandYen(value)}
     </td>
@@ -43,7 +46,7 @@ function AmountCell({ value, highlight = false }: { value: number | null; highli
 function RateCell({ value, highlight = false }: { value: number | null; highlight?: boolean }) {
   return (
     <td
-      className={`px-3 py-1.5 text-right font-medium ${highlight ? CUMULATIVE_COLUMN_BG : ""}`}
+      className={`px-3 py-1.5 text-right font-medium ${highlight ? CUMULATIVE_COLUMN_BG : MONTH_COLUMN_BORDER}`}
       style={value === null ? undefined : { color: statusColor(value) }}
     >
       {value === null ? "—" : formatPercent(value)}
@@ -80,7 +83,7 @@ export function MonthlyCumulativeTable({ title, data }: MonthlyCumulativeTablePr
                 <tr className="bg-[var(--gridline)] text-xs text-[var(--text-muted)]">
                   <th className="px-3 py-1.5 text-left font-normal"> </th>
                   {group.monthsInGroup.map((month) => (
-                    <th key={month} className="px-3 py-1.5 text-right font-normal">
+                    <th key={month} className={`px-3 py-1.5 text-right font-normal ${MONTH_COLUMN_BORDER}`}>
                       {month}月
                     </th>
                   ))}

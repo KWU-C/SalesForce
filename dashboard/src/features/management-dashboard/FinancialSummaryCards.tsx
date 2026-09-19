@@ -1,10 +1,12 @@
 import { formatPercent, formatYen } from "@/utils/format";
+import { fiscalYearToDateMonthsLabel } from "@/config/fiscalPeriods";
 import { KpiTile } from "./KpiTile";
 import { SectionBanner } from "./SectionBanner";
-import type { FinancialSummary } from "./financialSummary";
+import type { FinancialSummarySnapshot } from "./financialSummary";
 
 interface FinancialSummaryCardsProps {
-  summary: FinancialSummary;
+  /** monthはこのサマリーを取得した月(=累計の対象の終了月)。見出しに対象月を明記する */
+  summary: FinancialSummarySnapshot;
 }
 
 /**
@@ -15,7 +17,8 @@ interface FinancialSummaryCardsProps {
 export function FinancialSummaryCards({ summary }: FinancialSummaryCardsProps) {
   return (
     <div className="flex flex-col gap-2">
-      <SectionBanner>当期累計（参考）</SectionBanner>
+      {/* 集計対象を明記: 期首(9月)から、このサマリーを取得した月まで(ユーザー確定、2026-09-19) */}
+      <SectionBanner>当期累計（{fiscalYearToDateMonthsLabel(summary.month)}）</SectionBanner>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <KpiTile title="売上高" value={summary.revenue} formatter={formatYen} />
         <KpiTile

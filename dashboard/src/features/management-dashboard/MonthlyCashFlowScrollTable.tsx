@@ -83,9 +83,10 @@ interface SectionDef {
  * 並べる(ユーザー確定、2026-09-20/21)。数値の計算ロジック・分類ロジックはv3.1のまま
  * 変更しない。各行のgetは既存フィールドをそのまま参照するのみ。
  *
- * 4区分(営業活動/財務・資産活動/参考・調整/資金結果)はそれぞれ独立したタイル(カード)として
- * 閉じて分ける(ユーザー確定、2026-09-21)。見出しの強さの競合を避けるため、表内の行として
- * 大区分見出しを描画するのではなく、タイルの外枠自体で区分を表現する。
+ * 営業活動/財務・資産活動/資金結果は、下の表の一部として続けて1つの表の中に描画する
+ * (独立したタイル(カード)にはしない、ユーザー確定、2026-09-21)。区分の切れ目は表内の
+ * 見出し行(SectionHeaderRow、太罫線+集計行と同じ文字レベル)で表す。「参考・調整」だけは
+ * 経営判断上の優先度が低いため、独立した折りたたみ式タイル(ReferenceTile)として分ける。
  */
 const SECTIONS: SectionDef[] = [
   {
@@ -331,16 +332,76 @@ function BandRow({ label, columns }: { label: string; columns: MonthColumn[] }) 
   );
 }
 
-/** 営業活動/財務・資産活動/参考・調整/資金結果を、それぞれ独立したタイル(カード)として
- * 閉じて表示する(ユーザー確定、2026-09-21)。タイル見出しの文字サイズ・スタイルは、
- * 小区分(入金/支出など、text-xs font-medium)より一段強く、集計行(営業支出合計など、
- * font-semibold text-sm)と同じレベルに揃える(SectionBannerの濃色バナーは使わない、
- * ユーザー確定、2026-09-21。見出しが強すぎて表内の集計行との階層が分かりにくかったため)。
- * 「参考・調整」だけは見出しをさらに弱くし(text-secondaryで色を一段弱く)、クリックで
- * 折りたたみ可能にする(既定で折りたたみ)。全タイルは共通の横スクロールコンテナ
- * (MonthlyCashFlowScrollTable側)に収め、各タイルが個別のスクロールを持たないようにする
- * ことで、月列の位置がタイル間でずれないようにする */
-function SectionTile({
+/** 大区分見出し行(営業活動/財務・資産活動/資金結果)。表内の1行として描画し、独立した
+ * タイル(カード)にはしない(ユーザー確定、2026-09-21。「参考・調整」以外は下の表の
+ * 一部として続けて読めるようにする)。文字サイズ・スタイルは小区分(入金/支出など、
+ * text-xs font-medium)より一段強く、集計行(営業支出合計など、font-semibold text-sm)と
+ * 同じレベルに揃える */
+function SectionHeaderRow({
+  title,
+  columns,
+  groupStart,
+}: {
+  title: string;
+  columns: MonthColumn[];
+  groupStart?: boolean;
+}) {
+  const border = groupStart ? "border-t-2 border-[var(--baseline)]" : "border-t border-[var(--gridline)]";
+  return (
+    <tr>
+      <td
+        className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${border} ${LABEL_COL_BG} px-3 py-2 text-sm font-semibold text-[var(--text-primary)]`}
+      >
+        {title}
+      </td>
+      {columns.map((col, colIndex) => (
+        <td
+          key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
+          className={`${MONTH_COL_WIDTH} ${border} ${monthColBg(colIndex)}`}
+        />
+      ))}
+    </tr>
+  );
+}
+
+function SectionRows({ rows, columns }: { rows: RowDef[]; columns: MonthColumn[] }) {
+  return (
+    <>
+      {rows.map((row) =>
+        row.kind === "band" ? (
+          <BandRow key={row.label} label={row.label} columns={columns} />
+        ) : (
+          <ValueRow key={row.label} row={row} columns={columns} />
+        ),
+      )}
+    </>
+  );
+}
+
+/** 営業活動/財務・資産活動/資金結果を、下の表の一部として続けて描画する(独立したタイルに
+ * しない、ユーザー確定、2026-09-21)。見出し行+その区分の明細行をまとめて返す */
+function SectionRowsWithHeader({
+  section,
+  columns,
+  groupStart,
+}: {
+  section: SectionDef;
+  columns: MonthColumn[];
+  groupStart?: boolean;
+}) {
+  return (
+    <>
+      <SectionHeaderRow title={section.title} columns={columns} groupStart={groupStart} />
+      <SectionRows rows={section.rows} columns={columns} />
+    </>
+  );
+}
+
+/** 「参考・調整」専用の折りたたみ式タイル(カード)。経営判断上の優先度が低いため、
+ * 営業活動/財務・資産活動/資金結果(下の表の一部として続ける)とは別に、独立した
+ * カードとして分ける(ユーザー確定、2026-09-21)。見出しはtext-secondaryでさらに弱くし、
+ * クリックで開閉する(既定で折りたたみ) */
+function ReferenceTile({
   section,
   columns,
   expanded,
@@ -351,35 +412,22 @@ function SectionTile({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const showRows = !section.muted || expanded;
   return (
     <div className="flex flex-col gap-2">
-      {section.muted ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          className="w-full rounded-md bg-[var(--surface-sunken)] px-3 py-2 text-left text-sm font-semibold text-[var(--text-secondary)]"
-        >
-          {expanded ? "▼ " : "▶ "}
-          {section.title}
-        </button>
-      ) : (
-        <div className="w-full rounded-md bg-[var(--surface-sunken)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)]">
-          {section.title}
-        </div>
-      )}
-      {showRows && (
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="w-full rounded-md bg-[var(--surface-sunken)] px-3 py-2 text-left text-sm font-semibold text-[var(--text-secondary)]"
+      >
+        {expanded ? "▼ " : "▶ "}
+        {section.title}
+      </button>
+      {expanded && (
         <div className="overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
           <table className="w-full table-fixed border-collapse text-sm">
             <tbody>
-              {section.rows.map((row) =>
-                row.kind === "band" ? (
-                  <BandRow key={row.label} label={row.label} columns={columns} />
-                ) : (
-                  <ValueRow key={row.label} row={row} columns={columns} />
-                ),
-              )}
+              <SectionRows rows={section.rows} columns={columns} />
             </tbody>
           </table>
         </div>
@@ -407,20 +455,24 @@ function SectionTile({
  *
  * 情報設計(ユーザー確定、2026-09-20/21):
  * - 表は「月初現預金」(見出しなし、単独の値)から始まり、営業活動→財務・資産活動→
- *   参考・調整→資金結果の4タイルへ続く。各タイルは独立したカードとして閉じて分け、
- *   タイルの外枠自体で区分の強さを表す(表内の行として大区分見出しを描画しない)。
- * - 4タイルすべてを同じ横スクロールコンテナに収めることで、月列の位置がタイル間で
- *   ずれないようにする(タイルごとに個別のoverflow-x-autoを持たせない)。
- * - タイル内の階層は行の背景色による帯を使わず、font-weight・文字サイズ・罫線の太さ・
- *   インデント・(マイナス値のみ)文字色だけで表現する。小区分(入金/支出/借入返済/資産移動)
- *   はラベルのみで金額を表示しない。集計行(営業支出合計・キャッシュイン合計など)は
- *   font-semibold、営業キャッシュ収支・当月現金増減はfont-bold+上下太罫線でさらに強調し、
- *   マイナス値のセルだけ既存の赤系ステータス色(--status-serious)にする。月末現預金は
- *   表全体の最終到達点として、さらに太い罫線(--band-bg)とひとまわり大きい文字で
- *   最も目立たせる。
+ *   資金結果と1つの表の中で続けて読める(区分の切れ目は表内の見出し行+太罫線で表す。
+ *   独立したタイル(カード)にはしない)。「参考・調整」だけは経営判断上の優先度が
+ *   低いため、この表とは別の折りたたみ式タイル(ReferenceTile)として分ける。
+ * - 表とReferenceTileは同じ横スクロールコンテナに収めることで、月列の位置がずれない
+ *   ようにする(それぞれに個別のoverflow-x-autoを持たせない)。
+ * - 表内の階層は行の背景色による帯を使わず、font-weight・文字サイズ・罫線の太さ・
+ *   インデント・(マイナス値のみ)文字色だけで表現する。大区分見出し(営業活動など)は
+ *   font-semibold text-smで、小区分(入金/支出/借入返済/資産移動、text-xs font-medium)
+ *   より一段強く、集計行(営業支出合計・キャッシュイン合計など)と同じレベルに揃える。
+ *   小区分はラベルのみで金額を表示しない。営業キャッシュ収支・当月現金増減は
+ *   font-bold+上下太罫線でさらに強調し、マイナス値のセルだけ既存の赤系ステータス色
+ *   (--status-serious)にする。月末現預金は表全体の最終到達点として、さらに太い罫線
+ *   (--band-bg)とひとまわり大きい文字で最も目立たせる。
  */
 export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[] }) {
   const [referenceExpanded, setReferenceExpanded] = useState(false);
+  const mainSections = SECTIONS.filter((s) => !s.muted);
+  const referenceSection = SECTIONS.find((s) => s.muted);
 
   return (
     <div className="flex flex-col gap-2">
@@ -492,19 +544,21 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
               </thead>
               <tbody>
                 <ValueRow row={OPENING_ROW} columns={columns} />
+                {mainSections.map((section, idx) => (
+                  <SectionRowsWithHeader key={section.key} section={section} columns={columns} groupStart={idx > 0} />
+                ))}
               </tbody>
             </table>
           </div>
 
-          {SECTIONS.map((section) => (
-            <SectionTile
-              key={section.key}
-              section={section}
+          {referenceSection && (
+            <ReferenceTile
+              section={referenceSection}
               columns={columns}
               expanded={referenceExpanded}
               onToggle={() => setReferenceExpanded((v) => !v)}
             />
-          ))}
+          )}
         </div>
       </div>
     </div>

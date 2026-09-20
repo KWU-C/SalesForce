@@ -276,7 +276,7 @@ function formatCell(value: number | null): string {
 
 function ValueRow({ row, columns }: { row: Extract<RowDef, { kind: "value" }>; columns: MonthColumn[] }) {
   const rowBorder = row.finalMetric
-    ? "border-y-4 border-[var(--band-bg)]"
+    ? "border-y-4 border-[var(--baseline)]"
     : row.keyMetric
       ? "border-y-2 border-[var(--baseline)]"
       : "border-t border-[var(--gridline)]";
@@ -478,9 +478,11 @@ function ReferenceTile({
  *   font-semibold text-smで、小区分(入金/支出/借入返済/資産移動、text-xs font-medium)
  *   より一段強く、集計行(営業支出合計・キャッシュイン合計など)と同じレベルに揃える。
  *   小区分はラベルのみで金額を表示しない。営業キャッシュ収支・当月現金増減は
- *   font-bold+上下太罫線でさらに強調し、マイナス値のセルだけ既存の赤系ステータス色
- *   (--status-serious)にする。月末現預金は表全体の最終到達点として、さらに太い罫線
- *   (--band-bg)とひとまわり大きい文字で最も目立たせる。
+ *   font-bold+上下太罫線(border-y-2 border-baseline)でさらに強調し、マイナス値のセル
+ *   だけ既存の赤系ステータス色(--status-serious)にする。月末現預金は表全体の最終到達点
+ *   として、同じ--baselineでさらに太い罫線(border-y-4)とひとまわり大きい文字で
+ *   最も目立たせる(色は営業キャッシュ収支・当月現金増減と揃え、太さだけで一段強くする、
+ *   ユーザー確定、2026-09-21)。
  */
 export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[] }) {
   const [referenceExpanded, setReferenceExpanded] = useState(false);

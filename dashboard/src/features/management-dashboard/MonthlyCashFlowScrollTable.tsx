@@ -332,10 +332,14 @@ function BandRow({ label, columns }: { label: string; columns: MonthColumn[] }) 
 }
 
 /** 営業活動/財務・資産活動/参考・調整/資金結果を、それぞれ独立したタイル(カード)として
- * 閉じて表示する(ユーザー確定、2026-09-21)。「参考・調整」だけは見出しを弱くし、
- * クリックで折りたたみ可能にする(既定で折りたたみ)。全タイルは共通の横スクロール
- * コンテナ(MonthlyCashFlowScrollTable側)に収め、各タイルが個別のスクロールを持たない
- * ようにすることで、月列の位置がタイル間でずれないようにする */
+ * 閉じて表示する(ユーザー確定、2026-09-21)。タイル見出しの文字サイズ・スタイルは、
+ * 小区分(入金/支出など、text-xs font-medium)より一段強く、集計行(営業支出合計など、
+ * font-semibold text-sm)と同じレベルに揃える(SectionBannerの濃色バナーは使わない、
+ * ユーザー確定、2026-09-21。見出しが強すぎて表内の集計行との階層が分かりにくかったため)。
+ * 「参考・調整」だけは見出しをさらに弱くし(text-secondaryで色を一段弱く)、クリックで
+ * 折りたたみ可能にする(既定で折りたたみ)。全タイルは共通の横スクロールコンテナ
+ * (MonthlyCashFlowScrollTable側)に収め、各タイルが個別のスクロールを持たないようにする
+ * ことで、月列の位置がタイル間でずれないようにする */
 function SectionTile({
   section,
   columns,
@@ -361,7 +365,9 @@ function SectionTile({
           {section.title}
         </button>
       ) : (
-        <SectionBanner>{section.title}</SectionBanner>
+        <div className="w-full rounded-md bg-[var(--surface-sunken)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)]">
+          {section.title}
+        </div>
       )}
       {showRows && (
         <div className="overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">

@@ -39,12 +39,17 @@ export interface MonthColumn {
 }
 
 type RowDef =
+  /** 大区分見出し(月初資金/営業活動/財務・資産活動/参考・調整/資金結果)。表内で明確に区切れる最上位階層 */
   | { kind: "section"; label: string; groupStart?: boolean }
+  /** 「入金」「支出」の帯。データ行ではなく小区分の見出し(金額は表示しない、ユーザー確定、2026-09-20) */
+  | { kind: "band"; label: string; groupStart?: boolean }
   | {
       kind: "value";
       label: string;
       indent?: boolean;
       bold?: boolean;
+      /** 営業キャッシュ収支・当月現金増減など、経営上の主要指標(bold行の中でもさらに目立たせる) */
+      keyMetric?: boolean;
       note?: boolean;
       groupStart?: boolean;
       /** 入金・出金の区分別内訳の行。旧ロジック(v3より前)で保存されたスナップショットには値が無く「未再計算」と表示する */
@@ -52,10 +57,17 @@ type RowDef =
       get: (cf: MonthlyCashFlow) => number | null;
     };
 
+/**
+ * 月初資金 → 営業活動 → 財務・資産活動 → 参考・調整 → 資金結果、の順で経営上の意味が
+ * 分かる構造に並べる(ユーザー確定、2026-09-20)。数値の計算ロジック・分類ロジックは
+ * v3.1のまま変更しない。各行のgetは既存フィールドをそのまま参照するのみ
+ */
 const ROWS: RowDef[] = [
+  { kind: "section", label: "月初資金", groupStart: true },
   { kind: "value", label: "月初現預金", bold: true, get: (cf) => cf.cashOpening },
-  { kind: "section", label: "入金", groupStart: true },
-  { kind: "value", label: "キャッシュイン合計", bold: true, get: (cf) => cf.externalIncome },
+
+  { kind: "section", label: "営業活動", groupStart: true },
+  { kind: "band", label: "入金" },
   { kind: "value", label: "営業入金", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.operating ?? null },
   {
     kind: "value",
@@ -65,33 +77,7 @@ const ROWS: RowDef[] = [
     inflowDetail: true,
     get: (cf) => cf.inflow?.operatingLedgerOnly ?? null,
   },
-  { kind: "value", label: "借入による入金", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.borrowing ?? null },
-  {
-    kind: "value",
-    label: "保険・資産回収等",
-    indent: true,
-    inflowDetail: true,
-    get: (cf) => cf.inflow?.assetRecovery ?? null,
-  },
-  { kind: "value", label: "その他", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.other ?? null },
-  { kind: "value", label: "未分類", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.unclassified ?? null },
-  {
-    kind: "value",
-    label: "(参考)内部移動 ※合計に含めず",
-    indent: true,
-    note: true,
-    inflowDetail: true,
-    get: (cf) => cf.inflow?.internalTransfer ?? null,
-  },
-  {
-    kind: "value",
-    label: "(参考)ネットゼロ往復 ※帳簿未計上・合計に含めず",
-    indent: true,
-    note: true,
-    inflowDetail: true,
-    get: (cf) => cf.inflow?.netZeroRoundTrip ?? null,
-  },
-  { kind: "section", label: "支出" },
+  { kind: "band", label: "支出" },
   { kind: "value", label: CATEGORY_LABEL.labor, indent: true, get: (cf) => cf.expenseByCategory.labor },
   {
     kind: "value",
@@ -112,8 +98,27 @@ const ROWS: RowDef[] = [
     bold: true,
     get: (cf) => OPERATING_CATEGORIES.reduce((sum, c) => sum + cf.expenseByCategory[c], 0),
   },
-  { kind: "value", label: "営業キャッシュ収支（営業入金−営業支出）", bold: true, get: (cf) => cf.operatingCashFlow },
-  { kind: "section", label: "財務・将来準備・未分類", groupStart: true },
+  {
+    kind: "value",
+    label: "営業キャッシュ収支（営業入金−営業支出）",
+    bold: true,
+    keyMetric: true,
+    get: (cf) => cf.operatingCashFlow,
+  },
+
+  { kind: "section", label: "財務・資産活動", groupStart: true },
+  { kind: "band", label: "入金" },
+  { kind: "value", label: "借入による入金", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.borrowing ?? null },
+  {
+    kind: "value",
+    label: "保険・資産回収等",
+    indent: true,
+    inflowDetail: true,
+    get: (cf) => cf.inflow?.assetRecovery ?? null,
+  },
+  { kind: "value", label: "その他", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.other ?? null },
+  { kind: "value", label: "未分類", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.unclassified ?? null },
+  { kind: "band", label: "支出" },
   { kind: "value", label: CATEGORY_LABEL.financing, indent: true, get: (cf) => cf.financingCashFlow },
   { kind: "value", label: CATEGORY_LABEL.interest, indent: true, get: (cf) => cf.interestCashFlow },
   { kind: "value", label: "借入関連支出合計", bold: true, get: (cf) => cf.financingCashFlow + cf.interestCashFlow },
@@ -125,18 +130,19 @@ const ROWS: RowDef[] = [
     inflowDetail: true,
     get: (cf) => cf.outflow?.unclassified ?? null,
   },
-  { kind: "value", label: "キャッシュアウト合計（外部支出）", bold: true, get: (cf) => cf.externalExpenseTotal },
+
+  { kind: "section", label: "参考・調整", groupStart: true },
   {
     kind: "value",
-    label: "うち帳簿補完(銀行明細欠落期間)",
+    label: "内部移動（入金） ※合計に含めず",
     indent: true,
     note: true,
     inflowDetail: true,
-    get: (cf) => cf.outflow?.ledgerOnly ?? null,
+    get: (cf) => cf.inflow?.internalTransfer ?? null,
   },
   {
     kind: "value",
-    label: "(参考)内部移動 ※合計に含めず",
+    label: "内部移動（出金） ※合計に含めず",
     indent: true,
     note: true,
     inflowDetail: true,
@@ -144,7 +150,15 @@ const ROWS: RowDef[] = [
   },
   {
     kind: "value",
-    label: "(参考)ネットゼロ往復 ※帳簿未計上・合計に含めず",
+    label: "ネットゼロ往復（入金） ※帳簿未計上・合計に含めず",
+    indent: true,
+    note: true,
+    inflowDetail: true,
+    get: (cf) => cf.inflow?.netZeroRoundTrip ?? null,
+  },
+  {
+    kind: "value",
+    label: "ネットゼロ往復（出金） ※帳簿未計上・合計に含めず",
     indent: true,
     note: true,
     inflowDetail: true,
@@ -152,17 +166,30 @@ const ROWS: RowDef[] = [
   },
   {
     kind: "value",
+    label: "帳簿補完（出金側）",
+    indent: true,
+    note: true,
+    inflowDetail: true,
+    get: (cf) => cf.outflow?.ledgerOnly ?? null,
+  },
+  {
+    kind: "value",
     label: "検算差額（現金増減−(入金−出金)）",
     note: true,
     get: (cf) => (cf.cashChange === null ? null : cf.cashChange - (cf.externalIncome - cf.externalExpenseTotal)),
   },
+
+  { kind: "section", label: "資金結果", groupStart: true },
+  { kind: "value", label: "キャッシュイン合計", bold: true, get: (cf) => cf.externalIncome },
+  { kind: "value", label: "キャッシュアウト合計（外部支出）", bold: true, get: (cf) => cf.externalExpenseTotal },
   {
     kind: "value",
     label: "当月現金増減",
     bold: true,
+    keyMetric: true,
     get: (cf) => cf.cashChange ?? cf.externalIncome - cf.externalExpenseTotal,
   },
-  { kind: "value", label: "月末現預金", bold: true, groupStart: true, get: (cf) => cf.cashClosing },
+  { kind: "value", label: "月末現預金", bold: true, get: (cf) => cf.cashClosing },
 ];
 
 const LABEL_COL_WIDTH = "w-52 min-w-52";
@@ -196,6 +223,16 @@ function formatCell(value: number | null): string {
  * ヘッダーの背景色は期別通期合計列のみに付ける(isTermTotal、例:
  * 「2026年8月（49期通期）」)。当月列も含め、それ以外の通常月列はヘッダー背景を
  * 付けない(白のまま)。当月の強調は「当月」バッジのみで行う(ユーザー確定、2026-09-18)。
+ *
+ * 行の視覚的な階層(ユーザー確定、2026-09-20):
+ * 1. セクション(月初資金/営業活動/財務・資産活動/参考・調整/資金結果): 全列
+ *    bg-surface-sunken・太字の見出し行、上に太罫線。
+ * 2. 小区分(入金/支出): 全列bg-surface-band-deep(濃いベージュ)の帯、金額は表示しない。
+ * 3. 通常明細(営業入金・給与・人件費など): 列単位のシマシマ背景、通常の文字色。
+ * 4. 補足内訳(うち従業員給与計など): インデント+文字色を一段弱く。
+ * 集計行(営業支出合計・キャッシュイン合計など)は太字を維持しつつ、経営上の主要指標
+ * (営業キャッシュ収支・当月現金増減)はkeyMetricでさらに太罫線+太字にして目立たせる。
+ * 色を増やしすぎないよう、階層はベージュの濃淡・罫線・font-weightのみで作る。
  */
 export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[] }) {
   return (
@@ -271,42 +308,66 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                 return (
                   <tr key={row.label}>
                     <td
-                      className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} ${LABEL_COL_BG} px-3 py-1.5 text-xs font-medium text-[var(--text-muted)]`}
+                      className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} bg-[var(--surface-sunken)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)]`}
                     >
                       {row.label}
                     </td>
-                    {columns.map((col, colIndex) => (
+                    {columns.map((col) => (
                       <td
                         key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
-                        className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)}`}
+                        className={`${MONTH_COL_WIDTH} ${rowBorder} bg-[var(--surface-sunken)]`}
                       />
                     ))}
                   </tr>
                 );
               }
 
+              if (row.kind === "band") {
+                return (
+                  <tr key={row.label}>
+                    <td
+                      className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} bg-[var(--surface-band-deep)] px-3 py-1.5 pl-6 text-xs font-medium text-[var(--text-secondary)]`}
+                    >
+                      {row.label}
+                    </td>
+                    {columns.map((col) => (
+                      <td
+                        key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
+                        className={`${MONTH_COL_WIDTH} ${rowBorder} bg-[var(--surface-band-deep)]`}
+                      />
+                    ))}
+                  </tr>
+                );
+              }
+
+              const keyMetricBorder = row.keyMetric ? "border-y-2 border-[var(--baseline)]" : rowBorder;
+              const keyMetricBg = row.keyMetric ? "bg-[var(--surface-sunken)]" : "";
               const textClass = row.note
                 ? "text-xs text-[var(--text-muted)]"
-                : row.bold
-                  ? "font-semibold text-[var(--text-primary)]"
-                  : "text-[var(--text-secondary)]";
+                : row.keyMetric
+                  ? "font-bold text-[var(--text-primary)]"
+                  : row.bold
+                    ? "font-semibold text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)]";
               const valueClass = row.note
                 ? "text-xs text-[var(--text-muted)]"
-                : row.bold
-                  ? "font-semibold text-[var(--text-primary)]"
-                  : "text-[var(--text-primary)]";
+                : row.keyMetric
+                  ? "font-bold text-[var(--text-primary)]"
+                  : row.bold
+                    ? "font-semibold text-[var(--text-primary)]"
+                    : "text-[var(--text-primary)]";
 
               return (
                 <tr key={row.label}>
                   <td
-                    className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} ${LABEL_COL_BG} px-3 py-1.5 ${row.indent ? "pl-6" : ""} ${textClass}`}
+                    className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${keyMetricBorder} ${keyMetricBg || LABEL_COL_BG} px-3 py-1.5 ${row.indent ? "pl-6" : ""} ${textClass}`}
                   >
                     {row.label}
                   </td>
                   {columns.map((col, colIndex) => (
                     <td
                       key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
-                      className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)} px-3 py-1.5 text-right tabular-nums ${valueClass}`}
+                      className={`${MONTH_COL_WIDTH} ${keyMetricBorder} ${keyMetricBg || monthColBg(colIndex)} px-3 py-1.5 text-right tabular-nums ${valueClass}`}
                     >
                       {col.cashFlow
                         ? row.inflowDetail && row.get(col.cashFlow) === null
@@ -324,3 +385,5 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
     </div>
   );
 }
+
+export { ROWS as __ROWS_FOR_TEST__ };

@@ -83,10 +83,12 @@ interface SectionDef {
  * 並べる(ユーザー確定、2026-09-20/21)。数値の計算ロジック・分類ロジックはv3.1のまま
  * 変更しない。各行のgetは既存フィールドをそのまま参照するのみ。
  *
- * 営業活動/財務・資産活動/資金結果は、下の表の一部として続けて1つの表の中に描画する
- * (独立したタイル(カード)にはしない、ユーザー確定、2026-09-21)。区分の切れ目は表内の
- * 見出し行(SectionHeaderRow、太罫線+集計行と同じ文字レベル)で表す。「参考・調整」だけは
- * 経営判断上の優先度が低いため、独立した折りたたみ式タイル(ReferenceTile)として分ける。
+ * 表は4つの独立したtableに分ける(ユーザー確定、2026-09-21): (1)月初現預金・月末現預金
+ * (2)営業活動 (3)財務・資産活動+資金結果 (4)参考・調整(ReferenceTile、折りたたみ式)。
+ * 「資金結果」の月末現預金だけは(1)の月初現預金の直下へ移し、それ以外(キャッシュイン合計・
+ * キャッシュアウト合計・当月現金増減)は(3)の末尾に残す(表全体の最終到達点を、開始点の
+ * すぐ下でひと目で確認できるようにする、ユーザー確定、2026-09-21)。区分の切れ目は表内の
+ * 見出し行(SectionHeaderRow、太罫線+集計行と同じ文字レベル)で表す。
  */
 const SECTIONS: SectionDef[] = [
   {
@@ -244,10 +246,18 @@ const SECTIONS: SectionDef[] = [
         negativeRed: true,
         get: (cf) => cf.cashChange ?? cf.externalIncome - cf.externalExpenseTotal,
       },
-      { kind: "value", label: "月末現預金", finalMetric: true, get: (cf) => cf.cashClosing },
     ],
   },
 ];
+
+/** 表全体の最終到達点。月初現預金の直下に並べる(見出し無しの単独ペア、
+ * ユーザー確定、2026-09-21。営業活動〜資金結果の流れとは別の独立した表にする) */
+const CLOSING_ROW: Extract<RowDef, { kind: "value" }> = {
+  kind: "value",
+  label: "月末現預金",
+  finalMetric: true,
+  get: (cf) => cf.cashClosing,
+};
 
 const LABEL_COL_WIDTH = "w-52 min-w-52";
 const MONTH_COL_WIDTH = "w-40 min-w-40";
@@ -454,13 +464,16 @@ function ReferenceTile({
  * 付けない(白のまま)。当月の強調は「当月」バッジのみで行う(ユーザー確定、2026-09-18)。
  *
  * 情報設計(ユーザー確定、2026-09-20/21):
- * - 表は「月初現預金」(見出しなし、単独の値)から始まり、営業活動→財務・資産活動→
- *   資金結果と1つの表の中で続けて読める(区分の切れ目は表内の見出し行+太罫線で表す。
- *   独立したタイル(カード)にはしない)。「参考・調整」だけは経営判断上の優先度が
- *   低いため、この表とは別の折りたたみ式タイル(ReferenceTile)として分ける。
- * - 表とReferenceTileは同じ横スクロールコンテナに収めることで、月列の位置がずれない
- *   ようにする(それぞれに個別のoverflow-x-autoを持たせない)。
- * - 表内の階層は行の背景色による帯を使わず、font-weight・文字サイズ・罫線の太さ・
+ * - ヘッダー(項目・月列見出し)は独立した1つのtableに分離し、以降は4つの独立したtableへ
+ *   続く(ユーザー確定、2026-09-21)。
+ *   1. 月初現預金→月末現預金(表全体の最終到達点を、開始点の直下にペアで示す)
+ *   2. 営業活動(入金/支出の帯～営業キャッシュ収支まで)
+ *   3. 財務・資産活動(入金/借入返済/資産移動の帯)～資金結果(キャッシュイン合計・
+ *      キャッシュアウト合計・当月現金増減。月末現預金は1.へ移動済みのため含まない)
+ *   4. 参考・調整(ReferenceTile、経営判断上の優先度が低いため折りたたみ式)
+ * - 4つのtableはすべて同じ横スクロールコンテナに収めることで、月列の位置がtable間で
+ *   ずれないようにする(それぞれに個別のoverflow-x-autoを持たせない)。
+ * - 各table内の階層は行の背景色による帯を使わず、font-weight・文字サイズ・罫線の太さ・
  *   インデント・(マイナス値のみ)文字色だけで表現する。大区分見出し(営業活動など)は
  *   font-semibold text-smで、小区分(入金/支出/借入返済/資産移動、text-xs font-medium)
  *   より一段強く、集計行(営業支出合計・キャッシュイン合計など)と同じレベルに揃える。
@@ -471,7 +484,9 @@ function ReferenceTile({
  */
 export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[] }) {
   const [referenceExpanded, setReferenceExpanded] = useState(false);
-  const mainSections = SECTIONS.filter((s) => !s.muted);
+  const operatingSection = SECTIONS.find((s) => s.key === "operating")!;
+  const financingSection = SECTIONS.find((s) => s.key === "financing")!;
+  const resultSection = SECTIONS.find((s) => s.key === "result")!;
   const referenceSection = SECTIONS.find((s) => s.muted);
 
   return (
@@ -542,11 +557,31 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                   ))}
                 </tr>
               </thead>
+            </table>
+          </div>
+
+          <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
+            <table className="w-full table-fixed border-collapse text-sm">
               <tbody>
                 <ValueRow row={OPENING_ROW} columns={columns} />
-                {mainSections.map((section, idx) => (
-                  <SectionRowsWithHeader key={section.key} section={section} columns={columns} groupStart={idx > 0} />
-                ))}
+                <ValueRow row={CLOSING_ROW} columns={columns} />
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
+            <table className="w-full table-fixed border-collapse text-sm">
+              <tbody>
+                <SectionRowsWithHeader section={operatingSection} columns={columns} />
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
+            <table className="w-full table-fixed border-collapse text-sm">
+              <tbody>
+                <SectionRowsWithHeader section={financingSection} columns={columns} />
+                <SectionRowsWithHeader section={resultSection} columns={columns} groupStart />
               </tbody>
             </table>
           </div>
@@ -565,4 +600,8 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
   );
 }
 
-export { OPENING_ROW as __OPENING_ROW_FOR_TEST__, SECTIONS as __SECTIONS_FOR_TEST__ };
+export {
+  OPENING_ROW as __OPENING_ROW_FOR_TEST__,
+  CLOSING_ROW as __CLOSING_ROW_FOR_TEST__,
+  SECTIONS as __SECTIONS_FOR_TEST__,
+};

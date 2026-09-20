@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_INFLOW } from "./cashInflow";
 import { EMPTY_LABOR_DETAIL, EMPTY_OUTFLOW, employeeSalarySubtotal } from "./cashOutflow";
-import { __OPENING_ROW_FOR_TEST__ as OPENING_ROW, __SECTIONS_FOR_TEST__ as SECTIONS } from "./MonthlyCashFlowScrollTable";
+import {
+  __OPENING_ROW_FOR_TEST__ as OPENING_ROW,
+  __CLOSING_ROW_FOR_TEST__ as CLOSING_ROW,
+  __SECTIONS_FOR_TEST__ as SECTIONS,
+} from "./MonthlyCashFlowScrollTable";
 import type { MonthlyCashFlow } from "./types";
 
 /**
@@ -93,9 +97,12 @@ function getByLabel(rows: typeof SECTIONS[number]["rows"], label: string) {
 describe("MonthlyCashFlowScrollTable rows", () => {
   const cf = buildFixture();
 
-  it("表冒頭の月初現預金は既存フィールドを指す(タイル・見出しを持たない単独行)", () => {
+  it("月初現預金・月末現預金は見出しを持たない単独ペアで、月末現預金が最終到達点(finalMetric)", () => {
     expect(OPENING_ROW.label).toBe("月初現預金");
     expect(OPENING_ROW.get(cf)).toBe(cf.cashOpening);
+    expect(CLOSING_ROW.label).toBe("月末現預金");
+    expect(CLOSING_ROW.get(cf)).toBe(cf.cashClosing);
+    expect(CLOSING_ROW.finalMetric).toBe(true);
   });
 
   it("営業活動タイルの入金は既存の入金内訳フィールドを指す", () => {
@@ -156,12 +163,14 @@ describe("MonthlyCashFlowScrollTable rows", () => {
     );
   });
 
-  it("資金結果タイルは既存のキャッシュイン/アウト合計・現金増減・月末残高を移動しただけで値は変えていない", () => {
+  it("資金結果の行は既存のキャッシュイン/アウト合計・現金増減の値を変えていない(月末現預金は含まない)", () => {
     const rows = section("result").rows;
     expect(getByLabel(rows, "キャッシュイン合計")(cf)).toBe(cf.externalIncome);
     expect(getByLabel(rows, "キャッシュアウト合計（外部支出）")(cf)).toBe(cf.externalExpenseTotal);
     expect(getByLabel(rows, "当月現金増減")(cf)).toBe(cf.cashChange);
-    expect(getByLabel(rows, "月末現預金")(cf)).toBe(cf.cashClosing);
+    // 月末現預金は表全体の最終到達点として月初現預金の直下へ移した(CLOSING_ROW)ため、
+    // 資金結果の行一覧には含まれない(ユーザー確定、2026-09-21)
+    expect(rows.some((r) => r.kind === "value" && r.label === "月末現預金")).toBe(false);
   });
 
   it("4タイルの構成は営業活動・財務・資産活動・参考・調整・資金結果の順で、参考・調整のみmuted", () => {
@@ -177,11 +186,12 @@ describe("MonthlyCashFlowScrollTable rows", () => {
     expect(negativeRedRows).toEqual(["営業キャッシュ収支（営業入金−営業支出）", "当月現金増減"]);
   });
 
-  it("月末現預金は表全体で唯一のfinalMetric(最終到達点)として扱う", () => {
-    const finalMetricRows = SECTIONS.flatMap((s) => s.rows)
-      .filter((r) => r.kind === "value" && r.finalMetric)
-      .map((r) => r.label);
-    expect(finalMetricRows).toEqual(["月末現預金"]);
+  it("月末現預金(CLOSING_ROW)は表全体で唯一のfinalMetric(最終到達点)として扱う。SECTIONS配下にはfinalMetric行が無い", () => {
+    const finalMetricRowsInSections = SECTIONS.flatMap((s) => s.rows).filter(
+      (r) => r.kind === "value" && r.finalMetric,
+    );
+    expect(finalMetricRowsInSections).toHaveLength(0);
+    expect(CLOSING_ROW.finalMetric).toBe(true);
   });
 
   it("キャッシュイン合計とキャッシュアウト合計の定義(値)は変更していない", () => {

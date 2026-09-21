@@ -126,7 +126,7 @@ describe("MonthlyCashFlowScrollTable rows", () => {
         cf.expenseByCategory.otherOperating +
         cf.expenseByCategory.other,
     );
-    expect(getByLabel(rows, "営業キャッシュ収支（営業入金−営業支出）")(cf)).toBe(cf.operatingCashFlow);
+    expect(getByLabel(rows, "営業キャッシュ収支")(cf)).toBe(cf.operatingCashFlow);
   });
 
   it("財務・資産活動タイルの入金は既存の入金内訳フィールドを指す", () => {
@@ -147,6 +147,14 @@ describe("MonthlyCashFlowScrollTable rows", () => {
 
     const bandLabels = rows.filter((r) => r.kind === "band").map((r) => r.label);
     expect(bandLabels).toEqual(["入金", "借入返済", "資産移動"]);
+    // 財務・資産活動の帯は営業活動と異なりインデント+通常の太さのまま(bold指定なし)
+    expect(rows.filter((r) => r.kind === "band").every((r) => !r.bold)).toBe(true);
+  });
+
+  it("営業活動の入金/支出の帯だけインデントを外し太字にする(財務・資産活動の帯は対象外)", () => {
+    const operatingBands = section("operating").rows.filter((r) => r.kind === "band");
+    expect(operatingBands.map((r) => r.label)).toEqual(["入金", "支出"]);
+    expect(operatingBands.every((r) => r.bold)).toBe(true);
   });
 
   it("参考・調整タイルは入金側・出金側で別フィールドを指す(合算しない)、かつmuted(折りたたみ対象)", () => {
@@ -183,7 +191,7 @@ describe("MonthlyCashFlowScrollTable rows", () => {
     const negativeRedRows = SECTIONS.flatMap((s) => s.rows)
       .filter((r) => r.kind === "value" && r.negativeRed)
       .map((r) => r.label);
-    expect(negativeRedRows).toEqual(["営業キャッシュ収支（営業入金−営業支出）", "当月現金増減"]);
+    expect(negativeRedRows).toEqual(["営業キャッシュ収支", "当月現金増減"]);
   });
 
   it("月末現預金(CLOSING_ROW)は表全体で唯一のfinalMetric(最終到達点)として扱う。SECTIONS配下にはfinalMetric行が無い", () => {

@@ -42,8 +42,9 @@ export interface MonthColumn {
 }
 
 type RowDef =
-  /** 「入金」「支出」「借入返済」「資産移動」の小区分見出し。データ行ではなくラベルのみ(金額は表示しない) */
-  | { kind: "band"; label: string }
+  /** 「入金」「支出」「借入返済」「資産移動」の小区分見出し。データ行ではなくラベルのみ(金額は表示しない)。
+   * bold:trueの場合はインデントを外し太字にする(営業活動の入金/支出のみ、ユーザー確定、2026-09-21) */
+  | { kind: "band"; label: string; bold?: boolean }
   | {
       kind: "value";
       label: string;
@@ -95,7 +96,7 @@ const SECTIONS: SectionDef[] = [
     key: "operating",
     title: "営業活動",
     rows: [
-      { kind: "band", label: "入金" },
+      { kind: "band", label: "入金", bold: true },
       { kind: "value", label: "営業入金", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.operating ?? null },
       {
         kind: "value",
@@ -105,7 +106,7 @@ const SECTIONS: SectionDef[] = [
         inflowDetail: true,
         get: (cf) => cf.inflow?.operatingLedgerOnly ?? null,
       },
-      { kind: "band", label: "支出" },
+      { kind: "band", label: "支出", bold: true },
       { kind: "value", label: CATEGORY_LABEL.labor, indent: true, get: (cf) => cf.expenseByCategory.labor },
       {
         kind: "value",
@@ -133,7 +134,7 @@ const SECTIONS: SectionDef[] = [
       },
       {
         kind: "value",
-        label: "営業キャッシュ収支（営業入金−営業支出）",
+        label: "営業キャッシュ収支",
         bold: true,
         keyMetric: true,
         negativeRed: true,
@@ -276,12 +277,16 @@ function formatCell(value: number | null): string {
 
 function ValueRow({ row, columns }: { row: Extract<RowDef, { kind: "value" }>; columns: MonthColumn[] }) {
   const rowBorder = row.finalMetric
-    ? "border-y-4 border-[var(--baseline)]"
+    ? "border-y-2 border-[var(--baseline)]"
     : row.keyMetric
       ? "border-y-2 border-[var(--baseline)]"
       : "border-t border-[var(--gridline)]";
   const rowPadding = row.finalMetric ? "py-2.5" : "py-1.5";
-  const textSize = row.note ? "text-xs" : row.finalMetric ? "text-base" : "text-sm";
+  // ラベルの文字サイズは月初現預金など他のbold行と揃える(月末現預金だけ大きくしない、
+  // ユーザー確定、2026-09-21)。金額側は営業キャッシュ収支・当月現金増減・月末現預金を
+  // 同じ大きめサイズ(text-base)に揃える
+  const labelTextSize = row.note ? "text-xs" : "text-sm";
+  const valueTextSize = row.note ? "text-xs" : row.finalMetric || row.keyMetric ? "text-base" : "text-sm";
   const fontWeight = row.note
     ? ""
     : row.finalMetric || row.keyMetric
@@ -299,7 +304,7 @@ function ValueRow({ row, columns }: { row: Extract<RowDef, { kind: "value" }>; c
   return (
     <tr>
       <td
-        className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} ${LABEL_COL_BG} px-3 ${rowPadding} ${indentClass} ${textSize} ${fontWeight} ${labelColor}`}
+        className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} ${rowBorder} ${LABEL_COL_BG} px-3 ${rowPadding} ${indentClass} ${labelTextSize} ${fontWeight} ${labelColor}`}
       >
         {row.label}
       </td>
@@ -314,7 +319,7 @@ function ValueRow({ row, columns }: { row: Extract<RowDef, { kind: "value" }>; c
         return (
           <td
             key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
-            className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)} px-3 ${rowPadding} text-right tabular-nums ${textSize} ${fontWeight} ${valueColor}`}
+            className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)} px-3 ${rowPadding} text-right tabular-nums ${valueTextSize} ${fontWeight} ${valueColor}`}
           >
             {col.cashFlow ? (row.inflowDetail && value === null ? "未再計算" : formatCell(value)) : "データ未設定"}
           </td>
@@ -324,11 +329,15 @@ function ValueRow({ row, columns }: { row: Extract<RowDef, { kind: "value" }>; c
   );
 }
 
-function BandRow({ label, columns }: { label: string; columns: MonthColumn[] }) {
+function BandRow({ label, columns, bold }: { label: string; columns: MonthColumn[]; bold?: boolean }) {
+  // 営業活動の入金/支出はインデントを外し太字にする(ユーザー確定、2026-09-21)。
+  // それ以外(財務・資産活動の入金/借入返済/資産移動)は既存通りインデント+通常の太さ
+  const indentClass = bold ? "" : "pl-6";
+  const fontWeight = bold ? "font-bold" : "font-medium";
   return (
     <tr>
       <td
-        className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} border-t border-[var(--gridline)] ${LABEL_COL_BG} px-3 py-1 pl-6 text-xs font-medium text-[var(--text-secondary)]`}
+        className={`sticky left-0 z-10 ${LABEL_COL_WIDTH} border-t border-[var(--gridline)] ${LABEL_COL_BG} px-3 py-1 ${indentClass} text-xs ${fontWeight} text-[var(--text-secondary)]`}
       >
         {label}
       </td>
@@ -379,7 +388,7 @@ function SectionRows({ rows, columns }: { rows: RowDef[]; columns: MonthColumn[]
     <>
       {rows.map((row) =>
         row.kind === "band" ? (
-          <BandRow key={row.label} label={row.label} columns={columns} />
+          <BandRow key={row.label} label={row.label} columns={columns} bold={row.bold} />
         ) : (
           <ValueRow key={row.label} row={row} columns={columns} />
         ),

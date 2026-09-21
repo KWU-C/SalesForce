@@ -193,9 +193,14 @@ describe("MonthlyCashFlowScrollTable rows", () => {
     expect(findValueRow("当月現金増減").indent).toBeFalsy();
   });
 
-  it("月末現預金の金額の下には月初現預金との差額(CLOSING_ROWのsubGet)が添えられる", () => {
+  it("月末現預金の金額の下には月初現預金との差額(CLOSING_ROWのsubGet)が文言無しで添えられる", () => {
     expect(CLOSING_ROW.subGet?.(cf)).toBe(cf.cashClosing! - cf.cashOpening!);
-    expect(CLOSING_ROW.subLabel).toBe("差額");
+  });
+
+  it("月末現預金の差額がマイナスの場合を計算できる(表示側で赤系ステータス色にする判定に使う)", () => {
+    const negativeCf: MonthlyCashFlow = { ...cf, cashOpening: 20_000_000 };
+    expect(CLOSING_ROW.subGet?.(negativeCf)).toBe(cf.cashClosing! - 20_000_000);
+    expect(CLOSING_ROW.subGet?.(negativeCf)).toBeLessThan(0);
   });
 
   it("4タイルの構成は営業活動・財務・資産活動・参考・調整・資金結果の順で、参考・調整のみmuted", () => {

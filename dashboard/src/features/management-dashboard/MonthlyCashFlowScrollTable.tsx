@@ -60,8 +60,8 @@ type RowDef =
       /** 入金・出金の区分別内訳の行。旧ロジック(v3より前)で保存されたスナップショットには値が無く「未再計算」と表示する */
       inflowDetail?: boolean;
       get: (cf: MonthlyCashFlow) => number | null;
-      /** 金額の下に小さく添える補足行のラベル(月末現預金の「月初現預金との差額」用、ユーザー確定、2026-09-21) */
-      subLabel?: string;
+      /** 金額の下に小さく添える補足値(月末現預金の「月初現預金との差額」用。文言は付けず数値のみ、
+       * マイナスの場合は既存の赤系ステータス色にする、ユーザー確定、2026-09-21) */
       subGet?: (cf: MonthlyCashFlow) => number | null;
     };
 
@@ -280,8 +280,8 @@ const CLOSING_ROW: Extract<RowDef, { kind: "value" }> = {
   label: "月末現預金",
   finalMetric: true,
   get: (cf) => cf.cashClosing,
-  // 月初現預金との差額を金額の下に小さく添える(ユーザー確定、2026-09-21)
-  subLabel: "差額",
+  // 月初現預金との差額を金額の下に小さく添える(文言は付けず数値のみ、マイナスの場合は
+  // 赤系ステータス色にする、ユーザー確定、2026-09-21)
   subGet: (cf) => (cf.cashOpening === null || cf.cashClosing === null ? null : cf.cashClosing - cf.cashOpening),
 };
 
@@ -342,18 +342,14 @@ function ValueRow({ row, columns }: { row: Extract<RowDef, { kind: "value" }>; c
             ? "text-[var(--text-muted)]"
             : "text-[var(--text-primary)]";
         const subValue = row.subGet && col.cashFlow ? row.subGet(col.cashFlow) : null;
+        const subValueColor = subValue !== null && subValue < 0 ? "text-[var(--status-serious)]" : "text-[var(--text-muted)]";
         return (
           <td
             key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
             className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)} px-3 ${rowPadding} text-right tabular-nums ${valueTextSize} ${fontWeight} ${valueColor}`}
           >
             <div>{col.cashFlow ? (row.inflowDetail && value === null ? "未再計算" : formatCell(value)) : "データ未設定"}</div>
-            {row.subGet && (
-              <div className="text-xs font-normal text-[var(--text-muted)]">
-                {row.subLabel ? `${row.subLabel} ` : ""}
-                {formatCell(subValue)}
-              </div>
-            )}
+            {row.subGet && <div className={`text-xs font-normal ${subValueColor}`}>{formatCell(subValue)}</div>}
           </td>
         );
       })}

@@ -43,7 +43,7 @@ export interface MonthColumn {
 
 type RowDef =
   /** 「入金」「支出」「借入」「資産」「その他」の小区分見出し。データ行ではなくラベルのみ(金額は表示しない)。
-   * bold:trueの場合はインデントを外し太字にする(営業活動の入金/支出のみ、ユーザー確定、2026-09-21) */
+   * bold:trueの場合はインデントを外し太字にする(見出しとして扱う、ユーザー確定、2026-09-21) */
   | { kind: "band"; label: string; bold?: boolean }
   | {
       kind: "value";
@@ -60,6 +60,9 @@ type RowDef =
       /** 入金・出金の区分別内訳の行。旧ロジック(v3より前)で保存されたスナップショットには値が無く「未再計算」と表示する */
       inflowDetail?: boolean;
       get: (cf: MonthlyCashFlow) => number | null;
+      /** 金額の下に小さく添える補足行のラベル(月末現預金の「月初現預金との差額」用、ユーザー確定、2026-09-21) */
+      subLabel?: string;
+      subGet?: (cf: MonthlyCashFlow) => number | null;
     };
 
 /** 表冒頭に単独で表示する月初現預金。大区分見出しは持たず、値だけを表示する
@@ -150,7 +153,7 @@ const SECTIONS: SectionDef[] = [
     key: "financing",
     title: "財務・資産活動",
     rows: [
-      { kind: "band", label: "借入" },
+      { kind: "band", label: "借入", bold: true },
       {
         kind: "value",
         label: "借入による入金",
@@ -160,7 +163,7 @@ const SECTIONS: SectionDef[] = [
       },
       { kind: "value", label: CATEGORY_LABEL.financing, indent: true, get: (cf) => cf.financingCashFlow },
       { kind: "value", label: CATEGORY_LABEL.interest, indent: true, get: (cf) => cf.interestCashFlow },
-      { kind: "band", label: "資産" },
+      { kind: "band", label: "資産", bold: true },
       {
         kind: "value",
         label: "保険・資産回収等",
@@ -169,7 +172,7 @@ const SECTIONS: SectionDef[] = [
         get: (cf) => cf.inflow?.assetRecovery ?? null,
       },
       { kind: "value", label: CATEGORY_LABEL.assetTransfer, indent: true, get: (cf) => cf.assetTransferCashFlow },
-      { kind: "band", label: "その他" },
+      { kind: "band", label: "その他", bold: true },
       {
         kind: "value",
         label: "その他（入金）",
@@ -250,8 +253,14 @@ const SECTIONS: SectionDef[] = [
     key: "result",
     title: "資金結果",
     rows: [
-      { kind: "value", label: "キャッシュイン合計", bold: true, get: (cf) => cf.externalIncome },
-      { kind: "value", label: "キャッシュアウト合計（外部支出）", bold: true, get: (cf) => cf.externalExpenseTotal },
+      { kind: "value", label: "キャッシュイン合計", indent: true, bold: true, get: (cf) => cf.externalIncome },
+      {
+        kind: "value",
+        label: "キャッシュアウト合計（外部支出）",
+        indent: true,
+        bold: true,
+        get: (cf) => cf.externalExpenseTotal,
+      },
       {
         kind: "value",
         label: "当月現金増減",
@@ -271,6 +280,9 @@ const CLOSING_ROW: Extract<RowDef, { kind: "value" }> = {
   label: "月末現預金",
   finalMetric: true,
   get: (cf) => cf.cashClosing,
+  // 月初現預金との差額を金額の下に小さく添える(ユーザー確定、2026-09-21)
+  subLabel: "差額",
+  subGet: (cf) => (cf.cashOpening === null || cf.cashClosing === null ? null : cf.cashClosing - cf.cashOpening),
 };
 
 const LABEL_COL_WIDTH = "w-52 min-w-52";
@@ -329,12 +341,19 @@ function ValueRow({ row, columns }: { row: Extract<RowDef, { kind: "value" }>; c
           : row.note
             ? "text-[var(--text-muted)]"
             : "text-[var(--text-primary)]";
+        const subValue = row.subGet && col.cashFlow ? row.subGet(col.cashFlow) : null;
         return (
           <td
             key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
             className={`${MONTH_COL_WIDTH} ${rowBorder} ${monthColBg(colIndex)} px-3 ${rowPadding} text-right tabular-nums ${valueTextSize} ${fontWeight} ${valueColor}`}
           >
-            {col.cashFlow ? (row.inflowDetail && value === null ? "未再計算" : formatCell(value)) : "データ未設定"}
+            <div>{col.cashFlow ? (row.inflowDetail && value === null ? "未再計算" : formatCell(value)) : "データ未設定"}</div>
+            {row.subGet && (
+              <div className="text-xs font-normal text-[var(--text-muted)]">
+                {row.subLabel ? `${row.subLabel} ` : ""}
+                {formatCell(subValue)}
+              </div>
+            )}
           </td>
         );
       })}
@@ -343,8 +362,8 @@ function ValueRow({ row, columns }: { row: Extract<RowDef, { kind: "value" }>; c
 }
 
 function BandRow({ label, columns, bold }: { label: string; columns: MonthColumn[]; bold?: boolean }) {
-  // 営業活動の入金/支出はインデントを外し太字にする(ユーザー確定、2026-09-21)。
-  // それ以外(財務・資産活動の借入/資産/その他)は既存通りインデント+通常の太さ
+  // 全ての小区分見出し(入金/支出/借入/資産/その他)はインデントを外し太字にする
+  // (見出しとして扱う、ユーザー確定、2026-09-21)
   const indentClass = bold ? "" : "pl-6";
   const fontWeight = bold ? "font-bold" : "font-medium";
   return (
@@ -498,14 +517,14 @@ function ReferenceTile({
  *   ずれないようにする(それぞれに個別のoverflow-x-autoを持たせない)。
  * - 各table内の階層は行の背景色による帯を使わず、font-weight・文字サイズ・罫線の太さ・
  *   インデント・(マイナス値のみ)文字色だけで表現する。大区分見出し(営業活動など)は
- *   font-semibold text-smで、小区分(入金/支出/借入/資産/その他、text-xs font-medium)
- *   より一段強く、集計行(営業支出合計・キャッシュイン合計など)と同じレベルに揃える。
- *   小区分はラベルのみで金額を表示しない。営業キャッシュ収支・当月現金増減は
- *   font-bold+上下太罫線(border-y-2 border-baseline)でさらに強調し、マイナス値のセル
- *   だけ既存の赤系ステータス色(--status-serious)にする。月末現預金は表全体の最終到達点
- *   として、同じ--baselineでさらに太い罫線(border-y-4)とひとまわり大きい文字で
- *   最も目立たせる(色は営業キャッシュ収支・当月現金増減と揃え、太さだけで一段強くする、
- *   ユーザー確定、2026-09-21)。
+ *   font-semibold text-smで、集計行(営業支出合計・キャッシュイン合計など)と同じレベルに
+ *   揃える。小区分(入金/支出/借入/資産/その他)は見出しとしてインデントを外し太字にする
+ *   (text-xs font-bold、ユーザー確定、2026-09-21)。ラベルのみで金額は表示しない。
+ *   キャッシュイン合計・キャッシュアウト合計は中項目としてインデントする。
+ *   営業キャッシュ収支・当月現金増減はfont-bold+上下太罫線(border-y-2 border-baseline)
+ *   でさらに強調し、マイナス値のセルだけ既存の赤系ステータス色(--status-serious)にする。
+ *   月末現預金は表全体の最終到達点として、同じ--baseline・同じ太さの罫線とひとまわり
+ *   大きい文字で目立たせつつ、金額の下に小さく月初現預金との差額を添える。
  */
 export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[] }) {
   const [referenceExpanded, setReferenceExpanded] = useState(false);

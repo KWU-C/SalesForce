@@ -145,14 +145,16 @@ describe("MonthlyCashFlowScrollTable rows", () => {
 
     const bandLabels = rows.filter((r) => r.kind === "band").map((r) => r.label);
     expect(bandLabels).toEqual(["借入", "資産", "その他"]);
-    // 財務・資産活動の帯は営業活動と異なりインデント+通常の太さのまま(bold指定なし)
-    expect(rows.filter((r) => r.kind === "band").every((r) => !r.bold)).toBe(true);
   });
 
-  it("営業活動の入金/支出の帯だけインデントを外し太字にする(財務・資産活動の帯は対象外)", () => {
+  it("全ての小区分の帯(入金/支出/借入/資産/その他)は見出しとしてインデントを外し太字にする", () => {
     const operatingBands = section("operating").rows.filter((r) => r.kind === "band");
     expect(operatingBands.map((r) => r.label)).toEqual(["入金", "支出"]);
     expect(operatingBands.every((r) => r.bold)).toBe(true);
+
+    const financingBands = section("financing").rows.filter((r) => r.kind === "band");
+    expect(financingBands.map((r) => r.label)).toEqual(["借入", "資産", "その他"]);
+    expect(financingBands.every((r) => r.bold)).toBe(true);
   });
 
   it("参考・調整タイルは入金側・出金側で別フィールドを指す(合算しない)、かつmuted(折りたたみ対象)", () => {
@@ -177,6 +179,23 @@ describe("MonthlyCashFlowScrollTable rows", () => {
     // 月末現預金は表全体の最終到達点として月初現預金の直下へ移した(CLOSING_ROW)ため、
     // 資金結果の行一覧には含まれない(ユーザー確定、2026-09-21)
     expect(rows.some((r) => r.kind === "value" && r.label === "月末現預金")).toBe(false);
+  });
+
+  it("キャッシュイン合計・キャッシュアウト合計は中項目としてインデントし、当月現金増減はインデントしない", () => {
+    const rows = section("result").rows;
+    const findValueRow = (label: string) => {
+      const row = rows.find((r) => r.kind === "value" && r.label === label);
+      if (!row || row.kind !== "value") throw new Error(`row not found: ${label}`);
+      return row;
+    };
+    expect(findValueRow("キャッシュイン合計").indent).toBe(true);
+    expect(findValueRow("キャッシュアウト合計（外部支出）").indent).toBe(true);
+    expect(findValueRow("当月現金増減").indent).toBeFalsy();
+  });
+
+  it("月末現預金の金額の下には月初現預金との差額(CLOSING_ROWのsubGet)が添えられる", () => {
+    expect(CLOSING_ROW.subGet?.(cf)).toBe(cf.cashClosing! - cf.cashOpening!);
+    expect(CLOSING_ROW.subLabel).toBe("差額");
   });
 
   it("4タイルの構成は営業活動・財務・資産活動・参考・調整・資金結果の順で、参考・調整のみmuted", () => {

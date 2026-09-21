@@ -48,11 +48,11 @@ function SegmentHeading({ children }: { children: React.ReactNode }) {
   return <p className="text-xs font-medium text-[var(--text-muted)]">{children}</p>;
 }
 
-/** そのセグメントの「合計」に相当する行。太線+太字でメリハリを付ける
- * (借入状況の合計行と同じ考え方、ユーザー確定、2026-09-21) */
+/** そのセグメントの「合計」に相当する行。太字でメリハリを付ける。上の罫線は1px
+ * (セグメント見出し上の2pxより細くする、ユーザー確定、2026-09-21) */
 function TotalLine({ label, value }: { label: string; value: number | null }) {
   return (
-    <div className="mt-1 border-t-2 border-[var(--baseline)] pt-1.5">
+    <div className="mt-1 border-t border-[var(--baseline)] pt-1.5">
       <Line label={label} value={value} bold />
     </div>
   );
@@ -65,19 +65,24 @@ function TotalLine({ label, value }: { label: string; value: number | null }) {
  * 「現預金」「その他の資産」「資金ポジション」の3セグメントに分け、借入状況と同じく
  * 各セグメントを見出し+太線区切りで明確に分ける(ユーザー確定、2026-09-21)。
  * - 現預金: 現預金の下に「うち賞与準備」「うちその他目的資金」を内訳として一段深く
- *   インデントして示し、太線の下に「自由資金」(=現預金－目的別拘束資金)を合計行として置く。
- *   賞与準備は対象口座・目標額が確定するまで常に「未設定」(会計上の賞与引当金とは
- *   意味が異なるため推測しない、ユーザー確定)。その他目的資金は口座ごとの内訳を
- *   合算した1行で表示する。
+ *   インデントして示し、細い罫線の下に「現預金計」(=現預金－目的別拘束資金。内部的には
+ *   fundReserve.freeCashと同じ値)を合計行として置く。賞与準備は対象口座・目標額が
+ *   確定するまで常に「未設定」(会計上の賞与引当金とは意味が異なるため推測しない、
+ *   ユーザー確定)。その他目的資金は口座ごとの内訳を合算した1行で表示する。
  * - その他の資産: 保険積立金。trial_bsの「現金・預金」カテゴリには一切含まれないため、
  *   現預金からは控除しない別枠の「資産としての備え」(二重控除防止、実データで検証済み、
  *   2026-09-15)。
- * - 資金ポジション: 自由資金・借入残高(マイナス表示で引き算であることを視覚的に示す)から、
- *   太線の下に合計行として「ネット自由資金」(=自由資金－借入残高)を置く。
+ * - 資金ポジション: 現預金計・借入残高(マイナス表示で引き算であることを視覚的に示す)から、
+ *   細い罫線の下に合計行として「ネット資金」(=現預金計－借入残高)を置く。
+ *
+ * セグメント見出し上の罫線(その他の資産・資金ポジション)は2px、合計行(現預金計・
+ * ネット資金)上の罫線は1pxで、セグメント区切りの方を合計行より太くする
+ * (ユーザー確定、2026-09-21)。
  */
 export function FundReserveSection({ fundReserve, loanTotalCurrent }: FundReserveSectionProps) {
   const otherPurposeTotal = fundReserve.otherPurposeLines.reduce((sum, line) => sum + (line.balance ?? 0), 0);
-  const netFreeCash =
+  // ネット資金 = 現預金計(fundReserve.freeCash) - 借入残高
+  const netFunds =
     fundReserve.freeCash === null || loanTotalCurrent === null ? null : fundReserve.freeCash - loanTotalCurrent;
 
   return (
@@ -93,18 +98,18 @@ export function FundReserveSection({ fundReserve, loanTotalCurrent }: FundReserv
           note
         />
         <Line label="うちその他目的資金" value={otherPurposeTotal} note />
-        <TotalLine label="自由資金" value={fundReserve.freeCash} />
+        <TotalLine label="現預金計" value={fundReserve.freeCash} />
 
-        <div className="mt-3 border-t border-[var(--gridline)] pt-2">
+        <div className="mt-3 border-t-2 border-[var(--gridline)] pt-2">
           <SegmentHeading>その他の資産</SegmentHeading>
-          <Line label="保険積立金" value={fundReserve.insuranceAssetReserve} indent />
+          <Line label="保険積立金" value={fundReserve.insuranceAssetReserve} bold />
         </div>
 
-        <div className="mt-3 border-t border-[var(--gridline)] pt-2">
+        <div className="mt-3 border-t-2 border-[var(--gridline)] pt-2">
           <SegmentHeading>資金ポジション</SegmentHeading>
-          <Line label="自由資金" value={fundReserve.freeCash} indent />
+          <Line label="現預金計" value={fundReserve.freeCash} indent bold />
           <Line label="借入残高" value={loanTotalCurrent === null ? null : -loanTotalCurrent} indent />
-          <TotalLine label="ネット自由資金" value={netFreeCash} />
+          <TotalLine label="ネット資金" value={netFunds} />
         </div>
       </div>
     </div>

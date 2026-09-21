@@ -48,11 +48,12 @@ function SegmentHeading({ children }: { children: React.ReactNode }) {
   return <p className="text-xs font-medium text-[var(--text-muted)]">{children}</p>;
 }
 
-/** そのセグメントの「合計」に相当する行。太字でメリハリを付ける。上の罫線は1px
- * (セグメント見出し上の2pxより細くする、ユーザー確定、2026-09-21) */
+/** そのセグメントの「合計」に相当する行。太字でメリハリを付ける。上の罫線は1px・
+ * 薄い色(--gridline)にする(セグメント見出し上の2px・--gridlineより細く、色は同じ、
+ * ユーザー確定、2026-09-21) */
 function TotalLine({ label, value }: { label: string; value: number | null }) {
   return (
-    <div className="mt-1 border-t border-[var(--baseline)] pt-1.5">
+    <div className="mt-1 border-t border-[var(--gridline)] pt-1.5">
       <Line label={label} value={value} bold />
     </div>
   );
@@ -76,8 +77,8 @@ function TotalLine({ label, value }: { label: string; value: number | null }) {
  *   細い罫線の下に合計行として「ネット資金」(=現預金計－借入残高)を置く。
  *
  * セグメント見出し上の罫線(その他の資産・資金ポジション)は2px、合計行(現預金計・
- * ネット資金)上の罫線は1pxで、セグメント区切りの方を合計行より太くする
- * (ユーザー確定、2026-09-21)。
+ * ネット資金)上の罫線は1pxで、セグメント区切りの方を合計行より太くする。色はどちらも
+ * 薄い--gridlineで揃える(ユーザー確定、2026-09-21)。
  */
 export function FundReserveSection({ fundReserve, loanTotalCurrent }: FundReserveSectionProps) {
   const otherPurposeTotal = fundReserve.otherPurposeLines.reduce((sum, line) => sum + (line.balance ?? 0), 0);

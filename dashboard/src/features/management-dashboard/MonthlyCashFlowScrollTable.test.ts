@@ -129,24 +129,22 @@ describe("MonthlyCashFlowScrollTable rows", () => {
     expect(getByLabel(rows, "営業キャッシュ収支")(cf)).toBe(cf.operatingCashFlow);
   });
 
-  it("財務・資産活動タイルの入金は既存の入金内訳フィールドを指す", () => {
+  it("財務・資産活動タイルは借入/資産/その他の3小区分に整理され、既存フィールドを指す", () => {
     const rows = section("financing").rows;
+    // 借入
     expect(getByLabel(rows, "借入による入金")(cf)).toBe(cf.inflow!.borrowing);
-    expect(getByLabel(rows, "保険・資産回収等")(cf)).toBe(cf.inflow!.assetRecovery);
-    expect(getByLabel(rows, "その他")(cf)).toBe(cf.inflow!.other);
-    expect(getByLabel(rows, "未分類")(cf)).toBe(cf.inflow!.unclassified);
-  });
-
-  it("財務・資産活動タイルは借入返済/資産移動に分かれ、既存フィールド・集計と一致する", () => {
-    const rows = section("financing").rows;
     expect(getByLabel(rows, "当月元本返済")(cf)).toBe(cf.financingCashFlow);
     expect(getByLabel(rows, "支払利息")(cf)).toBe(cf.interestCashFlow);
-    expect(getByLabel(rows, "借入関連支出合計")(cf)).toBe(cf.financingCashFlow + cf.interestCashFlow);
+    // 資産
+    expect(getByLabel(rows, "保険・資産回収等")(cf)).toBe(cf.inflow!.assetRecovery);
     expect(getByLabel(rows, "積立・資産移動")(cf)).toBe(cf.assetTransferCashFlow);
+    // その他(入金・出金が混在するため方向を明示するラベルにしている)
+    expect(getByLabel(rows, "その他（入金）")(cf)).toBe(cf.inflow!.other);
+    expect(getByLabel(rows, "未分類（入金）")(cf)).toBe(cf.inflow!.unclassified);
     expect(getByLabel(rows, "未分類（出金）")(cf)).toBe(cf.outflow!.unclassified);
 
     const bandLabels = rows.filter((r) => r.kind === "band").map((r) => r.label);
-    expect(bandLabels).toEqual(["入金", "借入返済", "資産移動"]);
+    expect(bandLabels).toEqual(["借入", "資産", "その他"]);
     // 財務・資産活動の帯は営業活動と異なりインデント+通常の太さのまま(bold指定なし)
     expect(rows.filter((r) => r.kind === "band").every((r) => !r.bold)).toBe(true);
   });

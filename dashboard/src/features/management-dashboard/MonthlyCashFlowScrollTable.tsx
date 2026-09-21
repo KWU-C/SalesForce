@@ -42,7 +42,7 @@ export interface MonthColumn {
 }
 
 type RowDef =
-  /** 「入金」「支出」「借入返済」「資産移動」の小区分見出し。データ行ではなくラベルのみ(金額は表示しない)。
+  /** 「入金」「支出」「借入」「資産」「その他」の小区分見出し。データ行ではなくラベルのみ(金額は表示しない)。
    * bold:trueの場合はインデントを外し太字にする(営業活動の入金/支出のみ、ユーザー確定、2026-09-21) */
   | { kind: "band"; label: string; bold?: boolean }
   | {
@@ -143,12 +143,14 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
-    // 財務・資産活動は「入金/借入返済/資産移動」の3小区分に整理する(ユーザー確定、2026-09-21。
-    // 「支出」という一括りだと、借入の返済と資産移動という性質の異なる資金使途が混ざって見えるため)
+    // 財務・資産活動は「借入/資産/その他」の3小区分に整理する(ユーザー確定、2026-09-21。
+    // 入金/支出という方向別の括りをやめ、資金使途の性質(借入関連・資産関連・その他)ごとに
+    // 入金・出金を同じ帯にまとめる)。方向が混在するため、方向が曖昧になる項目には
+    // 「その他」帯内で（入金）/（出金）を付けて区別する
     key: "financing",
     title: "財務・資産活動",
     rows: [
-      { kind: "band", label: "入金" },
+      { kind: "band", label: "借入" },
       {
         kind: "value",
         label: "借入による入金",
@@ -156,6 +158,9 @@ const SECTIONS: SectionDef[] = [
         inflowDetail: true,
         get: (cf) => cf.inflow?.borrowing ?? null,
       },
+      { kind: "value", label: CATEGORY_LABEL.financing, indent: true, get: (cf) => cf.financingCashFlow },
+      { kind: "value", label: CATEGORY_LABEL.interest, indent: true, get: (cf) => cf.interestCashFlow },
+      { kind: "band", label: "資産" },
       {
         kind: "value",
         label: "保険・資産回収等",
@@ -163,14 +168,22 @@ const SECTIONS: SectionDef[] = [
         inflowDetail: true,
         get: (cf) => cf.inflow?.assetRecovery ?? null,
       },
-      { kind: "value", label: "その他", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.other ?? null },
-      { kind: "value", label: "未分類", indent: true, inflowDetail: true, get: (cf) => cf.inflow?.unclassified ?? null },
-      { kind: "band", label: "借入返済" },
-      { kind: "value", label: CATEGORY_LABEL.financing, indent: true, get: (cf) => cf.financingCashFlow },
-      { kind: "value", label: CATEGORY_LABEL.interest, indent: true, get: (cf) => cf.interestCashFlow },
-      { kind: "value", label: "借入関連支出合計", bold: true, get: (cf) => cf.financingCashFlow + cf.interestCashFlow },
-      { kind: "band", label: "資産移動" },
       { kind: "value", label: CATEGORY_LABEL.assetTransfer, indent: true, get: (cf) => cf.assetTransferCashFlow },
+      { kind: "band", label: "その他" },
+      {
+        kind: "value",
+        label: "その他（入金）",
+        indent: true,
+        inflowDetail: true,
+        get: (cf) => cf.inflow?.other ?? null,
+      },
+      {
+        kind: "value",
+        label: "未分類（入金）",
+        indent: true,
+        inflowDetail: true,
+        get: (cf) => cf.inflow?.unclassified ?? null,
+      },
       {
         kind: "value",
         label: "未分類（出金）",
@@ -331,7 +344,7 @@ function ValueRow({ row, columns }: { row: Extract<RowDef, { kind: "value" }>; c
 
 function BandRow({ label, columns, bold }: { label: string; columns: MonthColumn[]; bold?: boolean }) {
   // 営業活動の入金/支出はインデントを外し太字にする(ユーザー確定、2026-09-21)。
-  // それ以外(財務・資産活動の入金/借入返済/資産移動)は既存通りインデント+通常の太さ
+  // それ以外(財務・資産活動の借入/資産/その他)は既存通りインデント+通常の太さ
   const indentClass = bold ? "" : "pl-6";
   const fontWeight = bold ? "font-bold" : "font-medium";
   return (
@@ -477,14 +490,15 @@ function ReferenceTile({
  *   続く(ユーザー確定、2026-09-21)。
  *   1. 月初現預金→月末現預金(表全体の最終到達点を、開始点の直下にペアで示す)
  *   2. 営業活動(入金/支出の帯～営業キャッシュ収支まで)
- *   3. 財務・資産活動(入金/借入返済/資産移動の帯)～資金結果(キャッシュイン合計・
+ *   3. 財務・資産活動(借入/資産/その他の帯。入金/支出という方向別ではなく資金使途の
+ *      性質ごとにまとめる、ユーザー確定、2026-09-21)～資金結果(キャッシュイン合計・
  *      キャッシュアウト合計・当月現金増減。月末現預金は1.へ移動済みのため含まない)
  *   4. 参考・調整(ReferenceTile、経営判断上の優先度が低いため折りたたみ式)
  * - 4つのtableはすべて同じ横スクロールコンテナに収めることで、月列の位置がtable間で
  *   ずれないようにする(それぞれに個別のoverflow-x-autoを持たせない)。
  * - 各table内の階層は行の背景色による帯を使わず、font-weight・文字サイズ・罫線の太さ・
  *   インデント・(マイナス値のみ)文字色だけで表現する。大区分見出し(営業活動など)は
- *   font-semibold text-smで、小区分(入金/支出/借入返済/資産移動、text-xs font-medium)
+ *   font-semibold text-smで、小区分(入金/支出/借入/資産/その他、text-xs font-medium)
  *   より一段強く、集計行(営業支出合計・キャッシュイン合計など)と同じレベルに揃える。
  *   小区分はラベルのみで金額を表示しない。営業キャッシュ収支・当月現金増減は
  *   font-bold+上下太罫線(border-y-2 border-baseline)でさらに強調し、マイナス値のセル

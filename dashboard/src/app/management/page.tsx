@@ -251,13 +251,6 @@ export default async function ManagementPage() {
   // 月次資金収支のfetchedAtを使う。
   const dataUpdatedAt = currentCashFlow?.fetchedAt ?? null;
 
-  // ネットキャッシュ(現預金－借入残高)は経営サマリー・資金の備えの両方で使うため、
-  // ページ側で一度だけ合成する(同じデータソース・値をUI側で再計算しない、ユーザー確定)
-  const netCash =
-    fundReserve?.cash === null || fundReserve?.cash === undefined || loanStatus === null
-      ? null
-      : fundReserve.cash - loanStatus.totalCurrent;
-
   return (
     <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
         {authorized ? (
@@ -317,11 +310,7 @@ export default async function ManagementPage() {
                   <p className="text-center text-sm text-[var(--text-muted)]">資金の備えの取得に失敗しました。</p>
                 )}
                 {fundReserve && (
-                  <FundReserveSection
-                    fundReserve={fundReserve}
-                    loanTotalCurrent={loanStatus?.totalCurrent ?? null}
-                    netCash={netCash}
-                  />
+                  <FundReserveSection fundReserve={fundReserve} loanTotalCurrent={loanStatus?.totalCurrent ?? null} />
                 )}
 
                 {financialSummary && <FinancialSummaryCards summary={financialSummary} />}

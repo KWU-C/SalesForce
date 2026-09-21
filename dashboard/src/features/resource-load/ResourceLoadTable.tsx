@@ -53,10 +53,10 @@ export function ResourceLoadTable({ crLoads, anomalyCount }: { crLoads: CrResour
               <tr key={row.crId} className="border-t border-[var(--gridline)]">
                 <td className="px-3 py-2 font-medium text-[var(--text-primary)]">{row.crId}</td>
                 <td className="px-3 py-2 text-right">{row.headcount}人</td>
-                <td className={`px-3 py-2 text-right ${loadRateClassName(row.loadRate1m)}`}>
+                <td className={`bg-[#fdf3d0] px-3 py-2 text-right ${loadRateClassName(row.loadRate1m)}`}>
                   {formatPercent(row.loadRate1m)}
                 </td>
-                <td className={`px-3 py-2 text-right ${loadRateClassName(row.loadRate3m)}`}>
+                <td className={`bg-[#fdf3d0] px-3 py-2 text-right ${loadRateClassName(row.loadRate3m)}`}>
                   {formatPercent(row.loadRate3m)}
                 </td>
                 <td className="bg-[var(--surface-reference)] px-3 py-2 text-right text-[var(--text-secondary)]">

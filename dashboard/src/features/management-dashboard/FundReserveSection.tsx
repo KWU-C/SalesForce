@@ -43,9 +43,14 @@ function Line({
 }
 
 /** セグメント見出し。借入状況の「借入残高」「今期の借入・返済」と同じ見出しスタイル
- * (ユーザー確定、2026-09-21)。背景は--surface-sunken(ユーザー確定、2026-09-22) */
+ * (ユーザー確定、2026-09-21)。背景は--surface-sunken、文字と背景の間に左右上下3px相当の
+ * 余白(ユーザー確定、2026-09-22) */
 function SegmentHeading({ children }: { children: React.ReactNode }) {
-  return <p className="bg-[var(--surface-sunken)] text-xs font-medium text-[var(--text-muted)]">{children}</p>;
+  return (
+    <p className="bg-[var(--surface-sunken)] py-[3px] pl-[3px] text-xs font-medium text-[var(--text-muted)]">
+      {children}
+    </p>
+  );
 }
 
 /** そのセグメントの「合計」に相当する行。太字でメリハリを付ける。上の罫線は1px・

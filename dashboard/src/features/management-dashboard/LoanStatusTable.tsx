@@ -74,7 +74,7 @@ export function LoanStatusTable({ loanStatus }: LoanStatusTableProps) {
           今期の借入・返済
         </p>
         <div className="mt-1 flex flex-col gap-1 text-sm">
-          <div className="flex items-center justify-between border-t border-[var(--gridline)] py-1.5">
+          <div className="flex items-center justify-between py-1.5">
             <span className="text-[var(--text-secondary)]">新規借入</span>
             <span className="tabular-nums text-[var(--text-primary)]">{formatYen(loanStatus.totalNewBorrowing)}</span>
           </div>

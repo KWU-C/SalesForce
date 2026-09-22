@@ -27,7 +27,7 @@ function Line({
   const labelClass = note
     ? "text-xs text-[var(--text-muted)]"
     : bold
-      ? "font-medium text-[var(--text-primary)]"
+      ? "font-bold text-[var(--text-primary)]"
       : "text-[var(--text-secondary)]";
   const valueClass = note
     ? "text-xs text-[var(--text-muted)]"

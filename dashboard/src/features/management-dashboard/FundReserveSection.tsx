@@ -67,18 +67,20 @@ function TotalLine({ label, value }: { label: string; value: number | null }) {
  * 資金の備え(ストック)。月次資金収支(フロー)とは別枠で、「将来の支出に向けて
  * どれだけ資金を準備しているか」を表す(ユーザー確定、2026-09-15)。
  *
- * 「現預金」「その他の資産」「資金ポジション」の3セグメントに分け、借入状況と同じく
- * 各セグメントを見出し+太線区切りで明確に分ける(ユーザー確定、2026-09-21)。
+ * 「現預金」「資金ポジション」「その他の備え（参考）」の3セグメントに分け、借入状況と
+ * 同じく各セグメントを見出し+太線区切りで明確に分ける(ユーザー確定、2026-09-21。
+ * 表示順とその他の備えのラベルは2026-09-22にユーザー確定で変更)。
  * - 現預金: 現預金の下に「うち賞与準備」「うちその他目的資金」を内訳として一段深く
  *   インデントして示し、細い罫線の下に「現預金計」(=現預金－目的別拘束資金。内部的には
  *   fundReserve.freeCashと同じ値)を合計行として置く。賞与準備は対象口座・目標額が
  *   確定するまで常に「未設定」(会計上の賞与引当金とは意味が異なるため推測しない、
  *   ユーザー確定)。その他目的資金は口座ごとの内訳を合算した1行で表示する。
- * - その他の資産: 保険積立金。trial_bsの「現金・預金」カテゴリには一切含まれないため、
- *   現預金からは控除しない別枠の「資産としての備え」(二重控除防止、実データで検証済み、
- *   2026-09-15)。
  * - 資金ポジション: 現預金計・借入残高(マイナス表示で引き算であることを視覚的に示す)から、
  *   細い罫線の下に合計行として「ネット資金」(=現預金計－借入残高)を置く。
+ * - その他の備え（参考）: 保険積立金。trial_bsの「現金・預金」カテゴリには一切含まれない
+ *   ため、現預金からは控除しない別枠の「資産としての備え」(二重控除防止、実データで
+ *   検証済み、2026-09-15)。ネット資金の内数ではない参考情報であることを明示するため
+ *   最下段に配置しラベルに「（参考）」を付す(ユーザー確定、2026-09-22)。
  *
  * セグメント見出し(その他の資産・資金ポジション)の上は罫線なしで、20px相当のマージンのみ
  * で区切る。合計行(現預金計・ネット資金)上の罫線は2px・#c3c2b7(ユーザー確定、2026-09-22)。
@@ -105,15 +107,15 @@ export function FundReserveSection({ fundReserve, loanTotalCurrent }: FundReserv
         <TotalLine label="現預金計" value={fundReserve.freeCash} />
 
         <div className="mt-[20px]">
-          <SegmentHeading>その他の資産</SegmentHeading>
-          <Line label="保険積立金" value={fundReserve.insuranceAssetReserve} bold />
-        </div>
-
-        <div className="mt-[20px]">
           <SegmentHeading>資金ポジション</SegmentHeading>
           <Line label="現預金計" value={fundReserve.freeCash} indent bold />
           <Line label="借入残高" value={loanTotalCurrent === null ? null : -loanTotalCurrent} indent />
           <TotalLine label="ネット資金" value={netFunds} />
+        </div>
+
+        <div className="mt-[20px]">
+          <SegmentHeading>その他の備え（参考）</SegmentHeading>
+          <Line label="保険積立金" value={fundReserve.insuranceAssetReserve} bold />
         </div>
       </div>
     </div>

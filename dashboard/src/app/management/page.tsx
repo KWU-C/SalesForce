@@ -265,11 +265,15 @@ export default async function ManagementPage() {
     <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
         {authorized ? (
           <>
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
               <h1 className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">経営ダッシュボード</h1>
               {connectionStatus?.connected && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs text-[var(--text-muted)]">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  {/* 接続者メールアドレス等の長い文字列で狭幅時にページ全体が横に押し広げられない
+                      よう、min-w-0(flexアイテムの既定min-width:autoを解除)と
+                      overflow-wrap:anywhere(単語境界が無くても折り返す)を併用する
+                      (ユーザー確定、2026-09-22。PC幅の横並び自体は変えない) */}
+                  <p className="min-w-0 text-xs text-[var(--text-muted)] [overflow-wrap:anywhere]">
                     freee連携済み
                     {connectionStatus.connectedBy ? `（接続者: ${connectionStatus.connectedBy}）` : ""}
                     {dataUpdatedAt ? `／最終更新: ${formatDateTime(dataUpdatedAt)}` : ""}

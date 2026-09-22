@@ -16,6 +16,8 @@ import { composeFundReserve } from "@/features/management-dashboard/fundReserve"
 import type { FundReserve } from "@/features/management-dashboard/fundReserve";
 import { getOrFetchFundReserveCore } from "@/features/management-dashboard/fundReserveService";
 import { getOrFetchFinancialSummary } from "@/features/management-dashboard/financialSummaryService";
+import { getOperatingProfitTrend } from "@/features/management-dashboard/operatingProfitTrend";
+import type { OperatingProfitTrendPoint } from "@/features/management-dashboard/operatingProfitTrend";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ExpenseCompositionSection } from "@/features/management-dashboard/ExpenseCompositionSection";
 import { RefreshMonthButton } from "@/features/management-dashboard/RefreshMonthButton";
@@ -96,6 +98,7 @@ export default async function ManagementPage() {
   let authorizeUrl: string | null = null;
   let financialSummary: FinancialSummarySnapshot | null = null;
   let financialSummaryError = false;
+  let operatingProfitTrend: OperatingProfitTrendPoint[] = [];
   let cashFlowByMonth: (MonthlyCashFlow | null)[] = [];
   let cashFlowError = false;
   let loanStatus: LoanStatusSnapshot | null = null;
@@ -180,6 +183,13 @@ export default async function ManagementPage() {
       } catch {
         console.error("[management page] freeeからの当期累計サマリー取得に失敗しました");
         financialSummaryError = true;
+      }
+      // 営業利益の推移グラフ用。新たにfreeeへは取得しに行かず、上のfinancialSummary
+      // (当月分)とFirestoreの過去月分キャッシュだけを読む(ユーザー確定、2026-09-22)
+      try {
+        operatingProfitTrend = await getOperatingProfitTrend(currentFiscalYear, currentMonth, financialSummary);
+      } catch {
+        console.error("[management page] 営業利益推移の取得に失敗しました");
       }
       // 期をまたぐ境目だけ通期合計(termCashFlowSnapshots)を取得する。一度計算されたら
       // Firestoreキャッシュを無条件で返す(forceRefreshは持たない、ユーザー確定、
@@ -313,7 +323,13 @@ export default async function ManagementPage() {
                   <FundReserveSection fundReserve={fundReserve} loanTotalCurrent={loanStatus?.totalCurrent ?? null} />
                 )}
 
-                {financialSummary && <FinancialSummaryCards summary={financialSummary} />}
+                {financialSummary && (
+                  <FinancialSummaryCards
+                    summary={financialSummary}
+                    term={currentTerm}
+                    operatingProfitTrend={operatingProfitTrend}
+                  />
+                )}
                 {financialSummaryError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">
                     当期累計データの取得に失敗しました。

@@ -24,6 +24,10 @@ const SHORT_LABEL: Record<LoanKey, string> = {
  * 「元本返済」は事業年度の期首(9月)から選択月までの累計値(trial_bsのdebit_amount)。
  * 月次資金収支の「当月元本返済」は選択月単月のフロー値であり、両者は意味が異なる
  * (期首月を選択している場合のみ一致する、ユーザー確定、2026-09-15)。
+ *
+ * 「借入残高」「今期の借入・返済」の見出しは、資金の備え(FundReserveSection)の
+ * SegmentHeadingと同じ帯色(--surface-sunken)+左右上下3px相当の余白に揃える
+ * (ユーザー確定、2026-09-22)。
  */
 export function LoanStatusTable({ loanStatus }: LoanStatusTableProps) {
   return (
@@ -31,7 +35,9 @@ export function LoanStatusTable({ loanStatus }: LoanStatusTableProps) {
       <SectionBanner>借入状況</SectionBanner>
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-        <p className="text-xs font-medium text-[var(--text-muted)]">借入残高</p>
+        <p className="bg-[var(--surface-sunken)] py-[3px] pl-[3px] text-xs font-medium text-[var(--text-muted)]">
+          借入残高
+        </p>
         <table className="mt-1 w-full min-w-[360px] text-sm">
           <thead>
             <tr className="text-left text-xs text-[var(--text-muted)]">
@@ -64,7 +70,9 @@ export function LoanStatusTable({ loanStatus }: LoanStatusTableProps) {
           </tbody>
         </table>
 
-        <p className="mt-4 text-xs font-medium text-[var(--text-muted)]">今期の借入・返済</p>
+        <p className="mt-4 bg-[var(--surface-sunken)] py-[3px] pl-[3px] text-xs font-medium text-[var(--text-muted)]">
+          今期の借入・返済
+        </p>
         <div className="mt-1 flex flex-col gap-1 text-sm">
           <div className="flex items-center justify-between border-t border-[var(--gridline)] py-1.5">
             <span className="text-[var(--text-secondary)]">新規借入</span>

@@ -53,12 +53,11 @@ function SegmentHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** そのセグメントの「合計」に相当する行。太字でメリハリを付ける。上の罫線は1px・
- * 薄い色(--gridline)にする(セグメント見出し上の2px・--gridlineより細く、色は同じ、
- * ユーザー確定、2026-09-21) */
+/** そのセグメントの「合計」に相当する行。太字でメリハリを付ける。上の罫線は2px・
+ * #c3c2b7(ユーザー確定、2026-09-22) */
 function TotalLine({ label, value }: { label: string; value: number | null }) {
   return (
-    <div className="mt-1 border-t border-[var(--gridline)] pt-1.5">
+    <div className="mt-1 border-t-[2px] border-[#c3c2b7] pt-1.5">
       <Line label={label} value={value} bold />
     </div>
   );
@@ -81,9 +80,8 @@ function TotalLine({ label, value }: { label: string; value: number | null }) {
  * - 資金ポジション: 現預金計・借入残高(マイナス表示で引き算であることを視覚的に示す)から、
  *   細い罫線の下に合計行として「ネット資金」(=現預金計－借入残高)を置く。
  *
- * セグメント見出し上の罫線(その他の資産・資金ポジション)は2px、合計行(現預金計・
- * ネット資金)上の罫線は1pxで、セグメント区切りの方を合計行より太くする。色はどちらも
- * 薄い--gridlineで揃える(ユーザー確定、2026-09-21)。
+ * セグメント見出し(その他の資産・資金ポジション)の上は罫線なしで、20px相当のマージンのみ
+ * で区切る。合計行(現預金計・ネット資金)上の罫線は2px・#c3c2b7(ユーザー確定、2026-09-22)。
  */
 export function FundReserveSection({ fundReserve, loanTotalCurrent }: FundReserveSectionProps) {
   const otherPurposeTotal = fundReserve.otherPurposeLines.reduce((sum, line) => sum + (line.balance ?? 0), 0);
@@ -106,12 +104,12 @@ export function FundReserveSection({ fundReserve, loanTotalCurrent }: FundReserv
         <Line label="うちその他目的資金" value={otherPurposeTotal} note />
         <TotalLine label="現預金計" value={fundReserve.freeCash} />
 
-        <div className="mt-3 border-t-2 border-[var(--gridline)] pt-2">
+        <div className="mt-[20px]">
           <SegmentHeading>その他の資産</SegmentHeading>
           <Line label="保険積立金" value={fundReserve.insuranceAssetReserve} bold />
         </div>
 
-        <div className="mt-3 border-t-2 border-[var(--gridline)] pt-2">
+        <div className="mt-[20px]">
           <SegmentHeading>資金ポジション</SegmentHeading>
           <Line label="現預金計" value={fundReserve.freeCash} indent bold />
           <Line label="借入残高" value={loanTotalCurrent === null ? null : -loanTotalCurrent} indent />

@@ -262,7 +262,7 @@ export default async function ManagementPage() {
   const dataUpdatedAt = currentCashFlow?.fetchedAt ?? null;
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
         {authorized ? (
           <>
             <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">

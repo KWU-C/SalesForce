@@ -1,5 +1,4 @@
 import { Header } from "@/components/Header";
-import { DashboardNav } from "@/components/DashboardNav";
 import { DataFetchErrorState } from "@/components/DataFetchErrorState";
 import { DashboardClient } from "@/features/dashboard/DashboardClient";
 import {
@@ -8,8 +7,6 @@ import {
 } from "@/repositories/salesProgressRepository";
 import { getAllProcessMemos } from "@/repositories/processMemoRepository";
 import { FISCAL_MONTH_ORDER, FISCAL_YEAR_END_MONTH, getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
-import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
-import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import type { CrProgress, ProcessMemo } from "@/domain/types";
 
 // 営業データは毎リクエスト取得する（ビルド時に静的化しない）。
@@ -25,8 +22,6 @@ interface PageProps {
 export default async function Page({ searchParams }: PageProps) {
   const dataSource = getSalesProgressDataSource();
   const { term: actualTerm, currentMonth: actualCurrentMonth } = getCurrentFiscalPeriod();
-  const iapEmail = await getRequestIapEmail();
-  const showRestrictedTabs = isManagementDashboardAuthorized(iapEmail);
 
   // 期セレクターの選択肢。取得できなければ現在の事業期のみにフォールバック
   // （各DataSource実装が自分でこのフォールバックを持つため、ここでは待つだけ）
@@ -71,7 +66,6 @@ export default async function Page({ searchParams }: PageProps) {
 
   return (
     <>
-      <DashboardNav active="/" showRestrictedTabs={showRestrictedTabs} />
       <Header
         fiscalPeriod={{ term: selectedTerm, currentMonth: displayMonth }}
         availableTerms={availableTerms}

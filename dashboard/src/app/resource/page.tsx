@@ -7,6 +7,7 @@ import { getAttendanceSection } from "@/repositories/attendanceRepository";
 import type { AttendanceSectionData } from "@/features/attendance/attendance";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
+import { isDevDeployment, PRODUCTION_DASHBOARD_URL } from "@/config/deployEnvironment";
 
 export const dynamic = "force-dynamic";
 
@@ -70,11 +71,25 @@ export default async function ResourcePage() {
           <div className="mt-[50px] flex flex-col gap-6">
             <hr className="border-t border-[var(--border-hairline)]" />
             {attendance && <AttendanceSection data={attendance} />}
-            {attendanceError && (
-              <p className="text-center text-sm text-[var(--text-muted)]">
-                勤怠状況のデータ取得に失敗しました。
-              </p>
-            )}
+            {/* dev環境はfreee未接続のため常に取得できない。本番の不具合と見間違えないよう
+                本番URLへ案内する(ユーザー確定、2026-09-25) */}
+            {attendanceError &&
+              (isDevDeployment() ? (
+                <p className="text-center text-sm text-[var(--text-muted)]">
+                  こちらは開発環境です（freee未接続のため勤怠状況は表示されません）。閲覧ページは
+                  <a
+                    href={`${PRODUCTION_DASHBOARD_URL}/resource`}
+                    className="text-[var(--text-primary)] underline underline-offset-2"
+                  >
+                    こちら
+                  </a>
+                  。
+                </p>
+              ) : (
+                <p className="text-center text-sm text-[var(--text-muted)]">
+                  勤怠状況のデータ取得に失敗しました。
+                </p>
+              ))}
           </div>
         </>
       ) : (

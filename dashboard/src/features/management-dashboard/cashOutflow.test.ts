@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_OUTFLOW, employeeSalarySubtotal, sumLaborDetails, sumOutflows } from "./cashOutflow";
+import type { CashOutflowBreakdown } from "./cashOutflow";
 import { computeJournalCashFlow } from "./journalCashFlow";
 import type { JournalGroup, JournalLine } from "./journalCsv";
 import type { FreeeAccountItem, FreeeWalletTxn, FreeeWalletable } from "@/services/freee/freeeTransactionClient";
@@ -68,10 +69,10 @@ function compute(
 }
 
 describe("computeJournalCashFlow: 出金の区分(借方科目)", () => {
-  it("classifies direct expense debits into 人件費/外注費/税金社保/諸経費/その他/借入元本/利息/積立資産移動", () => {
+  it("classifies direct expense debits into 人件費/外注加工費/税金社保/諸経費/その他/借入元本/利息/積立資産移動", () => {
     const r = compute([
       group("2026-08-10", [line("給料手当", 1_000)], [cash(SMBC, 1_000)]),
-      group("2026-08-10", [line("業務委託費", 2_000)], [cash(SMBC, 2_000)]),
+      group("2026-08-10", [line("[製]外注加工費", 2_000)], [cash(SMBC, 2_000)]),
       group("2026-08-10", [line("租税公課", 300)], [cash(SMBC, 300)]),
       group("2026-08-10", [line("預り金", 40)], [cash(SMBC, 40)]),
       group("2026-08-10", [line("通信費", 50)], [cash(SMBC, 50)]),
@@ -153,7 +154,7 @@ describe("computeJournalCashFlow: 債務(未払金・買掛金)の精算", () =>
     group("2026-08-20", [line(payable, amount, partner, memo)], [cash(SMBC, amount, memo)]);
 
   it("traces a settlement to the expense accounts of the same partner's accrual journals (仕訳科目による判定)", () => {
-    const evidence = [accrual("株式会社A", "業務委託費", 800), accrual("株式会社A", "通信費", 200)];
+    const evidence = [accrual("株式会社A", "[製]外注加工費", 800), accrual("株式会社A", "通信費", 200)];
 
     const r = compute([payment("株式会社A", 1_000)], { evidenceGroups: evidence });
 
@@ -166,7 +167,7 @@ describe("computeJournalCashFlow: 債務(未払金・買掛金)の精算", () =>
   it("uses accrual journals outside the target period (evidenceGroups), because settlements pay for earlier months", () => {
     const groups = [payment("株式会社A", 500)];
 
-    const withEvidence = compute(groups, { evidenceGroups: [accrual("株式会社A", "業務委託費", 500)] });
+    const withEvidence = compute(groups, { evidenceGroups: [accrual("株式会社A", "[製]外注加工費", 500)] });
     const withoutEvidence = compute(groups);
 
     expect(withEvidence.outsourcing).toBe(500);
@@ -384,6 +385,14 @@ describe("sumOutflows", () => {
     expect(sum.appliedEvidenceIds).toEqual(["x"]);
     expect(sum.unclassifiedItems).toHaveLength(1);
   });
+
+  it("sums うちTCDマザー only when every month has it (旧ロジックの月が混ざるとundefined)", () => {
+    const v32: CashOutflowBreakdown = { ...EMPTY_OUTFLOW, otherOperating: 30, tcdMother: 20 };
+    const legacy: CashOutflowBreakdown = { ...EMPTY_OUTFLOW, otherOperating: 10, tcdMother: undefined };
+
+    expect(sumOutflows([v32, v32]).tcdMother).toBe(40);
+    expect(sumOutflows([v32, legacy]).tcdMother).toBeUndefined();
+  });
 });
 
 describe("computeJournalCashFlow: 給与・人件費の内訳と指定業務委託(v3.1)", () => {
@@ -436,7 +445,9 @@ describe("computeJournalCashFlow: 給与・人件費の内訳と指定業務委�
 
     const r = laborOf([settlement("日比 秀一", 500), settlement("日比由美", 300)], evidence);
 
-    expect(r.outsourcing).toBe(500);
+    // 指定業務委託でない業務委託費はその他(v3.2)
+    expect(r.other).toBe(500);
+    expect(r.outsourcing).toBe(0);
     expect(r.laborDetail.contractors).toEqual({ 日比由美: 300 });
   });
 
@@ -445,7 +456,7 @@ describe("computeJournalCashFlow: 給与・人件費の内訳と指定業務委�
 
     const r = laborOf([settlement("株式会社X", 700, "未払金", "日比由美さん分のご依頼")], evidence);
 
-    expect(r.outsourcing).toBe(700);
+    expect(r.other).toBe(700);
     expect(r.labor).toBe(0);
   });
 
@@ -462,7 +473,7 @@ describe("computeJournalCashFlow: 給与・人件費の内訳と指定業務委�
     // 現金900は借方(業務委託費1,000+預り金100)の比で按分される
     expect(r.laborDetail.contractors["松田徹"]).toBe(818);
     expect(r.laborDetail.contractors["福場幸司郎"]).toBeUndefined();
-    expect(r.outsourcing).toBe(400);
+    expect(r.other).toBe(400);
   });
 
   it("classifies 退職金 and [製]退職金 as 給与・人件費 (退職金), while a retirement payable booked against 長期借入金 stays 借入元本返済", () => {
@@ -566,13 +577,14 @@ describe("computeJournalCashFlow: 給与・人件費の内訳と指定業務委�
       expect(r.labor + r.outsourcing + r.taxSocial + r.otherOperating + r.other).toBe(
         1_000 + month + 2 * (100 + month) + (10 + month) + 5 + 7 + 3
       );
-      expect(r.outsourcing).toBe(100 + month); // 指定業務委託(松田徹)だけが外注費から抜ける
-      expect(r.other).toBe(3); // 退職金はその他から抜け、本来のその他(特殊な経費)だけが残る
+      expect(r.outsourcing).toBe(0); // 業務委託費は外注加工費に残らない(v3.2)
+      // 退職金はその他から抜け、本来のその他(特殊な経費)と指定業務委託以外の業務委託費(株式会社Z)が残る
+      expect(r.other).toBe(3 + 100 + month);
     }
     expect(actualOperating).toBe(expectedOperating);
   });
 
-  it("keeps the legacy category integers exactly when a journal mixes designated-contractor and other 外注費 lines (二段階按分)", () => {
+  it("keeps the legacy category integers exactly when a journal mixes designated-contractor and other 業務委託費 lines (二段階按分)", () => {
     const mixed = group(
       "2026-03-10",
       [
@@ -585,7 +597,8 @@ describe("computeJournalCashFlow: 給与・人件費の内訳と指定業務委�
 
     const r = compute([mixed]);
 
-    expect(r.labor + r.outsourcing).toBe(666);
+    expect(r.labor + r.other).toBe(666);
+    expect(r.outsourcing).toBe(0);
     expect(r.otherOperating).toBe(334);
     expect(r.total).toBe(1_000);
   });
@@ -603,6 +616,82 @@ describe("computeJournalCashFlow: 給与・人件費の内訳と指定業務委�
     expect(r.otherOperating).toBe(33);
     expect(r.labor + r.other).toBe(67);
     expect(r.total).toBe(100);
+  });
+});
+
+describe("computeJournalCashFlow: 外注加工費と業務委託費の振り分け(v3.2)", () => {
+  const MOTHER = "有限会社ティーシーディマザー";
+  const MOTHER_ITEM = "【業務委託】ティーシーディーマザー";
+  const accrual = (partner: string, debits: [string, number, string?][]) => {
+    const total = debits.reduce((s, [, a]) => s + a, 0);
+    return group(
+      "2026-07-31",
+      debits.map(([account, amount, item]) => line(account, amount, item ?? "")),
+      [line("未払金", total, partner)]
+    );
+  };
+  const settlement = (partner: string, amount: number) =>
+    group("2026-08-20", [line("未払金", amount, partner)], [cash(SMBC, amount)]);
+
+  it("keeps only 外注加工費 in 外注加工費; TCDマザーの業務委託費 → 諸経費(うちTCDマザー), other 業務委託費 → その他", () => {
+    const r = compute([
+      group("2026-08-10", [line("[製]外注加工費", 5_000)], [cash(SMBC, 5_000)]),
+      group("2026-08-10", [line("業務委託費", 1_000, MOTHER_ITEM)], [cash(SMBC, 1_000)]),
+      group("2026-08-10", [line("[製]業務委託費", 300, "【業務委託】アグニット/ＷＥＢコンサル")], [cash(SMBC, 300)]),
+      group("2026-08-10", [line("通信費", 50)], [cash(SMBC, 50)]),
+    ]);
+
+    expect(r.outsourcing).toBe(5_000);
+    expect(r.otherOperating).toBe(1_050);
+    expect(r.tcdMother).toBe(1_000);
+    expect(r.other).toBe(300);
+    expect(r.total).toBe(6_350);
+  });
+
+  it("identifies TCDマザー by the payable partner name (主キー) when settling a traced accrual", () => {
+    const evidence = [accrual(MOTHER, [["業務委託費", 800], ["[製]業務委託費", 400]])];
+
+    const r = compute([settlement(MOTHER, 1_200)], { evidenceGroups: evidence });
+
+    expect(r.tcdMother).toBe(1_200);
+    expect(r.otherOperating).toBe(1_200);
+    expect(r.outsourcing).toBe(0);
+  });
+
+  it("does NOT identify TCDマザー by free-text memo (a 業務委託費 line of another partner mentioning it stays その他)", () => {
+    const r = compute([
+      group("2026-08-10", [line("業務委託費", 500, "【業務委託】株式会社Y/制作", "TCDマザー経由のご紹介")], [cash(SMBC, 500)]),
+    ]);
+
+    expect(r.tcdMother).toBe(0);
+    expect(r.other).toBe(500);
+  });
+
+  it("splits a single bank transfer that pays TCDマザー and designated contractors together by line (二段階按分で旧外注費の整数を保つ)", () => {
+    // 実データの形: 1つの振込伝票に、TCDマザーと指定業務委託の業務委託費が並び、源泉税(預り金)が差し引かれる
+    const mixed = group(
+      "2026-03-10",
+      [
+        line("業務委託費", 1_033_333, MOTHER_ITEM),
+        line("[製]業務委託費", 516_667, MOTHER_ITEM),
+        line("[製]業務委託費", 400_000, "【業務委託】松田徹/デザイン"),
+        line("[製]業務委託費", 350_000, "【業務委託】福場幸司郎/コピーライティング"),
+        line("[製]業務委託費", 220_000, "【業務委託】日比由美/デザイン"),
+        line("[製]外注加工費", 111_111),
+      ],
+      [cash(SMBC, 2_500_000), line("預り金", 131_111)]
+    );
+
+    const legacy = compute([mixed]);
+    const outsourcingBefore = 2_500_000; // 借方がすべて旧外注費の科目なので、現金の全額が旧外注費
+
+    expect(legacy.labor + legacy.outsourcing + legacy.otherOperating + legacy.other).toBe(outsourcingBefore);
+    expect(Object.keys(legacy.laborDetail.contractors).sort()).toEqual(["日比由美", "松田徹", "福場幸司郎"]);
+    expect(legacy.tcdMother).toBe(legacy.otherOperating);
+    expect(legacy.tcdMother).toBeGreaterThan(0);
+    expect(legacy.other).toBe(0);
+    expect(legacy.outsourcing).toBeGreaterThan(0);
+    expect(legacy.total).toBe(2_500_000);
   });
 });
 

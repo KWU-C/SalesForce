@@ -9,7 +9,7 @@ import { SectionBanner } from "./SectionBanner";
 
 const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   labor: "給与・人件費",
-  outsourcing: "外注費",
+  outsourcing: "外注加工費",
   taxSocial: "税金・社会保険等",
   otherOperating: "諸経費",
   other: "その他",

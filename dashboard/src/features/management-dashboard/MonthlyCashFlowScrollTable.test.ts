@@ -48,6 +48,7 @@ function buildFixture(): MonthlyCashFlow {
         contractors: { "業務委託A": 150_000 },
       },
       outsourcing: 800_000,
+      tcdMother: 120_000,
       taxSocial: 600_000,
       otherOperating: 400_000,
       other: 100_000,
@@ -115,9 +116,11 @@ describe("MonthlyCashFlowScrollTable rows", () => {
     const rows = section("operating").rows;
     expect(getByLabel(rows, "給与・人件費")(cf)).toBe(cf.expenseByCategory.labor);
     expect(getByLabel(rows, "うち従業員給与計")(cf)).toBe(employeeSalarySubtotal(cf.outflow!.laborDetail));
-    expect(getByLabel(rows, "外注費")(cf)).toBe(cf.expenseByCategory.outsourcing);
+    expect(getByLabel(rows, "外注加工費")(cf)).toBe(cf.expenseByCategory.outsourcing);
     expect(getByLabel(rows, "税金・社会保険等")(cf)).toBe(cf.expenseByCategory.taxSocial);
     expect(getByLabel(rows, "諸経費")(cf)).toBe(cf.expenseByCategory.otherOperating);
+    expect(getByLabel(rows, "うちTCDマザー")(cf)).toBe(cf.outflow!.tcdMother);
+    expect(getByLabel(rows, "うちTCDマザー")({ ...cf, outflow: { ...cf.outflow!, tcdMother: undefined } })).toBeNull();
     expect(getByLabel(rows, "その他")(cf)).toBe(cf.expenseByCategory.other);
     expect(getByLabel(rows, "営業支出合計")(cf)).toBe(
       cf.expenseByCategory.labor +

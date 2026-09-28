@@ -38,7 +38,7 @@ export interface MonthlyCashFlow {
   /** 外部支出合計(自社口座間振替を除く) */
   externalExpenseTotal: number;
   /**
-   * 出金の区分別内訳(人件費・外注費・税金社保・諸経費・その他・借入元本・利息・積立資産移動・未分類と、
+   * 出金の区分別内訳(人件費・外注加工費・税金社保・諸経費・その他・借入元本・利息・積立資産移動・未分類と、
    * 合計に含めない参考の内部移動・ネットゼロ往復・出金訂正)。v2以前の保存分には無い
    */
   outflow?: CashOutflowBreakdown;
@@ -59,7 +59,7 @@ export interface MonthlyCashFlow {
   expenseByCategory: Record<ExpenseCategory, number>;
 
   /**
-   * 営業キャッシュ収支 = 営業入金(inflow.operating) - 営業支出(人件費+外注費+税金社会保険等+諸経費+その他)。
+   * 営業キャッシュ収支 = 営業入金(inflow.operating) - 営業支出(人件費+外注加工費+税金社会保険等+諸経費+その他)。
    * 借入・保険資産回収等・その他入金、借入返済・利息・積立資産移動・未分類の出金は含めない
    * (ユーザー確定、2026-09-19)。v2以前の保存分は外部入金全体を起点にした値
    */

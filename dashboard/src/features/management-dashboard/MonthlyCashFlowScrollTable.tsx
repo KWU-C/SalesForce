@@ -13,7 +13,7 @@ import type { MonthlyCashFlow } from "./types";
 
 const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   labor: "給与・人件費",
-  outsourcing: "外注費",
+  outsourcing: "外注加工費",
   taxSocial: "税金・社会保険等",
   otherOperating: "諸経費",
   other: "その他",
@@ -127,6 +127,15 @@ const SECTIONS: SectionDef[] = [
         label: CATEGORY_LABEL.otherOperating,
         indent: true,
         get: (cf) => cf.expenseByCategory.otherOperating,
+      },
+      {
+        kind: "value",
+        label: "うちTCDマザー",
+        indent: true,
+        note: true,
+        inflowDetail: true,
+        // TCDマザーへの業務委託費(v3.2で外注費から移動)。地代家賃など他の支払は含まない(参考内訳、合計に二重加算しない)
+        get: (cf) => cf.outflow?.tcdMother ?? null,
       },
       { kind: "value", label: CATEGORY_LABEL.other, indent: true, get: (cf) => cf.expenseByCategory.other },
       {

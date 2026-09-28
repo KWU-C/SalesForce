@@ -107,7 +107,7 @@ describe("computeMonthlyCashFlow: 入出金v3(仕訳帳)", () => {
   it("uses journals outside the month as evidence for tracing a payable settlement (支払は前月の費用の精算)", async () => {
     setupCommonMocks();
     const groups = [
-      group("2026-07-31", [line("業務委託費", 800)], [line("未払金", 800, "株式会社A")]),
+      group("2026-07-31", [line("[製]外注加工費", 800)], [line("未払金", 800, "株式会社A")]),
       group("2026-08-20", [line("未払金", 800, "株式会社A")], [cash("普通預金A", 800)]),
     ];
 
@@ -153,7 +153,7 @@ describe("computeMonthlyCashFlow: 入出金v3(仕訳帳)", () => {
     expect(r.cashChange! - (r.externalIncome - r.externalExpenseTotal)).toBe(700);
   });
 
-  it("営業キャッシュ収支 = 営業入金 − 営業支出(人件費+外注費+税金社保+諸経費+その他); borrowing/insurance/other inflows and financing/interest/asset/unclassified outflows are excluded", async () => {
+  it("営業キャッシュ収支 = 営業入金 − 営業支出(人件費+外注加工費+税金社保+諸経費+その他); borrowing/insurance/other inflows and financing/interest/asset/unclassified outflows are excluded", async () => {
     setupCommonMocks();
     const groups = [
       // 入金: 営業1,000 / 借入5,000 / 保険等400 / その他30
@@ -161,9 +161,9 @@ describe("computeMonthlyCashFlow: 入出金v3(仕訳帳)", () => {
       group("2026-08-02", [cash("普通預金A", 5_000)], [line("長期借入金", 5_000)]),
       group("2026-08-02", [cash("普通預金A", 400)], [line("保険積立金", 400)]),
       group("2026-08-02", [cash("普通預金A", 30)], [line("雑収入", 30)]),
-      // 出金: 営業支出 人件費100・外注費200・税金40・諸経費10 / 元本600・利息70・積立90・未分類7
+      // 出金: 営業支出 人件費100・外注加工費200・税金40・諸経費10 / 元本600・利息70・積立90・未分類7
       group("2026-08-03", [line("給料手当", 100)], [cash("普通預金A", 100)]),
-      group("2026-08-03", [line("業務委託費", 200)], [cash("普通預金A", 200)]),
+      group("2026-08-03", [line("[製]外注加工費", 200)], [cash("普通預金A", 200)]),
       group("2026-08-03", [line("租税公課", 40)], [cash("普通預金A", 40)]),
       group("2026-08-03", [line("通信費", 10)], [cash("普通預金A", 10)]),
       group("2026-08-03", [line("長期借入金", 600)], [cash("普通預金A", 600)]),

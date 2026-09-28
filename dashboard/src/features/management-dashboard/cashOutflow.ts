@@ -50,8 +50,10 @@ export function employeeSalarySubtotal(detail: LaborDetail): number {
 export interface CashOutflowBreakdown {
   /** 給与・人件費(旧称: 人件費)。内訳はlaborDetail */
   labor: number;
+  /** 外注加工費(画面表示名、v3.2で改称)。業務委託費は含まない(v3.1までは「外注費」として含んでいた) */
   outsourcing: number;
   taxSocial: number;
+  /** 諸経費。v3.2からTCDマザーへの業務委託費(内訳tcdMother)を含む */
   otherOperating: number;
   other: number;
   financing: number;
@@ -76,6 +78,11 @@ export interface CashOutflowBreakdown {
   payableByMemoRule: number;
   /** 給与・人件費の内訳(参考表示)。v3.1より前の保存分には無い */
   laborDetail: LaborDetail;
+  /**
+   * 参考(otherOperatingの内数): TCDマザーへの業務委託費。v3.2より前の保存分には無い
+   * (地代家賃などTCDマザーへの他の支払は含まない)
+   */
+  tcdMother?: number;
   unclassifiedItems: UnclassifiedOutflowItem[];
   appliedEvidenceIds: string[];
 }
@@ -99,6 +106,7 @@ export const EMPTY_OUTFLOW: CashOutflowBreakdown = {
   payableTraced: 0,
   payableByMemoRule: 0,
   laborDetail: EMPTY_LABOR_DETAIL,
+  tcdMother: 0,
   unclassifiedItems: [],
   appliedEvidenceIds: [],
 };
@@ -138,6 +146,8 @@ export function sumOutflows(outflows: CashOutflowBreakdown[]): CashOutflowBreakd
     payableTraced: sum((o) => o.payableTraced),
     payableByMemoRule: sum((o) => o.payableByMemoRule),
     laborDetail: sumLaborDetails(outflows.map((o) => o.laborDetail)),
+    // 旧ロジック(v3.2より前)の月が混ざると一部の月だけの合計になるため、全月そろう場合だけ合計する
+    tcdMother: outflows.every((o) => o.tcdMother !== undefined) ? sum((o) => o.tcdMother ?? 0) : undefined,
     unclassifiedItems: outflows.flatMap((o) => o.unclassifiedItems),
     appliedEvidenceIds: outflows.flatMap((o) => o.appliedEvidenceIds),
   };

@@ -2,7 +2,7 @@
  * 出金側v3(2026-09-19)の分類ルール設定。仕訳帳(freee `/api/1/journals` CSV)の
  * 「現金・預金の貸方行」を、同じ伝票内の借方科目で分類する。分類ロジック本体は
  * features/management-dashboard/journalCashFlow.ts。入金側は config/cashInflowClassification.ts。
- * 区分そのもの(人件費・外注費・税金社保・借入返済・利息・積立資産移動・諸経費・その他)の科目一覧は
+ * 区分そのもの(人件費・外注加工費・税金社保・借入返済・利息・積立資産移動・諸経費・その他)の科目一覧は
  * config/freeeExpenseClassification.ts。検証は output/claude49-verify/EXPENSE_AUDIT.md。
  */
 
@@ -91,13 +91,13 @@ export const RETIREMENT_ACCOUNTS: readonly string[] = ["退職金"];
 export const EXECUTIVE_PAYROLL_MEMO_PREFIXES: readonly string[] = ["取締役 "];
 
 /**
- * 指定業務委託(元社員で契約社員的な位置付けの3名)。経営ダッシュボード上は「外注費」ではなく
+ * 指定業務委託(元社員で契約社員的な位置付けの3名)。経営ダッシュボード上は「外注加工費」ではなく
  * 「給与・人件費」に分類し、「うち従業員給与計」に含める(ユーザー確定、2026-09-19)。
  * 判定は次の2つだけで、自由記述の摘要による氏名判定は使わない(別の取引先の摘要に氏名が出るため)。
  * - 主キー: 未払金・買掛金の補助科目(=取引先名)の完全一致
  * - 副キー: 現金の直接払いでは、業務委託費の借方の補助科目(=品目名)が「【業務委託】{氏名}/」で始まる
  * 仕訳帳CSVには取引先IDが無いため照合は氏名で行う。partnerIdは記録用(freee取引先ID)。
- * 氏名が変わると一致しなくなり、その分は外注費に残る(安全側)。「日比 秀一」は別人で、氏名の完全一致で区別する。
+ * 氏名が変わると一致しなくなり、その分は業務委託費として「その他」に残る(安全側)。「日比 秀一」は別人で、氏名の完全一致で区別する。
  */
 export interface DesignatedLaborContractor {
   name: string;
@@ -114,6 +114,27 @@ export const CONTRACTOR_ITEM_SEPARATOR = "/";
 export function designatedContractorByPartner(partnerName: string): string | null {
   const trimmed = partnerName.trim();
   return DESIGNATED_LABOR_CONTRACTORS.find((c) => c.name === trimmed)?.name ?? null;
+}
+
+/**
+ * 業務委託費(「[製]」付きも同じ)。経営ダッシュボード上は「外注加工費」に含めず、指定業務委託以外は
+ * TCDマザー分を「諸経費」(内訳「うちTCDマザー」)、それ以外を「その他」に分類する
+ * (ユーザー確定、2026-09-28。49期実績: TCDマザー¥18,469,257、それ以外¥1,431,015)。
+ */
+export const CONTRACT_SERVICE_ACCOUNTS: readonly string[] = ["業務委託費"];
+
+/**
+ * TCDマザー(有限会社ティーシーディマザー)への業務委託費。判定は指定業務委託と同じ2つだけで、
+ * 自由記述の摘要は使わない(同じ振込伝票に指定業務委託の行が混在するため、伝票単位では判定しない)。
+ * - 主キー: 未払金・買掛金の補助科目(=取引先名)の完全一致(freeeの取引先名は「ディ」表記)
+ * - 副キー: 業務委託費の借方の補助科目(=品目名)が「【業務委託】ティーシーディーマザー」で始まる
+ * 地代家賃などTCDマザーへの他の支払は、もともと諸経費等の区分にあり、この判定の対象外。
+ */
+export const TCD_MOTHER_PARTNER_NAMES: readonly string[] = ["有限会社ティーシーディマザー"];
+export const TCD_MOTHER_ITEM_PREFIX = "【業務委託】ティーシーディーマザー";
+
+export function isTcdMother(itemName: string, partnerName: string): boolean {
+  return TCD_MOTHER_PARTNER_NAMES.includes(partnerName.trim()) || itemName.trim().startsWith(TCD_MOTHER_ITEM_PREFIX);
 }
 
 export function designatedContractorByItem(itemName: string): string | null {

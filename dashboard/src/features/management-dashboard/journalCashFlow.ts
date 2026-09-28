@@ -15,12 +15,14 @@ import {
   type CashInflowCategory,
 } from "@/config/cashInflowClassification";
 import {
+  CONTRACT_SERVICE_ACCOUNTS,
   designatedContractorByItem,
   designatedContractorByPartner,
   EMPLOYEE_BONUS_ACCOUNTS,
   EXECUTIVE_PAY_ACCOUNTS,
   EXECUTIVE_PAYROLL_MEMO_PREFIXES,
   isBankFeedUnavailable,
+  isTcdMother,
   OTHER_OUTFLOW_PL_CATEGORIES,
   PAYABLE_ACCOUNTS,
   PAYROLL_MEMO_DEPARTMENT_PREFIXES,
@@ -126,27 +128,33 @@ function buildOutflowCategoryOf(accountItems: FreeeAccountItem[]) {
 }
 
 /**
- * 出金の集計単位(バケット)。区分(OutflowCategory)そのものか、「給与・人件費」の内訳を表す
- * `labor:employeeSalary|employeeBonus|executive|retirement|contractor:{氏名}`。
- * 内訳は区分に集約すると必ず「labor」になる(合計は変わらない、参考表示のためだけの細分)。
+ * 出金の集計単位(バケット)。区分(OutflowCategory)そのものか、`{区分}:{内訳}` の形の細分:
+ * 「給与・人件費」の内訳 `labor:employeeSalary|employeeBonus|executive|retirement|contractor:{氏名}`、
+ * 業務委託費の振り分け先 `otherOperating:tcdMother`(TCDマザー)・`other:contractService`(それ以外)。
+ * 細分は区分に集約すると必ず先頭の区分になる(合計は変わらない)。
  */
 type OutflowBucket = string;
 
 const LABOR_PREFIX = "labor:";
 const CONTRACTOR_PREFIX = "labor:contractor:";
+const TCD_MOTHER_BUCKET = "otherOperating:tcdMother";
+const CONTRACT_SERVICE_OTHER_BUCKET = "other:contractService";
 
 function bucketCategory(bucket: OutflowBucket): OutflowCategory {
-  return bucket.startsWith(LABOR_PREFIX) ? "labor" : (bucket as OutflowCategory);
+  const separator = bucket.indexOf(":");
+  return (separator === -1 ? bucket : bucket.slice(0, separator)) as OutflowCategory;
 }
 
 /**
- * v3.1より前の区分(指定業務委託は外注費、退職金はその他)。1伝票の現金支払額はまず旧区分に按分し、
- * その額を旧区分の中でバケットに細分する(二段階按分)。これにより、旧区分ごとの整数金額が
- * 変更前と完全に同じになり、指定業務委託と退職金を給与・人件費へ移しても営業支出合計は
- * 構造的に変わらない(円未満の按分誤差も新たに生じない)。
+ * v3.1より前の区分(業務委託費は指定業務委託・TCDマザー・それ以外とも外注費、退職金はその他)。
+ * 1伝票の現金支払額はまず旧区分に按分し、その額を旧区分の中でバケットに細分する(二段階按分)。
+ * これにより、旧区分ごとの整数金額が変更前と完全に同じになり、指定業務委託と退職金を給与・人件費へ、
+ * 業務委託費を諸経費(TCDマザー)・その他へ移しても営業支出合計は構造的に変わらない
+ * (円未満の按分誤差も新たに生じない)。
  */
 function legacyCategory(bucket: OutflowBucket): OutflowCategory {
   if (bucket.startsWith(CONTRACTOR_PREFIX)) return "outsourcing";
+  if (bucket === TCD_MOTHER_BUCKET || bucket === CONTRACT_SERVICE_OTHER_BUCKET) return "outsourcing";
   if (bucket === `${LABOR_PREFIX}retirement`) return "other";
   return bucketCategory(bucket);
 }
@@ -172,8 +180,12 @@ function stripManufacturingPrefix(accountName: string): string {
 }
 
 /**
- * 借方科目 → バケット。区分が「給与・人件費」なら内訳(役員/賞与/退職金/従業員給与)、
- * 「外注費」で指定業務委託(副キー: 品目名、主キー: 取引先名)に該当すれば給与・人件費の指定業務委託。
+ * 借方科目 → バケット。区分が「給与・人件費」なら内訳(役員/賞与/退職金/従業員給与)。
+ * 外注(区分outsourcing)の科目は次の順で振り分ける(副キー: 品目名、主キー: 取引先名):
+ * 1. 指定業務委託に該当 → 給与・人件費の指定業務委託(業務委託費以外の科目でも該当すれば移す、v3.1と同じ)
+ * 2. 業務委託費でTCDマザーに該当 → 諸経費(内訳「うちTCDマザー」)
+ * 3. それ以外の業務委託費 → その他
+ * 4. 残り(外注加工費等) → 外注加工費
  * itemName=借方行の補助科目(品目名)、partnerName=同じ伝票の債務(未払金・買掛金)の取引先名(無ければ空)。
  */
 function makeBucketOf(outflowCategoryOf: (accountName: string) => OutflowCategory) {
@@ -181,7 +193,11 @@ function makeBucketOf(outflowCategoryOf: (accountName: string) => OutflowCategor
     const category = outflowCategoryOf(accountName);
     if (category === "outsourcing") {
       const contractor = designatedContractorByPartner(partnerName) ?? designatedContractorByItem(itemName);
-      return contractor !== null ? `${CONTRACTOR_PREFIX}${contractor}` : category;
+      if (contractor !== null) return `${CONTRACTOR_PREFIX}${contractor}`;
+      if (CONTRACT_SERVICE_ACCOUNTS.includes(stripManufacturingPrefix(accountName))) {
+        return isTcdMother(itemName, partnerName) ? TCD_MOTHER_BUCKET : CONTRACT_SERVICE_OTHER_BUCKET;
+      }
+      return category;
     }
     if (category === "labor") {
       const base = stripManufacturingPrefix(accountName);
@@ -305,7 +321,7 @@ interface GroupWork {
  * 同じ伝票内の現金→現金(内部移動)は入出金のどちらにも含めない。
  * 入金側: 現金借方行を、同じ伝票の貸方科目(勘定科目マスタのカテゴリ)で 営業/借入/保険・資産回収/その他/
  *   未分類 に区分。1入金=1性質(保険・借入に付随する雑収入は寄せる)。
- * 出金側: 現金貸方行を、同じ伝票の借方科目で 人件費/外注費/税金・社保/諸経費/その他/借入元本/利息/
+ * 出金側: 現金貸方行を、同じ伝票の借方科目で 人件費/外注加工費/税金・社保/諸経費/その他/借入元本/利息/
  *   積立資産移動/未分類 に区分。借方が債務(未払金・買掛金)の場合は発生時の費用科目を辿る
  *   (取引先ごとの発生仕訳の構成)。貸方の預り金・未払金等は総額/純額の差なので、借方の金額比で
  *   按分してから現金の実額に合わせる。
@@ -613,9 +629,11 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     unclassified: 0,
   };
   const laborBuckets = new Map<OutflowBucket, number>();
+  let tcdMother = 0;
   const addBucket = (bucket: OutflowBucket, amount: number) => {
     outflowTotals[bucketCategory(bucket)] += amount;
     if (bucket.startsWith(LABOR_PREFIX)) laborBuckets.set(bucket, (laborBuckets.get(bucket) ?? 0) + amount);
+    if (bucket === TCD_MOTHER_BUCKET) tcdMother += amount;
   };
   let outflowInternal = 0;
   let deductionsExcluded = 0;
@@ -669,6 +687,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     payableTraced,
     payableByMemoRule,
     laborDetail,
+    tcdMother,
     unclassifiedItems: unclassifiedOutflowItems,
     appliedEvidenceIds: outflowEvidenceIds,
   };

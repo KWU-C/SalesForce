@@ -1,6 +1,7 @@
 import { DashboardNav } from "@/components/DashboardNav";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
+import { RefreshOverlayProvider } from "@/features/management-dashboard/RefreshOverlay";
 
 /**
  * ナビ(営業進捗｜経営)をpage.tsxのSuspense境界の外に置くためのlayout。
@@ -17,7 +18,8 @@ export default async function ManagementLayout({ children }: LayoutProps<"/manag
   return (
     <>
       <DashboardNav active="/management" showRestrictedTabs={showRestrictedTabs} />
-      {children}
+      {/* 「更新」系ボタンの実行中に本文だけへ読み込み表示を重ねる(ナビは覆わない、2026-09-28) */}
+      <RefreshOverlayProvider>{children}</RefreshOverlayProvider>
     </>
   );
 }

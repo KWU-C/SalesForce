@@ -1,29 +1,33 @@
 import Link from "next/link";
 
+/** 並びは営業進捗→勤怠→経営(ユーザー確定、2026-09-29)。/resourceのラベルは「勤怠」 */
 const NAV_ITEMS = [
   { href: "/", label: "営業進捗" },
+  { href: "/resource", label: "勤怠" },
   { href: "/management", label: "経営" },
-  { href: "/resource", label: "リソース" },
 ] as const;
-
-/** ナビのタブ非表示だけで守られているのではなく、常にこれと同じ許可リストで
- * ページ本文側(layout/page.tsx)も別途アクセス制御している(fail-closed) */
-const RESTRICTED_HREFS: readonly (typeof NAV_ITEMS)[number]["href"][] = ["/management", "/resource"];
 
 interface DashboardNavProps {
   active: (typeof NAV_ITEMS)[number]["href"];
-  /** 経営・リソースタブを表示するか。IAP検証済みメールが許可リストに無い場合はfalseにする
-   * (両タブとも同じ許可リストで判定、ユーザー確定、2026-09-14・2026-09-18) */
-  showRestrictedTabs: boolean;
+  /** 経営タブを表示するか(managementDashboardAccessの許可リストで判定) */
+  showManagementTab: boolean;
+  /** 勤怠タブを表示するか(resourceDashboardAccessの許可リストで判定、2026-09-29から経営とは別リスト) */
+  showResourceTab: boolean;
 }
 
 /**
- * 営業進捗(Salesforce)／経営(freee)／リソース(推定負荷率)の切替ナビ。全ページで共有する
- * （ユーザー確定、2026-09-14・2026-09-18)。既存Headerコンポーネントの中身(期セレクター等)は
+ * 営業進捗(Salesforce)／勤怠(推定負荷率・勤怠状況)／経営(freee)の切替ナビ。全ページで共有する
+ * （ユーザー確定、2026-09-14・2026-09-18・2026-09-29)。既存Headerコンポーネントの中身(期セレクター等)は
  * 営業進捗専用のため変更せず、その上に独立した帯として重ねる構成にしている。
+ * ナビのタブ非表示だけで守られているのではなく、常に同じ許可リストでページ本文側
+ * (layout/page.tsx)も別途アクセス制御している(fail-closed)。
  */
-export function DashboardNav({ active, showRestrictedTabs }: DashboardNavProps) {
-  const items = NAV_ITEMS.filter((item) => !RESTRICTED_HREFS.includes(item.href) || showRestrictedTabs);
+export function DashboardNav({ active, showManagementTab, showResourceTab }: DashboardNavProps) {
+  const items = NAV_ITEMS.filter((item) => {
+    if (item.href === "/management") return showManagementTab;
+    if (item.href === "/resource") return showResourceTab;
+    return true;
+  });
   return (
     <nav className="border-b border-[var(--border-hairline)] bg-[var(--surface-sunken)]">
       <div className="mx-auto flex max-w-6xl gap-1 px-4 sm:px-6">

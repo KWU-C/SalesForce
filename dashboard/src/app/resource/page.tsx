@@ -6,18 +6,18 @@ import { AttendanceSection } from "@/features/attendance/AttendanceSection";
 import { getAttendanceSection } from "@/repositories/attendanceRepository";
 import type { AttendanceSectionData } from "@/features/attendance/attendance";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
-import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
+import { isResourceDashboardAuthorized } from "@/config/resourceDashboardAccess";
 import { isDevDeployment, PRODUCTION_DASHBOARD_URL } from "@/config/deployEnvironment";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "リソース",
-  description: "TCD リソースダッシュボード（推定負荷率）",
+  title: "勤怠",
+  description: "TCD 勤怠ダッシュボード（推定負荷率）",
 };
 
 /**
- * リソースダッシュボード(/resource)。CR別の推定負荷率(Salesforce由来)と、
+ * 勤怠ダッシュボード(/resource、旧称リソース)。CR別の推定負荷率(Salesforce由来)と、
  * その下に勤怠状況(freee人事労務の当月実績)を表示する参考指標ページ
  * (ユーザー確定、2026-09-18)。既存の営業進捗(受注・完了・達成率・累計)・
  * freee会計側の経営ダッシュボードの集計ロジックには一切触れない、完全に独立した機能。
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
  */
 export default async function ResourcePage() {
   const iapEmail = await getRequestIapEmail();
-  const authorized = isManagementDashboardAuthorized(iapEmail);
+  const authorized = isResourceDashboardAuthorized(iapEmail);
 
   let resourceLoad: ResourceLoadResult | null = null;
   let loadError = false;
@@ -56,7 +56,7 @@ export default async function ResourcePage() {
       {authorized ? (
         <>
           <div className="flex flex-col gap-6">
-            <h1 className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">リソース</h1>
+            <h1 className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">勤怠</h1>
             {resourceLoad && (
               <ResourceLoadTable crLoads={resourceLoad.crLoads} anomalyCount={resourceLoad.anomalyCount} />
             )}

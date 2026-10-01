@@ -14,26 +14,28 @@ function hasSubtotal(confidence: string): boolean {
   return confidence.startsWith("A ") || confidence.startsWith("B ");
 }
 
-export interface ConfidenceAForecast {
+export interface ConfidenceForecast {
   grossProfit: number;
   sales: number;
 }
 
 /**
- * 受注確度Aのパイプライン案件(提案・見積＝未確定)を受注予定日(expectedOrderDate)の暦月ごとに合算する。
- * 月別受注サマリー横の「受注確度A」表示用で、「◯月の受注」(受注確定分)には含まれない
- * その月の受注予測分を表す（ユーザー確定、2026-10-01）。
+ * 指定した受注確度(confidencePrefix、"A "/"B ")のパイプライン案件(提案・見積＝未確定)を
+ * 受注予定日(expectedOrderDate)の暦月ごとに合算する。
+ * 月別受注サマリーの「◯月の受注（確度A）」「◯月の受注（確度B）」表示用で、「◯月の受注（確定分）」には
+ * 含まれないその月の受注予測分を表す（ユーザー確定、2026-10-01）。
  * 対象は受注予定日がdateRange(表示中の事業期、両端含むYYYY-MM-DD)内の案件のみ。
  * 受注予定日が未入力の案件はどの月にも計上しない。該当案件の無い月はキー自体を持たない。
  */
-export function sumConfidenceAForecastByMonth(
+export function sumConfidenceForecastByMonth(
   deals: PipelineDeal[],
-  dateRange: { start: string; end: string }
-): Map<number, ConfidenceAForecast> {
-  const byMonth = new Map<number, ConfidenceAForecast>();
+  dateRange: { start: string; end: string },
+  confidencePrefix: "A " | "B "
+): Map<number, ConfidenceForecast> {
+  const byMonth = new Map<number, ConfidenceForecast>();
   for (const deal of deals) {
     const date = deal.expectedOrderDate;
-    if (!deal.confidence.startsWith("A ") || !date) continue;
+    if (!deal.confidence.startsWith(confidencePrefix) || !date) continue;
     if (date < dateRange.start || date > dateRange.end) continue;
     const month = Number(date.slice(5, 7));
     const total = byMonth.get(month) ?? { grossProfit: 0, sales: 0 };

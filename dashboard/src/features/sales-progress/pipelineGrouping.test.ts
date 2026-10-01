@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PipelineDeal } from "@/domain/types";
-import { groupPipelineDealsByConfidence, sumConfidenceAForecastByMonth } from "./pipelineGrouping";
+import { groupPipelineDealsByConfidence, sumConfidenceForecastByMonth } from "./pipelineGrouping";
 
 function deal(overrides: Partial<PipelineDeal>): PipelineDeal {
   return {
@@ -84,7 +84,7 @@ describe("groupPipelineDealsByConfidence", () => {
   });
 });
 
-describe("sumConfidenceAForecastByMonth", () => {
+describe("sumConfidenceForecastByMonth", () => {
   const term50 = { start: "2026-09-01", end: "2027-08-31" };
 
   it("sums confidence-A deals by the calendar month of the expected order date", () => {
@@ -94,7 +94,7 @@ describe("sumConfidenceAForecastByMonth", () => {
       deal({ expectedOrderDate: "2026-11-01", grossProfit: 7, sales: 9 }),
     ];
 
-    const byMonth = sumConfidenceAForecastByMonth(deals, term50);
+    const byMonth = sumConfidenceForecastByMonth(deals, term50, "A ");
     expect(byMonth.get(10)).toEqual({ grossProfit: 150, sales: 300 });
     expect(byMonth.get(11)).toEqual({ grossProfit: 7, sales: 9 });
     expect(byMonth.has(12)).toBe(false);
@@ -108,6 +108,15 @@ describe("sumConfidenceAForecastByMonth", () => {
       deal({ expectedOrderDate: "2027-10-05" }),
     ];
 
-    expect(sumConfidenceAForecastByMonth(deals, term50).size).toBe(0);
+    expect(sumConfidenceForecastByMonth(deals, term50, "A ").size).toBe(0);
+  });
+
+  it("sums only the requested confidence", () => {
+    const deals = [
+      deal({ confidence: "B (50～80%未満)", expectedOrderDate: "2026-10-05", grossProfit: 40, sales: 60 }),
+      deal({ expectedOrderDate: "2026-10-05" }),
+    ];
+
+    expect(sumConfidenceForecastByMonth(deals, term50, "B ").get(10)).toEqual({ grossProfit: 40, sales: 60 });
   });
 });

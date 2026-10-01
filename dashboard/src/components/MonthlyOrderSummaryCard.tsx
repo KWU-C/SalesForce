@@ -1,46 +1,43 @@
-"use client";
-
-import { useMemo, useState } from "react";
 import { StatCard } from "@/components/StatCard";
-import { FISCAL_MONTH_ORDER, fiscalMonthIndex } from "@/config/fiscalPeriods";
 import type { MonthlyProgress } from "@/domain/types";
-import type { ConfidenceAForecast } from "@/features/sales-progress/pipelineGrouping";
+import type { ConfidenceForecast } from "@/features/sales-progress/pipelineGrouping";
 import { formatYen } from "@/utils/format";
 
 interface MonthlyOrderSummaryCardProps {
-  /** 当該CRの月別受注データ(12ヶ月分、未到来月はnull) */
-  monthlyOrders: MonthlyProgress[];
-  /** 当月（暦月）。プルダウンの初期選択値であり、選べる範囲の上限でもある */
+  /** 当月（暦月） */
   currentMonth: number;
+  /** 当該CRの当月の受注確定分。未到来・データなしはnull */
+  confirmedOrder: MonthlyProgress | null;
   /**
-   * 受注確度A(80〜100%)の未確定案件(提案・見積)を受注予定月ごとに合算したもの。
-   * 「◯月の受注」(受注確定分)には含まれない、その月の受注予測分。該当案件の無い月はキー無し
+   * 受注確度A(80〜100%)の未確定案件(提案・見積)のうち、受注予定日が当月のものの合算。
+   * 「◯月の受注（確定分）」には含まれない。対象なしはnull
    */
-  confidenceAForecastByMonth: Map<number, ConfidenceAForecast>;
+  confidenceAForecast: ConfidenceForecast | null;
+  /** 受注確度B版（集計基準は確度Aと同じ）。対象なしはnull */
+  confidenceBForecast: ConfidenceForecast | null;
 }
 
-function ConfidenceAStat({
-  grossProfit,
-  sales,
+function ConfidenceForecastStat({
+  title,
+  forecast,
 }: {
-  grossProfit: number | null;
-  sales: number | null;
+  title: string;
+  forecast: ConfidenceForecast | null;
 }) {
   return (
     <div className="flex-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-      <p className="text-sm text-[var(--text-secondary)]">その他、受注確度A (80～100%)</p>
+      <p className="text-sm text-[var(--text-secondary)]">{title}</p>
       <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
-        {grossProfit === null ? "—" : formatYen(grossProfit)}
+        {forecast === null ? "—" : formatYen(forecast.grossProfit)}
       </p>
       <p className="text-xs text-[var(--text-muted)]">粗利</p>
       {/* StatCardの目標粗利・達成率の行と天地を揃えるための不可視スペーサー(内容は同じ高さのダミー) */}
       <div className="invisible mt-2 flex items-center justify-between text-sm" aria-hidden="true">
         <span>目標粗利 —</span>
-        <span className="font-medium">粗利達成率 —</span>
       </div>
       <div className="mt-3 border-t border-[var(--gridline)] pt-2 text-left">
         <p className="text-lg font-medium text-[var(--text-primary)]">
-          {sales === null ? "—" : formatYen(sales)}
+          {forecast === null ? "—" : formatYen(forecast.sales)}
         </p>
         <p className="text-xs text-[var(--text-muted)]">売上</p>
       </div>
@@ -49,56 +46,33 @@ function ConfidenceAStat({
 }
 
 /**
- * 当月の受注額・目標額・達成率をStatCardで表示し、プルダウンで当月から過去の月へ
- * 遡れるようにする（ユーザー確定）。未到来月は選択肢に含めない。
- * 右側に、選択月の受注予測に入っているが未確定(提案・見積)の受注確度A分を並べて表示する
- * （左の受注確定分とは重複しない。ユーザー確定、2026-10-01）。
+ * 当月の受注を「確定分」「確度A」「確度B」の3枚で並べる（ユーザー確定、2026-10-01）。
+ * 確定分は受注確定フェーズの実績(目標・達成率つき)、確度A・Bは当月の受注予測に入っているが
+ * 未確定(提案・見積)の分で、互いに重複しない。確定分が左半分、確度A・Bが右半分を等分する。
  */
 export function MonthlyOrderSummaryCard({
-  monthlyOrders,
   currentMonth,
-  confidenceAForecastByMonth,
+  confirmedOrder,
+  confidenceAForecast,
+  confidenceBForecast,
 }: MonthlyOrderSummaryCardProps) {
-  const selectableMonths = useMemo(() => {
-    const currentIndex = fiscalMonthIndex(currentMonth);
-    return FISCAL_MONTH_ORDER.slice(0, currentIndex).reverse();
-  }, [currentMonth]);
-
-  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
-  const selected = monthlyOrders.find((m) => m.month === selectedMonth) ?? null;
-  const confidenceAForecast = confidenceAForecastByMonth.get(selectedMonth) ?? null;
-
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-[var(--text-secondary)]">月別受注サマリー</h3>
-        <select
-          aria-label="対象月を選択"
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(Number(e.target.value))}
-          className="rounded border border-[var(--border-hairline)] bg-[var(--surface-1)] px-2 py-1 text-sm font-medium text-[var(--text-primary)]"
-        >
-          {selectableMonths.map((month) => (
-            <option key={month} value={month}>
-              {month}月
-            </option>
-          ))}
-        </select>
-      </div>
+      <h3 className="text-sm font-medium text-[var(--text-secondary)]">月別受注サマリー</h3>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
         <div className="flex-1">
           <StatCard
-            title={`${selectedMonth}月の受注`}
-            sales={selected?.sales ?? null}
-            grossProfit={selected?.grossProfit ?? null}
-            targetGrossProfit={selected?.targetGrossProfit ?? 0}
-            achievementRate={selected?.achievementRate ?? null}
+            title={`${currentMonth}月の受注（確定分）`}
+            sales={confirmedOrder?.sales ?? null}
+            grossProfit={confirmedOrder?.grossProfit ?? null}
+            targetGrossProfit={confirmedOrder?.targetGrossProfit ?? 0}
+            achievementRate={confirmedOrder?.achievementRate ?? null}
           />
         </div>
-        <ConfidenceAStat
-          grossProfit={confidenceAForecast?.grossProfit ?? null}
-          sales={confidenceAForecast?.sales ?? null}
-        />
+        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-stretch">
+          <ConfidenceForecastStat title={`${currentMonth}月の受注（確度A）`} forecast={confidenceAForecast} />
+          <ConfidenceForecastStat title={`${currentMonth}月の受注（確度B）`} forecast={confidenceBForecast} />
+        </div>
       </div>
     </div>
   );

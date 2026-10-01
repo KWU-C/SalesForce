@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PipelineDeal } from "@/domain/types";
-import { groupPipelineDealsByConfidence } from "./pipelineGrouping";
+import { groupPipelineDealsByConfidence, sumConfidenceAForecastByMonth } from "./pipelineGrouping";
 
 function deal(overrides: Partial<PipelineDeal>): PipelineDeal {
   return {
@@ -11,6 +11,7 @@ function deal(overrides: Partial<PipelineDeal>): PipelineDeal {
     grossProfit: 100,
     sales: 300,
     salesforceMemo: null,
+    expectedOrderDate: null,
     salesforceMemoUpdatedAt: "2026-08-15T02:30:00.000+0000",
     ...overrides,
   };
@@ -80,5 +81,33 @@ describe("groupPipelineDealsByConfidence", () => {
 
   it("returns an empty array for no deals", () => {
     expect(groupPipelineDealsByConfidence([])).toEqual([]);
+  });
+});
+
+describe("sumConfidenceAForecastByMonth", () => {
+  const term50 = { start: "2026-09-01", end: "2027-08-31" };
+
+  it("sums confidence-A deals by the calendar month of the expected order date", () => {
+    const deals = [
+      deal({ expectedOrderDate: "2026-10-05", grossProfit: 100, sales: 300 }),
+      deal({ expectedOrderDate: "2026-10-31", grossProfit: 50, sales: null }),
+      deal({ expectedOrderDate: "2026-11-01", grossProfit: 7, sales: 9 }),
+    ];
+
+    const byMonth = sumConfidenceAForecastByMonth(deals, term50);
+    expect(byMonth.get(10)).toEqual({ grossProfit: 150, sales: 300 });
+    expect(byMonth.get(11)).toEqual({ grossProfit: 7, sales: 9 });
+    expect(byMonth.has(12)).toBe(false);
+  });
+
+  it("ignores other confidences, deals without an expected order date, and dates outside the term", () => {
+    const deals = [
+      deal({ confidence: "B (50～80%未満)", expectedOrderDate: "2026-10-05" }),
+      deal({ expectedOrderDate: null }),
+      deal({ expectedOrderDate: "2025-10-05" }),
+      deal({ expectedOrderDate: "2027-10-05" }),
+    ];
+
+    expect(sumConfidenceAForecastByMonth(deals, term50).size).toBe(0);
   });
 });

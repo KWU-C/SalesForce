@@ -9,6 +9,8 @@ export interface PipelineDealRow {
   arari__c: number | null;
   uriagegoukei__c: number | null;
   memo__c: string | null;
+  /** 受注日(YYYY-MM-DD)。未受注案件では受注予定日。未入力はnull */
+  juchuubi__c: string | null;
   /** レコード全体の最終更新日時(ISO8601)。レポート上の「案件: 最終更新日」に相当 */
   LastModifiedDate: string;
 }
@@ -37,6 +39,7 @@ export function mapPipelineDealRows(rows: PipelineDealRow[]): PipelineDeal[] {
     grossProfit: row.arari__c,
     sales: row.uriagegoukei__c,
     salesforceMemo: row.memo__c,
+    expectedOrderDate: row.juchuubi__c ?? null,
     salesforceMemoUpdatedAt: row.LastModifiedDate,
   }));
 }

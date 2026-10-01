@@ -116,6 +116,8 @@ export interface PipelineDeal {
   sales: number | null;
   /** Salesforce側の既存メモ(memo__c)。ダッシュボード独自メモとは別物 */
   salesforceMemo: string | null;
+  /** 受注予定日(juchuubi__c、YYYY-MM-DD)。未受注案件のため確定日ではなく予定。未入力はnull */
+  expectedOrderDate: string | null;
   /**
    * Process__cレコードの最終更新日時(ISO8601、LastModifiedDate)。
    * レポート上の「案件: 最終更新日」に相当し、memo__c欄限定の更新日ではない

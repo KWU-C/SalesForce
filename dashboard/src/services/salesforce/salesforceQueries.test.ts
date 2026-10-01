@@ -16,25 +16,25 @@ const CR_IDS_3 = ["CR1", "CR2", "CR3"];
 const CR_IDS_4 = ["CR1", "CR2", "CR3", "CR4"];
 
 describe("buildOrderProgressQuery", () => {
-  it("filters by 受注日(juchuubi__c) + 受注確度A + 失注除外(ユーザー確定の定義、2026-08-17)", () => {
+  it("filters by 受注日(juchuubi__c) + 受注確度A + 受注確定フェーズ(ユーザー確定の定義、2026-08-17。提案・見積は含めない)", () => {
     const soql = buildOrderProgressQuery(dateRange, CR_IDS_3);
 
     expect(soql).toContain("FROM Process__c");
     expect(soql).toContain("bumonna__c IN ('CR1','CR2','CR3')");
     expect(soql).toContain("juchuubi__c != null");
     expect(soql).toContain("juchukakudo__c = 'A (80～100%)'");
-    expect(soql).toContain("phase__c != '失注'");
+    expect(soql).toContain("phase__c IN ('受注','納品','請求','入金')");
     expect(soql).toContain("juchuubi__c >= 2025-09-01 AND juchuubi__c <= 2026-08-31");
   });
 });
 
 describe("buildCompletedProgressQuery", () => {
-  it("filters by 請求日(seikyuubi__c) + 受注確度A + 失注除外(ユーザー確定・検算済みの定義)", () => {
+  it("filters by 請求日(seikyuubi__c) + 受注確度A + 受注確定フェーズ(提案・見積は含めない、ユーザー確定2026-10-01)", () => {
     const soql = buildCompletedProgressQuery(dateRange, CR_IDS_3);
 
     expect(soql).toContain("FROM Process__c");
     expect(soql).toContain("juchukakudo__c = 'A (80～100%)'");
-    expect(soql).toContain("phase__c != '失注'");
+    expect(soql).toContain("phase__c IN ('受注','納品','請求','入金')");
     expect(soql).toContain("seikyuubi__c >= 2025-09-01 AND seikyuubi__c <= 2026-08-31");
   });
 });
@@ -72,7 +72,7 @@ describe("buildOrderClientRankingQuery", () => {
     expect(soql).toContain("bumonna__c IN ('CR1','CR2','CR3')");
     expect(soql).toContain("juchuubi__c != null");
     expect(soql).toContain("juchukakudo__c = 'A (80～100%)'");
-    expect(soql).toContain("phase__c != '失注'");
+    expect(soql).toContain("phase__c IN ('受注','納品','請求','入金')");
     expect(soql).toContain("juchuubi__c >= 2025-09-01 AND juchuubi__c <= 2026-08-31");
     expect(soql).toContain("SELECT bumonna__c, clientName__c, clientGroupName__c, arari__c");
     expect(soql).not.toContain("GROUP BY");
@@ -107,7 +107,7 @@ describe("buildOrderLeaderRankingQuery", () => {
     expect(soql).toContain("bumonna__c IN ('CR1','CR2','CR3')");
     expect(soql).toContain("juchuubi__c != null");
     expect(soql).toContain("juchukakudo__c = 'A (80～100%)'");
-    expect(soql).toContain("phase__c != '失注'");
+    expect(soql).toContain("phase__c IN ('受注','納品','請求','入金')");
     expect(soql).toContain("juchuubi__c >= 2025-09-01 AND juchuubi__c <= 2026-08-31");
     expect(soql).toContain(
       "SELECT bumonna__c crId, rida__c leaderId, rida__r.Name leaderName, SUM(arari__c) grossProfit"
@@ -167,7 +167,7 @@ describe("buildResourceLoadDealsQuery", () => {
     expect(soql).toContain("FROM Process__c");
     expect(soql).toContain("bumonna__c IN ('CR1','CR2','CR3','CR4')");
     expect(soql).toContain("juchukakudo__c = 'A (80～100%)'");
-    expect(soql).toContain("phase__c != '失注'");
+    expect(soql).toContain("phase__c IN ('受注','納品','請求','入金')");
     expect(soql).toContain("juchuubi__c != null");
     expect(soql).toContain("seikyuubi__c != null");
     expect(soql).toContain("seikyuubi__c >= 2026-09-01");

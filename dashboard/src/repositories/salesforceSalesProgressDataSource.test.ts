@@ -29,8 +29,8 @@ class FakeSalesforceQueryClient implements SalesforceQueryClient {
     if (this.responses.target instanceof Error) throw this.responses.target;
     if (soql.includes("SalesTarget__c")) return this.responses.target as T[];
     // パイプライン一覧クエリもclientName__cを選択するため、クライアントランキングの
-    // 判別より先に固有のマーカー(phase__c IN)で判定する
-    if (soql.includes("phase__c IN")) {
+    // 判別より先に固有のマーカー(提案・見積フェーズ指定)で判定する
+    if (soql.includes("phase__c IN ('提案'")) {
       const crId = soql.match(/bumonna__c = '(\w+)'/)?.[1];
       return ((crId && this.responses.pipelineDealsByCr?.[crId]) ?? []) as T[];
     }
@@ -310,6 +310,7 @@ describe("SalesforceSalesProgressDataSource", () => {
             arari__c: 1_000_000,
             uriagegoukei__c: 3_000_000,
             memo__c: "既存メモ",
+            juchuubi__c: "2026-10-15",
             LastModifiedDate: "2026-08-15T02:30:00.000+0000",
           },
         ],
@@ -330,6 +331,7 @@ describe("SalesforceSalesProgressDataSource", () => {
         grossProfit: 1_000_000,
         sales: 3_000_000,
         salesforceMemo: "既存メモ",
+        expectedOrderDate: "2026-10-15",
         salesforceMemoUpdatedAt: "2026-08-15T02:30:00.000+0000",
       },
     ]);
@@ -351,6 +353,7 @@ describe("SalesforceSalesProgressDataSource", () => {
             arari__c: 500_000,
             uriagegoukei__c: 1_500_000,
             memo__c: "失注予定",
+            juchuubi__c: "2026-10-15",
             LastModifiedDate: "2026-08-15T02:30:00.000+0000",
           },
           {
@@ -361,6 +364,7 @@ describe("SalesforceSalesProgressDataSource", () => {
             arari__c: 300_000,
             uriagegoukei__c: 900_000,
             memo__c: null,
+            juchuubi__c: "2026-10-15",
             LastModifiedDate: "2026-08-15T02:30:00.000+0000",
           },
         ],

@@ -15,8 +15,8 @@ import { PipelineDealsSection } from "@/components/PipelineDealsSection";
 import { PeriodComparisonChart } from "./charts/PeriodComparisonChart";
 import { summarizePeriod } from "@/features/sales-progress/aggregate";
 import { buildCategorySlices } from "@/features/sales-progress/categoryChart";
-import { groupPipelineDealsByConfidence } from "@/features/sales-progress/pipelineGrouping";
-import { FULL_YEAR, HALVES, QUARTERS } from "@/config/fiscalPeriods";
+import { sumConfidenceAForecastByMonth } from "@/features/sales-progress/pipelineGrouping";
+import { FULL_YEAR, HALVES, QUARTERS, fiscalTermDateRange } from "@/config/fiscalPeriods";
 import { getCrListForTerm } from "@/domain/types";
 import type { CrId, CrProgress, ProcessMemo } from "@/domain/types";
 import { formatTime } from "@/utils/format";
@@ -88,11 +88,12 @@ export function DashboardClient({
     summarizePeriod(h.label, h.months, current.completed)
   );
 
-  // 月別受注サマリー横の「受注確度A」ミニ表示用。パイプライン一覧の合計行と同じ値を再利用する
-  const pipelineGroups = groupPipelineDealsByConfidence(current.pipelineDeals ?? []);
-  const confidenceAGroup = pipelineGroups.find((g) => g.confidence.startsWith("A "));
-  const confidenceAGrossProfit = confidenceAGroup?.grossProfitSubtotal ?? null;
-  const confidenceASales = confidenceAGroup?.salesSubtotal ?? null;
+  // 月別受注サマリー横の「受注確度A」ミニ表示用。選択月の受注予測に入っている未確定(提案・見積)分で、
+  // 左の「◯月の受注」(受注確定分)とは重複しない（ユーザー確定、2026-10-01）
+  const confidenceAForecastByMonth = useMemo(
+    () => sumConfidenceAForecastByMonth(current.pipelineDeals ?? [], fiscalTermDateRange(term)),
+    [current.pipelineDeals, term]
+  );
 
   // 当月単月の受注・完了（全タブ共通、ユーザー確定2026-09-14）。累計ではなくその月単体の実績
   const currentMonthOrder = current.order.find((m) => m.month === currentMonth) ?? null;
@@ -247,8 +248,7 @@ export function DashboardClient({
             <MonthlyOrderSummaryCard
               monthlyOrders={current.order}
               currentMonth={currentMonth}
-              confidenceAGrossProfit={confidenceAGrossProfit}
-              confidenceASales={confidenceASales}
+              confidenceAForecastByMonth={confidenceAForecastByMonth}
             />
             <PipelineDealsSection
               crId={effectiveCr}

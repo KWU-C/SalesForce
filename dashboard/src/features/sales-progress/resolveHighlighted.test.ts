@@ -10,6 +10,7 @@ function deal(overrides: Partial<PipelineDeal> & { processId: string }): Pipelin
     grossProfit: 100,
     sales: 300,
     salesforceMemo: null,
+    expectedOrderDate: null,
     salesforceMemoUpdatedAt: "2026-08-15T02:30:00.000Z",
     ...overrides,
   };

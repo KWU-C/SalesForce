@@ -1,12 +1,17 @@
 /**
  * Process__cに対するSOQL組み立て。
  *
- * 「完了」の定義（請求日＋受注確度A＋失注除外）は
- * ユーザー確定・検算済み（docs/salesforce-reconciliation-2025-09-11.md）。
- * 「受注」の定義（受注日＋受注確度A＋失注除外）は2026-08-17にユーザーが
- * 「受注確定分＝受注・納品・請求・入金を全て含む、確度A（80〜100%）のみ」として確定。
+ * 「受注」の定義は受注日＋受注確度A＋受注確定フェーズ（受注・納品・請求・入金）、
+ * 「完了」の定義は請求日＋受注確度A＋受注確定フェーズ。
+ * 2026-08-17にユーザーが「受注確定分＝受注・納品・請求・入金を全て含む、
+ * 確度A（80〜100%）のみ」として確定していたが、実装が失注除外のみだったため
+ * 受注日/請求日が入力済みの「提案」「見積」が混入し、パイプライン一覧(提案・見積)と
+ * 二重計上になっていた（ユーザー指摘、2026-10-01に修正。完了・推定負荷率も同じ条件に統一）。
  * ここでは組み立てのみ行い、実行はsalesforceClient.query()に委ねる。
  */
+
+/** 受注確定フェーズ。「提案」「見積」(パイプライン一覧側)と「失注」を含めない */
+const CONFIRMED_PHASE_CLAUSE = "phase__c IN ('受注','納品','請求','入金')";
 
 /**
  * 対象CR一覧は事業期によって変わる（48・49期はCR1〜3、50期以降はCR1〜4、
@@ -29,7 +34,7 @@ export function buildOrderProgressQuery(
     WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchuubi__c != null
       AND juchukakudo__c = 'A (80～100%)'
-      AND phase__c != '失注'
+      AND ${CONFIRMED_PHASE_CLAUSE}
       AND juchuubi__c >= ${dateRange.start} AND juchuubi__c <= ${dateRange.end}
     GROUP BY bumonna__c, CALENDAR_MONTH(juchuubi__c)`;
 }
@@ -44,7 +49,7 @@ export function buildCompletedProgressQuery(
     FROM Process__c
     WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchukakudo__c = 'A (80～100%)'
-      AND phase__c != '失注'
+      AND ${CONFIRMED_PHASE_CLAUSE}
       AND seikyuubi__c >= ${dateRange.start} AND seikyuubi__c <= ${dateRange.end}
     GROUP BY bumonna__c, CALENDAR_MONTH(seikyuubi__c)`;
 }
@@ -96,7 +101,7 @@ export function buildOrderClientRankingQuery(
     WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchuubi__c != null
       AND juchukakudo__c = 'A (80～100%)'
-      AND phase__c != '失注'
+      AND ${CONFIRMED_PHASE_CLAUSE}
       AND juchuubi__c >= ${dateRange.start} AND juchuubi__c <= ${dateRange.end}`;
 }
 
@@ -108,7 +113,7 @@ export function buildCompletedClientRankingQuery(
     FROM Process__c
     WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchukakudo__c = 'A (80～100%)'
-      AND phase__c != '失注'
+      AND ${CONFIRMED_PHASE_CLAUSE}
       AND seikyuubi__c >= ${dateRange.start} AND seikyuubi__c <= ${dateRange.end}`;
 }
 
@@ -128,7 +133,7 @@ export function buildOrderLeaderRankingQuery(
     WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchuubi__c != null
       AND juchukakudo__c = 'A (80～100%)'
-      AND phase__c != '失注'
+      AND ${CONFIRMED_PHASE_CLAUSE}
       AND juchuubi__c >= ${dateRange.start} AND juchuubi__c <= ${dateRange.end}
     GROUP BY bumonna__c, rida__c, rida__r.Name`;
 }
@@ -141,7 +146,7 @@ export function buildCompletedLeaderRankingQuery(
     FROM Process__c
     WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchukakudo__c = 'A (80～100%)'
-      AND phase__c != '失注'
+      AND ${CONFIRMED_PHASE_CLAUSE}
       AND seikyuubi__c >= ${dateRange.start} AND seikyuubi__c <= ${dateRange.end}
     GROUP BY bumonna__c, rida__c, rida__r.Name`;
 }
@@ -160,7 +165,7 @@ export function buildOrderCategoryBreakdownQuery(
     WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchuubi__c != null
       AND juchukakudo__c = 'A (80～100%)'
-      AND phase__c != '失注'
+      AND ${CONFIRMED_PHASE_CLAUSE}
       AND juchuubi__c >= ${dateRange.start} AND juchuubi__c <= ${dateRange.end}
     GROUP BY bumonna__c, shohinkubun__c`;
 }
@@ -177,6 +182,9 @@ export function buildOrderCategoryBreakdownQuery(
  * はレコード全体の最終更新日であり、memo__c欄の更新日限定ではないが、レポート原本の
  * 列もこのフィールドをそのまま指しているため同じ値を採用する。
  *
+ * juchuubi__c(受注日)は未受注案件では受注予定日として入力されており、月別受注サマリー横の
+ * 「受注確度A」(その月の受注予測のうち未確定分)の集計に使う(ユーザー確定、2026-10-01)。
+ *
  * 除外フィルタのみCRごとに異なる（レポート原本の設定通り）:
  * - CR1/CR2/CR4: 案件名(Name)に'●'を含む行を除外（テスト・ダミー行の除外と推測）
  * - CR3: メモ(memo__c)が'失注予定'の行を除外。ただし`memo__c`はtextarea型で
@@ -190,7 +198,7 @@ export function buildOrderCategoryBreakdownQuery(
 export function buildPipelineDealsQuery(crId: string): string {
   const exclusionFilter = crId === "CR3" ? null : `AND (NOT Name LIKE '%●%')`;
 
-  return `SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, uriagegoukei__c, memo__c, LastModifiedDate
+  return `SELECT Id, Name, clientName__c, juchukakudo__c, arari__c, uriagegoukei__c, memo__c, juchuubi__c, LastModifiedDate
     FROM Process__c
     WHERE bumonna__c = '${crId}'
       AND phase__c IN ('提案','見積')
@@ -205,7 +213,7 @@ export function buildPipelineDealsQuery(crId: string): string {
  * 別の独立したクエリで、既存の受注・完了・達成率・累計の集計ロジックには一切影響しない
  * （ユーザー確定、2026-09-18）。
  *
- * 対象: 受注確度A・失注除外・受注済み(juchuubi__c あり)・完了月(seikyuubi__c)が
+ * 対象: 受注確度A・受注確定フェーズ(受注・納品・請求・入金)・受注済み(juchuubi__c あり)・完了月(seikyuubi__c)が
  * currentMonthStart以降の案件。完了が現在月より前(＝既に完了済みで現在は稼働していない
  * とみなせる)案件は対象外にする(ユーザー確定)。上限日付は設けない(長期案件も
  * 対象に含めるため)。集計はせず明細のまま返す(案件ごとに受注月〜完了月の月数で
@@ -220,7 +228,7 @@ export function buildResourceLoadDealsQuery(crIds: readonly string[], currentMon
     FROM Process__c
     WHERE bumonna__c IN (${crInClause(crIds)})
       AND juchukakudo__c = 'A (80～100%)'
-      AND phase__c != '失注'
+      AND ${CONFIRMED_PHASE_CLAUSE}
       AND juchuubi__c != null
       AND seikyuubi__c != null
       AND seikyuubi__c >= ${currentMonthStart}`;

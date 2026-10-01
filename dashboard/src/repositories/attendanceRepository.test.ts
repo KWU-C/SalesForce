@@ -47,7 +47,7 @@ describe("getAttendanceSection", () => {
     ]);
     getWorkRecordSummaryMock.mockResolvedValue({ work_days: 20, total_work_mins: 12000, total_normal_work_mins: 9600 });
 
-    const result = await getAttendanceSection();
+    const result = await getAttendanceSection({ kind: "closingMonth", year: 2026, month: 9 });
 
     expect(getWorkRecordSummaryMock).toHaveBeenCalledTimes(1);
     expect(getWorkRecordSummaryMock).toHaveBeenCalledWith(2, 1, 2026, 9);
@@ -64,10 +64,49 @@ describe("getAttendanceSection", () => {
     ]);
     getWorkRecordSummaryMock.mockResolvedValue({ work_days: 10, total_work_mins: 6000, total_normal_work_mins: 4800 });
 
-    const result = await getAttendanceSection();
+    const result = await getAttendanceSection({ kind: "closingMonth", year: 2026, month: 9 });
 
     expect(getWorkRecordSummaryMock).toHaveBeenCalledTimes(1);
     expect(result!.targetLeft.map((r) => r.name)).toEqual(["在籍 三郎"]);
+  });
+
+  it("aggregates the past 28 days (default) from daily work records across two closing months", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-01T03:00:00Z")); // 日本時間10/1 → 対象は9/3〜9/30
+    getFreeeCompanyIdMock.mockResolvedValue(1);
+    getHrEmployeesMock.mockResolvedValue([{ id: 6, display_name: "対象 五郎", retire_date: null }]);
+    const day = (date: string, overtime: number) => ({
+      date,
+      normal_work_mins: 480,
+      total_overtime_work_mins: overtime,
+      paid_holiday: 0,
+      special_holiday: 0,
+      half_paid_holiday_mins: 0,
+      hourly_paid_holiday_mins: 0,
+      half_special_holiday_mins: 0,
+      hourly_special_holiday_mins: 0,
+      work_record_segments: [{ clock_in_at: `${date}T09:00:00+09:00`, clock_out_at: `${date}T${overtime ? 19 : 18}:00:00+09:00` }],
+      break_records: [{ clock_in_at: `${date}T12:00:00+09:00`, clock_out_at: `${date}T13:00:00+09:00` }],
+    });
+    getWorkRecordSummaryMock.mockImplementation(async (_id: number, _company: number, _year: number, month: number) =>
+      month === 9
+        ? {
+            start_date: "2026-08-21",
+            end_date: "2026-09-20",
+            // 9/2は対象範囲外(9/3より前)なので集計に含めない
+            work_records: [day("2026-09-02", 60), day("2026-09-03", 60)],
+          }
+        : { start_date: "2026-09-21", end_date: "2026-10-20", work_records: [day("2026-09-30", 0), day("2026-10-01", 60)] }
+    );
+
+    const result = await getAttendanceSection();
+
+    expect(getWorkRecordSummaryMock).toHaveBeenCalledTimes(2);
+    expect(getWorkRecordSummaryMock).toHaveBeenCalledWith(6, 1, 2026, 9, { includeWorkRecords: true });
+    expect(getWorkRecordSummaryMock).toHaveBeenCalledWith(6, 1, 2026, 10, { includeWorkRecords: true });
+    expect(result!.targetLeft).toEqual([
+      { name: "対象 五郎", overtimeHours: 1, totalWorkHours: 17, workDays: 2, overtimeAvgPerDay: 0.5 },
+    ]);
   });
 
   it("skips an employee whose work_record_summary fetch fails, instead of fabricating a row", async () => {

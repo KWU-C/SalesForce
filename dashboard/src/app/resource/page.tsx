@@ -5,6 +5,14 @@ import type { ResourceLoadResult } from "@/features/resource-load/resourceLoad";
 import { AttendanceSection } from "@/features/attendance/AttendanceSection";
 import { getAttendanceSection } from "@/repositories/attendanceRepository";
 import type { AttendanceSectionData } from "@/features/attendance/attendance";
+import type { AttendancePeriodView } from "@/features/attendance/AttendanceSection";
+import {
+  attendancePeriodKey,
+  describeAttendancePeriod,
+  resolveAttendancePeriod,
+  selectableClosingMonths,
+  todayInJapan,
+} from "@/features/attendance/attendancePeriod";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isResourceDashboardAuthorized } from "@/config/resourceDashboardAccess";
 import { isDevDeployment, PRODUCTION_DASHBOARD_URL } from "@/config/deployEnvironment";
@@ -18,7 +26,7 @@ export const metadata: Metadata = {
 
 /**
  * 勤怠ダッシュボード(/resource、旧称リソース)。CR別の推定負荷率(Salesforce由来)と、
- * その下に勤怠状況(freee人事労務の当月実績)を表示する参考指標ページ
+ * その下に勤怠状況(freee人事労務の実績。過去28日間がデフォルト、?attendance=YYYY-MMで締め月度)を表示する参考指標ページ
  * (ユーザー確定、2026-09-18)。既存の営業進捗(受注・完了・達成率・累計)・
  * freee会計側の経営ダッシュボードの集計ロジックには一切触れない、完全に独立した機能。
  *
@@ -26,7 +34,21 @@ export const metadata: Metadata = {
  * IAP検証済みメールのみに限定する(ユーザー確定、2026-09-18)。ナビのタブ非表示だけで
  * なく、URLを直接知っていても本文は表示しない(/managementと同じfail-closed方針)。
  */
-export default async function ResourcePage() {
+interface ResourcePageProps {
+  searchParams: Promise<{ attendance?: string }>;
+}
+
+export default async function ResourcePage({ searchParams }: ResourcePageProps) {
+  // 勤怠状況の表示期間。不正な値・選択肢に無い月度は過去28日間にフォールバックする
+  const today = todayInJapan();
+  const attendancePeriod = resolveAttendancePeriod((await searchParams).attendance, today);
+  const attendancePeriodView: AttendancePeriodView = {
+    ...describeAttendancePeriod(attendancePeriod, today),
+    selectedKey: attendancePeriodKey(attendancePeriod),
+    defaultLabel: describeAttendancePeriod({ kind: "rolling" }, today).title,
+    options: selectableClosingMonths(today).map(({ key, label }) => ({ key, label })),
+  };
+
   const iapEmail = await getRequestIapEmail();
   const authorized = isResourceDashboardAuthorized(iapEmail);
 
@@ -43,7 +65,7 @@ export default async function ResourcePage() {
       loadError = true;
     }
     try {
-      attendance = await getAttendanceSection();
+      attendance = await getAttendanceSection(attendancePeriod);
       if (!attendance) attendanceError = true;
     } catch {
       console.error("[resource page] 勤怠状況の取得に失敗しました");
@@ -70,7 +92,7 @@ export default async function ResourcePage() {
           {/* 勤怠状況の上に50px空け、区切り線を入れる(ユーザー確定、2026-09-18) */}
           <div className="mt-[50px] flex flex-col gap-6">
             <hr className="border-t border-[var(--border-hairline)]" />
-            {attendance && <AttendanceSection data={attendance} />}
+            {attendance && <AttendanceSection data={attendance} period={attendancePeriodView} />}
             {/* dev環境はfreee未接続のため常に取得できない。本番の不具合と見間違えないよう
                 本番URLへ案内する(ユーザー確定、2026-09-25) */}
             {attendanceError &&

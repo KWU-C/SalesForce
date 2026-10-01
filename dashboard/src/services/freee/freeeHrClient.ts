@@ -18,9 +18,39 @@ export interface FreeeHrEmployee {
   retire_date: string | null;
 }
 
+interface FreeeClockSpan {
+  clock_in_at: string | null;
+  clock_out_at: string | null;
+}
+
+/** 日次の勤怠(work_record_summariesにwork_records=trueを付けた時のwork_records要素)。
+ * 実データで確認済みのフィールドのうち、過去28日間の集計に使うものだけ抜粋する(2026-10-01) */
+export interface FreeeWorkRecord {
+  /** YYYY-MM-DD */
+  date: string;
+  /** 所定労働時間(分)。有給取得日は0で返る */
+  normal_work_mins: number;
+  /** 時間外(分)。月次サマリの(総勤務−所定内)と一致することを実データで確認済み */
+  total_overtime_work_mins: number;
+  /** 有給取得日数(全休=1、半休=0.5) */
+  paid_holiday: number | null;
+  special_holiday: number | null;
+  half_paid_holiday_mins: number | null;
+  hourly_paid_holiday_mins: number | null;
+  half_special_holiday_mins: number | null;
+  hourly_special_holiday_mins: number | null;
+  work_record_segments: FreeeClockSpan[] | null;
+  break_records: FreeeClockSpan[] | null;
+}
+
 /** 勤怠情報月次サマリ(work_record_summaries)。公式スキーマ(freee/freee-api-schema)で
- * 確認済みのフィールドのうち、今回使う3つのみ抜粋する */
+ * 確認済みのフィールドのうち、使うものだけ抜粋する */
 export interface FreeeWorkRecordSummary {
+  /** 締め期間の開始日・終了日(YYYY-MM-DD)。暦月ではなく締め日基準 */
+  start_date: string;
+  end_date: string;
+  /** work_records=trueを指定した時だけ返る日次の勤怠 */
+  work_records?: FreeeWorkRecord[];
   /** 労働日数 */
   work_days: number;
   /** 総勤務時間(分) */
@@ -66,7 +96,7 @@ export async function getHrEmployees(companyId: number): Promise<FreeeHrEmployee
 }
 
 /**
- * 指定した従業員・年月の勤怠情報サマリ。該当データが無い場合(在籍期間外等)は
+ * 指定した従業員・年月(締め月度)の勤怠情報サマリ。includeWorkRecordsで日次の勤怠も含める。該当データが無い場合(在籍期間外等)は
  * freee側が400/404を返すことがあるため、呼び出し側でtry/catchしてnull扱いする想定
  * (このクライアント自体はthrowするのみで、欠測を推測で埋めない)。
  */
@@ -74,9 +104,11 @@ export async function getWorkRecordSummary(
   employeeId: number,
   companyId: number,
   year: number,
-  month: number
+  month: number,
+  options: { includeWorkRecords?: boolean } = {}
 ): Promise<FreeeWorkRecordSummary> {
   return freeeHrGet<FreeeWorkRecordSummary>(`/api/v1/employees/${employeeId}/work_record_summaries/${year}/${month}`, {
     company_id: companyId,
+    work_records: options.includeWorkRecords ? "true" : undefined,
   });
 }

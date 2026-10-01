@@ -73,6 +73,67 @@ export function buildAttendanceRow(input: WorkRecordInput): AttendanceRow | null
   };
 }
 
+/** 日次の勤怠1日分(freee人事労務のwork_recordsから集計に必要な値だけ取り出したもの) */
+export interface DailyWorkRecord {
+  /** YYYY-MM-DD */
+  date: string;
+  /** 所定労働時間(分)。有給取得日は0 */
+  normalWorkMins: number;
+  /** 時間外(分) */
+  overtimeMins: number;
+  /** 実働(分) = 打刻の合計 − 休憩の合計。打刻が無い日は0 */
+  actualWorkMins: number;
+  /** 全休(有給・特別休暇)の日数。全休=1、半休=0.5 */
+  leaveDays: number;
+  /** 半休・時間休として取得した分(分) */
+  partialLeaveMins: number;
+}
+
+/** その従業員の所定労働時間(分)。期間内の日次データで最も多い0以外の値を採る(全休の日は0で返るため) */
+function standardWorkMins(records: DailyWorkRecord[]): number {
+  const counts = new Map<number, number>();
+  for (const record of records) {
+    if (record.normalWorkMins > 0) counts.set(record.normalWorkMins, (counts.get(record.normalWorkMins) ?? 0) + 1);
+  }
+  let best = 0;
+  let bestCount = 0;
+  for (const [mins, count] of counts) {
+    if (count > bestCount) {
+      best = mins;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+/**
+ * 日次の勤怠を範囲(両端含む)で絞り、月次サマリと同じ定義で合算する(過去28日間の集計用)。
+ *
+ * freeeの月次サマリ(work_days/total_work_mins/時間外)を日次から再現できる式として
+ * 実データで検算済み(2026-10-01): 労働日数は出勤日+有給・特別休暇(全休1日、半休0.5日)、
+ * 総勤務は実働+休暇分(全休は所定労働時間、半休・時間休は取得分)、時間外は日次の時間外の合計。
+ * 所定労働時間はrecords全体(範囲外も含む)から求めるため、範囲で絞る前の配列を渡すこと。
+ */
+export function summarizeDailyWorkRecords(
+  name: string,
+  records: DailyWorkRecord[],
+  range: { start: string; end: string }
+): WorkRecordInput {
+  const standardMins = standardWorkMins(records);
+  let workDays = 0;
+  let totalWorkMins = 0;
+  let overtimeMins = 0;
+  for (const record of records) {
+    if (record.date < range.start || record.date > range.end) continue;
+    const worked = record.actualWorkMins > 0;
+    const fullLeave = record.leaveDays >= 1;
+    workDays += worked || fullLeave ? 1 : record.leaveDays;
+    totalWorkMins += record.actualWorkMins + (fullLeave ? standardMins : 0) + record.partialLeaveMins;
+    overtimeMins += record.overtimeMins;
+  }
+  return { name, workDays, totalWorkMins, normalWorkMins: totalWorkMins - overtimeMins };
+}
+
 /**
  * 区分別に振り分けられた行から、表示用のセクションデータを組み立てる。
  * targetは残業平均時間の降順に並べ、前半を左(多い順のまま)・後半を右

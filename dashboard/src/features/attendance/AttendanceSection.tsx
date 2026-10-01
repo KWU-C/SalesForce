@@ -1,5 +1,6 @@
 import { isOvertimeAvgAlert } from "./attendance";
 import type { AttendanceRow, AttendanceSectionData } from "./attendance";
+import { AttendancePeriodSelector } from "./AttendancePeriodSelector";
 
 function formatHours(hours: number): string {
   return `${hours.toFixed(1)}h`;
@@ -57,18 +58,39 @@ function AttendanceTable({ title, rows }: { title: string; rows: AttendanceRow[]
 
 /**
  * 勤怠状況(/resource下部)。既存の推定負荷率(resource-load)・営業進捗とは独立した
- * freee人事労務の実勤怠データ(当月分)。「対象外」は非表示、「時短」「事務」は
+ * freee人事労務の実勤怠データ。期間は過去28日間(デフォルト)か締め月度で、「他を見る」から
+ * 切り替える(ユーザー確定、2026-10-01)。「対象外」は非表示、「時短」「事務」は
  * 下段にまとめ、それ以外(対象)は残業平均時間の多い順(左)・少ない順(右)に
  * 二分割する(ユーザー確定、2026-09-18)。
  */
-export function AttendanceSection({ data }: { data: AttendanceSectionData }) {
+export interface AttendancePeriodView {
+  /** 見出しの括弧内。例: 「過去28日間」「10月度」 */
+  title: string;
+  /** 対象期間。例: 「9/3〜9/30」 */
+  rangeLabel: string;
+  /** 表示中の締め月度のキー。過去28日間を表示中はnull */
+  selectedKey: string | null;
+  /** 過去28日間へ戻す選択肢の表示名 */
+  defaultLabel: string;
+  /** 「他を見る」の選択肢(締め月度、古い順) */
+  options: { key: string; label: string }[];
+}
+
+export function AttendanceSection({ data, period }: { data: AttendanceSectionData; period: AttendancePeriodView }) {
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-base font-semibold text-[var(--text-primary)]">勤怠状況</h2>
-        <p className="text-xs text-[var(--text-muted)]">
-          当月のfreee人事労務実績。残業平均時間＝時間外(総勤務−所定内)÷労働日数。
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-[var(--text-primary)]">勤怠状況（{period.title}）</h2>
+          <p className="text-xs text-[var(--text-muted)]">
+            {period.rangeLabel}のfreee人事労務実績。残業平均時間＝時間外(総勤務−所定内)÷労働日数。
+          </p>
+        </div>
+        <AttendancePeriodSelector
+          options={period.options}
+          selectedKey={period.selectedKey}
+          defaultLabel={period.defaultLabel}
+        />
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <AttendanceTable title="残業平均時間が多い順" rows={data.targetLeft} />

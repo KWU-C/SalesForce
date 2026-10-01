@@ -6,7 +6,8 @@ vi.mock("@/config/attendanceCategory", () => ({
   ATTENDANCE_CLERICAL_NAMES: ["牛尾 郁美"],
 }));
 
-const { classifyAttendanceMember, buildAttendanceRow, buildAttendanceSection, isOvertimeAvgAlert } = await import("./attendance");
+const { classifyAttendanceMember, buildAttendanceRow, buildAttendanceSection, isOvertimeAvgAlert, summarizeDailyWorkRecords } =
+  await import("./attendance");
 
 describe("classifyAttendanceMember", () => {
   it("classifies excluded/shortHours/clerical members by exact name match", () => {
@@ -103,3 +104,40 @@ describe("isOvertimeAvgAlert(残業平均時間2.50h以上を赤文字)", () => 
   });
 });
 
+
+describe("summarizeDailyWorkRecords", () => {
+  const base = { normalWorkMins: 480, overtimeMins: 0, actualWorkMins: 0, leaveDays: 0, partialLeaveMins: 0 };
+  const range = { start: "2026-09-03", end: "2026-09-30" };
+
+  it("sums worked days inside the range (inclusive) and ignores days outside it", () => {
+    const records = [
+      { ...base, date: "2026-09-02", actualWorkMins: 600, overtimeMins: 120 },
+      { ...base, date: "2026-09-03", actualWorkMins: 540, overtimeMins: 60 },
+      { ...base, date: "2026-09-30", actualWorkMins: 480 },
+      { ...base, date: "2026-10-01", actualWorkMins: 600, overtimeMins: 120 },
+      { ...base, date: "2026-09-05" }, // 打刻なし(休日)
+    ];
+
+    expect(summarizeDailyWorkRecords("対象 花子", records, range)).toEqual({
+      name: "対象 花子",
+      workDays: 2,
+      totalWorkMins: 1020,
+      normalWorkMins: 960,
+    });
+  });
+
+  it("counts full-day leave as a work day credited with the employee's standard hours (freee monthly summary rule)", () => {
+    const records = [
+      { ...base, date: "2026-09-07", actualWorkMins: 480 },
+      { ...base, date: "2026-09-08", normalWorkMins: 0, leaveDays: 1 }, // 全休の日は所定が0で返る
+    ];
+
+    expect(summarizeDailyWorkRecords("対象 花子", records, range)).toMatchObject({ workDays: 2, totalWorkMins: 960 });
+  });
+
+  it("counts a half-day leave with attendance as one day, adding the leave minutes", () => {
+    const records = [{ ...base, date: "2026-09-09", actualWorkMins: 240, leaveDays: 0.5, partialLeaveMins: 240 }];
+
+    expect(summarizeDailyWorkRecords("対象 花子", records, range)).toMatchObject({ workDays: 1, totalWorkMins: 480 });
+  });
+});

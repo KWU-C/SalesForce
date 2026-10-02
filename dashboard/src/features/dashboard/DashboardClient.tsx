@@ -161,23 +161,10 @@ export function DashboardClient({
         <MonthlyCumulativeTable title="完了" data={current.completed} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ClientRankingTable
-          title="受注額（粗利）トップ20クライアント"
-          clients={current.topOrderClients}
-          accentColorVar="--series-1"
-        />
-        <ClientRankingTable
-          title="完了額（粗利）トップ20クライアント"
-          clients={current.topCompletedClients}
-          accentColorVar="--series-2"
-        />
-      </div>
-
-      <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
-
-      {effectiveCr === "ALL" ? (
+      {effectiveCr === "ALL" && (
         <>
+          <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
+
           <CrossCrProgressTable progressByCr={progressByCr} currentMonth={currentMonth} term={term} />
 
           <div>
@@ -205,7 +192,43 @@ export function DashboardClient({
                 })}
             </div>
           </div>
+        </>
+      )}
 
+      {effectiveCr !== "ALL" && (
+        <>
+          <hr className="mt-[75px] border-t-2 border-[var(--baseline)]" />
+
+          <div className="rounded-lg bg-[var(--surface-sunken)] p-4">
+            <MonthlyOrderSummaryCard
+              currentMonth={currentMonth}
+              confirmedOrder={currentMonthOrder}
+              confidenceAForecast={confidenceAForecast}
+              confidenceBForecast={confidenceBForecast}
+            />
+          </div>
+        </>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ClientRankingTable
+          title="受注額（粗利）トップ20クライアント"
+          clients={current.topOrderClients}
+          accentColorVar="--series-1"
+        />
+        <ClientRankingTable
+          title="完了額（粗利）トップ20クライアント"
+          clients={current.topCompletedClients}
+          accentColorVar="--series-2"
+        />
+      </div>
+
+      {effectiveCr !== "ALL" && (
+        <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
+      )}
+
+      {effectiveCr === "ALL" ? (
+        <>
           <hr className="border-t-2 border-[var(--baseline)]" />
 
           <div>
@@ -246,15 +269,7 @@ export function DashboardClient({
             />
           </div>
 
-          <hr className="mt-[75px] border-t-2 border-[var(--baseline)]" />
-
-          <div className="flex flex-col gap-6 rounded-lg bg-[var(--surface-sunken)] p-4">
-            <MonthlyOrderSummaryCard
-              currentMonth={currentMonth}
-              confirmedOrder={currentMonthOrder}
-              confidenceAForecast={confidenceAForecast}
-              confidenceBForecast={confidenceBForecast}
-            />
+          <div className="rounded-lg bg-[var(--surface-sunken)] p-4">
             <PipelineDealsSection
               crId={effectiveCr}
               deals={current.pipelineDeals ?? []}

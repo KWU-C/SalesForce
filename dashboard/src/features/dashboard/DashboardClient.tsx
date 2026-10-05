@@ -141,6 +141,10 @@ export function DashboardClient({
         />
       </div>
 
+      {effectiveCr === "ALL" && (
+        <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
+      )}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <PeriodComparisonChart
           title="月別受注：前期／今期"
@@ -199,15 +203,25 @@ export function DashboardClient({
         <>
           <hr className="mt-[75px] border-t-2 border-[var(--baseline)]" />
 
-          <div className="rounded-lg bg-[var(--surface-sunken)] p-4">
+          <div className="flex flex-col gap-6 rounded-lg bg-[var(--surface-sunken)] p-4">
             <MonthlyOrderSummaryCard
               currentMonth={currentMonth}
               confirmedOrder={currentMonthOrder}
               confidenceAForecast={confidenceAForecast}
               confidenceBForecast={confidenceBForecast}
             />
+            <PipelineDealsSection
+              crId={effectiveCr}
+              deals={current.pipelineDeals ?? []}
+              memosByProcessId={processMemosByProcessId}
+              onMemoSaved={handleMemoSaved}
+            />
           </div>
         </>
+      )}
+
+      {effectiveCr === "ALL" && (
+        <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -229,7 +243,7 @@ export function DashboardClient({
 
       {effectiveCr === "ALL" ? (
         <>
-          <hr className="border-t-2 border-[var(--baseline)]" />
+          <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
 
           <div>
             <h3 className="mb-2 text-sm font-medium text-[var(--text-secondary)]">
@@ -266,15 +280,6 @@ export function DashboardClient({
               title="完了（粗利）リーダー別"
               leaders={current.topCompletedLeaders}
               accentColorVar="--series-2"
-            />
-          </div>
-
-          <div className="rounded-lg bg-[var(--surface-sunken)] p-4">
-            <PipelineDealsSection
-              crId={effectiveCr}
-              deals={current.pipelineDeals ?? []}
-              memosByProcessId={processMemosByProcessId}
-              onMemoSaved={handleMemoSaved}
             />
           </div>
         </>

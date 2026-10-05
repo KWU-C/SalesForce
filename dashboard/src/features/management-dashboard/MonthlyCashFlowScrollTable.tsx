@@ -34,7 +34,8 @@ export interface MonthColumn {
   cashFlow: MonthlyCashFlow | null;
   /**
    * 期別通期スナップショット(termCashFlowSnapshots)の列かどうか。trueの場合、
-   * ヘッダーは「{calendarYear}年{month}月（{term}期通期）」形式(期末月も含めて表示)、
+   * ヘッダーは「{calendarYear}年{month}月」+青の「通期」バッジ(暫定バッジは出さない、
+   * ユーザー確定、2026-10-05)、
    * ヘッダー背景色つき、「この期をfreeeから更新」ボタン(RefreshTermButton、
    * 月次とは別のFirestoreドキュメントを更新する)を表示する(ユーザー確定、2026-09-18)。
    */
@@ -506,7 +507,7 @@ function ReferenceTile({
  * どちらも個別に再取得できるようにする(termCashFlowSnapshots、ユーザー確定、2026-09-18)。
  *
  * ヘッダーの背景色は期別通期合計列のみに付ける(isTermTotal、例:
- * 「2026年8月（49期通期）」)。当月列も含め、それ以外の通常月列はヘッダー背景を
+ * 「2026年8月 [通期]」)。当月列も含め、それ以外の通常月列はヘッダー背景を
  * 付けない(白のまま)。当月の強調は「当月」バッジのみで行う(ユーザー確定、2026-09-18)。
  *
  * 情報設計(ユーザー確定、2026-09-20/21):
@@ -561,12 +562,14 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                       }`}
                     >
                       <div className="flex items-center justify-end gap-1 whitespace-nowrap text-sm font-semibold text-[var(--text-primary)]">
-                        {col.isTermTotal ? (
-                          <>
-                            {col.calendarYear}年{col.month}月（{col.term}期通期）
-                          </>
-                        ) : (
-                          <>{col.calendarYear}年{col.month}月</>
+                        {col.calendarYear}年{col.month}月
+                        {col.isTermTotal && (
+                          <span
+                            className="rounded bg-[var(--series-1)] px-1 py-0.5 text-[10px] font-bold text-white"
+                            title={`${col.term}期通期`}
+                          >
+                            通期
+                          </span>
                         )}
                         {col.isCurrent && (
                           <span className="rounded bg-[var(--band-bg)] px-1 py-0.5 text-[10px] font-bold text-white">
@@ -581,7 +584,7 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                             旧ロジック
                           </span>
                         )}
-                        {col.cashFlow?.status === "provisional" && (
+                        {!col.isTermTotal && col.cashFlow?.status === "provisional" && (
                           <span
                             className="rounded bg-[var(--status-warning)] px-1 py-0.5 text-[10px] font-bold text-white"
                             title={

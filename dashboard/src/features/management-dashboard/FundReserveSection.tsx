@@ -4,8 +4,6 @@ import type { FundReserve } from "./fundReserve";
 
 interface FundReserveSectionProps {
   fundReserve: FundReserve;
-  /** 借入状況セクションのtotalCurrentをそのまま渡す */
-  loanTotalCurrent: number | null;
 }
 
 function Line({
@@ -19,7 +17,7 @@ function Line({
   /** nullの場合「データ未設定」と表示する(推測値は出さない、ユーザー確定の方針) */
   value: number | null;
   indent?: boolean;
-  /** 「うち賞与準備」等の内訳行。indentより一段深く、文字を小さく弱くする */
+  /** 「うち…」の内訳行。indentより一段深く、文字を小さく弱くする */
   note?: boolean;
   bold?: boolean;
 }) {
@@ -35,9 +33,9 @@ function Line({
       ? "font-semibold text-[var(--text-primary)]"
       : "text-[var(--text-primary)]";
   return (
-    <div className={`flex items-center justify-between py-1 text-sm ${indentClass}`}>
+    <div className={`flex items-center justify-between gap-3 py-1 text-sm ${indentClass}`}>
       <span className={labelClass}>{label}</span>
-      <span className={`tabular-nums ${valueClass}`}>{value === null ? "データ未設定" : formatYen(value)}</span>
+      <span className={`whitespace-nowrap tabular-nums ${valueClass}`}>{value === null ? "データ未設定" : formatYen(value)}</span>
     </div>
   );
 }
@@ -63,59 +61,69 @@ function TotalLine({ label, value }: { label: string; value: number | null }) {
   );
 }
 
+function Caption({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1 text-xs text-[var(--text-muted)]">{children}</p>;
+}
+
+/** 控除項目は引き算であることが見えるようマイナスで表示する。nullはnullのまま(データ未設定) */
+function negate(value: number | null): number | null {
+  return value === null ? null : -value;
+}
+
 /**
- * 資金の備え(ストック)。月次資金収支(フロー)とは別枠で、「将来の支出に向けて
- * どれだけ資金を準備しているか」を表す(ユーザー確定、2026-09-15)。
+ * 資金の備え(ストック)。経理報告「残高表銀行」との照合に基づき、定義の違う4つを別ブロックに
+ * 分けて並べる(ユーザー確定、2026-10-05)。各ブロックは見出し+太線の合計行で区切る
+ * (借入状況と同じ様式、ユーザー確定 2026-09-21/22)。
  *
- * 「現預金」「資金ポジション」「その他の備え（参考）」の3セグメントに分け、借入状況と
- * 同じく各セグメントを見出し+太線区切りで明確に分ける(ユーザー確定、2026-09-21。
- * 表示順とその他の備えのラベルは2026-09-22にユーザー確定で変更)。
- * - 現預金: 現預金の下に「うち賞与準備」「うちその他目的資金」を内訳として一段深く
- *   インデントして示し、細い罫線の下に「現預金計」(=現預金－目的別拘束資金。内部的には
- *   fundReserve.freeCashと同じ値)を合計行として置く。賞与準備は対象口座・目標額が
- *   確定するまで常に「未設定」(会計上の賞与引当金とは意味が異なるため推測しない、
- *   ユーザー確定)。その他目的資金は口座ごとの内訳を合算した1行で表示する。
- * - 資金ポジション: 現預金計・借入残高(マイナス表示で引き算であることを視覚的に示す)から、
- *   細い罫線の下に合計行として「ネット資金」(=現預金計－借入残高)を置く。
- * - その他の備え（参考）: 保険積立金。trial_bsの「現金・預金」カテゴリには一切含まれない
- *   ため、現預金からは控除しない別枠の「資産としての備え」(二重控除防止、実データで
- *   検証済み、2026-09-15)。ネット資金の内数ではない参考情報であることを明示するため
- *   最下段に配置しラベルに「（参考）」を付す(ユーザー確定、2026-09-22)。
+ * 1. 現預金の内訳: 現預金総額を口座の性格で分けた内訳(すべて口座の実残高)。合計は現預金総額
+ * 2. 資金余力: 経理管理上の実質資金 = 現預金総額 − 当座貸越利用額 − 消費税準備 − 賞与準備。
+ *    当座貸越は枠ではなく実際の利用額(短期借入金の残高)を引く。消費税準備・賞与準備は経理の
+ *    管理値(設定値)で、未設定の間は「データ未設定」。長期借入金は引かない
+ * 3. 財務ポジション: ネットキャッシュ = 現預金総額 − 借入残高(短期+長期+役員)
+ * 4. その他の備え(参考): 保険積立金。現預金ではないので2・3の計算には含めない
  *
- * セグメント見出し(その他の資産・資金ポジション)の上は罫線なしで、20px相当のマージンのみ
- * で区切る。合計行(現預金計・ネット資金)上の罫線は2px・#c3c2b7(ユーザー確定、2026-09-22)。
+ * 数字はすべてcomposeFundReserveの結果をそのまま表示し、ここでは計算しない。
  */
-export function FundReserveSection({ fundReserve, loanTotalCurrent }: FundReserveSectionProps) {
-  const otherPurposeTotal = fundReserve.otherPurposeLines.reduce((sum, line) => sum + (line.balance ?? 0), 0);
-  // ネット資金 = 現預金計(fundReserve.freeCash) - 借入残高
-  const netFunds =
-    fundReserve.freeCash === null || loanTotalCurrent === null ? null : fundReserve.freeCash - loanTotalCurrent;
+export function FundReserveSection({ fundReserve }: FundReserveSectionProps) {
+  const { capacity } = fundReserve;
 
   return (
     <div className="flex flex-col gap-3">
       <SectionBanner>資金の備え</SectionBanner>
 
       <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-        <SegmentHeading>現預金</SegmentHeading>
-        <Line label="現預金" value={fundReserve.cash} indent />
-        <Line
-          label="うち賞与準備"
-          value={fundReserve.bonusReserveConfigured ? fundReserve.bonusReserve : null}
-          note
-        />
-        <Line label="うちその他目的資金" value={otherPurposeTotal} note />
-        <TotalLine label="現預金計" value={fundReserve.freeCash} />
+        <SegmentHeading>現預金の内訳</SegmentHeading>
+        {fundReserve.cashEarmarkLines.map((line) => (
+          <Line key={line.label} label={line.label} value={line.balance} indent />
+        ))}
+        <Line label="上記以外の口座・現金" value={fundReserve.unearmarkedCash} indent />
+        <TotalLine label="現預金総額" value={fundReserve.cash} />
 
         <div className="mt-[20px]">
-          <SegmentHeading>資金ポジション</SegmentHeading>
-          <Line label="現預金計" value={fundReserve.freeCash} indent bold />
-          <Line label="借入残高" value={loanTotalCurrent === null ? null : -loanTotalCurrent} indent />
-          <TotalLine label="ネット資金" value={netFunds} />
+          <SegmentHeading>資金余力（経理管理上の実質資金）</SegmentHeading>
+          <Line label="現預金総額" value={fundReserve.cash} indent />
+          <Line label="当座貸越利用額" value={negate(capacity.overdraftUsed)} indent />
+          <Line label="消費税準備" value={negate(capacity.consumptionTaxReserve)} indent />
+          <Line label="賞与準備" value={negate(capacity.bonusReserve)} indent />
+          <TotalLine label="資金余力" value={capacity.capacity} />
+          <Caption>
+            当座貸越利用額は短期借入金の残高、消費税準備・賞与準備は経理の管理値です
+            {capacity.settingsAsOf && `（${capacity.settingsAsOf}時点${capacity.settingsSource ? `、${capacity.settingsSource}` : ""}）`}
+            。賞与準備に専用口座はなく、会計上の賞与引当金とは別の金額です。長期借入金は差し引いていません。
+          </Caption>
+        </div>
+
+        <div className="mt-[20px]">
+          <SegmentHeading>財務ポジション</SegmentHeading>
+          <Line label="現預金総額" value={fundReserve.cash} indent />
+          <Line label="借入残高" value={negate(fundReserve.loanTotal)} indent />
+          <TotalLine label="ネットキャッシュ" value={fundReserve.netCash} />
         </div>
 
         <div className="mt-[20px]">
           <SegmentHeading>その他の備え（参考）</SegmentHeading>
           <Line label="保険積立金" value={fundReserve.insuranceAssetReserve} bold />
+          <Caption>現預金ではないため、資金余力・ネットキャッシュには含めていません。</Caption>
         </div>
       </div>
     </div>

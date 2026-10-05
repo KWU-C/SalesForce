@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FreeeTrialBalanceResponse, FreeeTrialBalanceRow } from "@/services/freee/freeeAccountingClient";
-import { extractLoanStatus } from "./loanStatus";
+import { computeOverdraftStatus, extractLoanStatus } from "./loanStatus";
 
 function row(overrides: Partial<FreeeTrialBalanceRow>): FreeeTrialBalanceRow {
   return {
@@ -47,5 +47,29 @@ describe("extractLoanStatus", () => {
     expect(status.totalOpening).toBe(0);
     expect(status.totalCurrent).toBe(0);
     expect(status.netChange).toBe(0);
+  });
+});
+
+describe("computeOverdraftStatus", () => {
+  const trialBs: FreeeTrialBalanceResponse = {
+    company_id: 1,
+    fiscal_year: 2025,
+    balances: [
+      row({ account_item_name: "短期借入金", closing_balance: 700 }),
+      row({ account_item_name: "長期借入金", closing_balance: 5500 }),
+    ],
+  };
+  const loanStatus = extractLoanStatus(trialBs);
+
+  it("uses the short-term loan balance as the drawn amount (long-term loans are not overdraft)", () => {
+    expect(computeOverdraftStatus(loanStatus, 1000)).toEqual({ limitTotal: 1000, used: 700, available: 300 });
+  });
+
+  it("shows zero headroom when fully drawn", () => {
+    expect(computeOverdraftStatus(loanStatus, 700).available).toBe(0);
+  });
+
+  it("keeps limit and headroom null when the limit is not configured, still reporting the drawn amount", () => {
+    expect(computeOverdraftStatus(loanStatus, null)).toEqual({ limitTotal: null, used: 700, available: null });
   });
 });

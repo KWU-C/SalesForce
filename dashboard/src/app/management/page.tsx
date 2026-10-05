@@ -13,6 +13,11 @@ import { getOrFetchLoanStatus } from "@/features/management-dashboard/loanStatus
 import type { LoanStatusSnapshot } from "@/features/management-dashboard/loanStatus";
 import { FundReserveSection } from "@/features/management-dashboard/FundReserveSection";
 import { composeFundReserve } from "@/features/management-dashboard/fundReserve";
+import { computeOverdraftStatus } from "@/features/management-dashboard/loanStatus";
+import type { OverdraftStatus } from "@/features/management-dashboard/loanStatus";
+import { overdraftLimitTotal, selectReserveSettings } from "@/features/management-dashboard/reserveSettings";
+import type { ManagementReserveSettings } from "@/features/management-dashboard/reserveSettings";
+import { listManagementReserveSettings } from "@/repositories/managementReserveSettingsRepository";
 import type { FundReserve } from "@/features/management-dashboard/fundReserve";
 import { getOrFetchFundReserveCore } from "@/features/management-dashboard/fundReserveService";
 import { getOrFetchFinancialSummary } from "@/features/management-dashboard/financialSummaryService";
@@ -103,6 +108,8 @@ export default async function ManagementPage() {
   let cashFlowError = false;
   let loanStatus: LoanStatusSnapshot | null = null;
   let loanStatusError = false;
+  let reserveSettings: ManagementReserveSettings | null = null;
+  let overdraft: OverdraftStatus | null = null;
   let fundReserve: FundReserve | null = null;
   let fundReserveError = false;
   const termTotalsByTerm = new Map<number, TermCashFlowTotal>();
@@ -168,12 +175,30 @@ export default async function ManagementPage() {
         console.error("[management page] freeeからの借入状況取得に失敗しました");
         loanStatusError = true;
       }
+      // 準備額・当座貸越枠(経理の管理値)。読めなくても他の表示は止めず「データ未設定」にする
+      try {
+        reserveSettings = selectReserveSettings(
+          await listManagementReserveSettings(),
+          currentFiscalYear,
+          currentMonth
+        );
+      } catch {
+        console.error("[management page] 準備額・当座貸越枠の設定の取得に失敗しました");
+      }
+      overdraft = loanStatus ? computeOverdraftStatus(loanStatus, overdraftLimitTotal(reserveSettings)) : null;
       try {
         const fundReserveCore = await getOrFetchFundReserveCore(currentFiscalYear, currentMonth, {
           forceRefresh: false,
         });
         const currentCashClosing = cashFlowByMonth[cashFlowByMonth.length - 1]?.cashClosing ?? null;
-        fundReserve = fundReserveCore ? composeFundReserve(fundReserveCore, currentCashClosing) : null;
+        fundReserve = fundReserveCore
+          ? composeFundReserve(fundReserveCore, {
+              cash: currentCashClosing,
+              settings: reserveSettings,
+              loanTotal: loanStatus?.totalCurrent ?? null,
+              overdraftUsed: overdraft?.used ?? null,
+            })
+          : null;
       } catch {
         console.error("[management page] freeeからの資金の備え取得に失敗しました");
         fundReserveError = true;
@@ -318,14 +343,12 @@ export default async function ManagementPage() {
                 {loanStatusError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">借入状況の取得に失敗しました。</p>
                 )}
-                {loanStatus && <LoanStatusTable loanStatus={loanStatus} />}
+                {loanStatus && overdraft && <LoanStatusTable loanStatus={loanStatus} overdraft={overdraft} />}
 
                 {fundReserveError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">資金の備えの取得に失敗しました。</p>
                 )}
-                {fundReserve && (
-                  <FundReserveSection fundReserve={fundReserve} loanTotalCurrent={loanStatus?.totalCurrent ?? null} />
-                )}
+                {fundReserve && <FundReserveSection fundReserve={fundReserve} />}
 
                 {financialSummary && (
                   <FinancialSummaryCards

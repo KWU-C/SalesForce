@@ -103,3 +103,24 @@ export async function getLoanStatus(fiscalYear: number, selectedMonth: number): 
   });
   return extractLoanStatus(trialBs);
 }
+
+/**
+ * 当座貸越の枠・利用額・空き枠。枠はTCD独自の設定値(freeeに枠の情報は無い)、利用額は
+ * 短期借入金の現在残高。資金の備えの「資金余力」から引くのは枠ではなくこの利用額。
+ *
+ * 【前提】短期借入金の全額が当座貸越であること(2026-10-05時点の実データで、短期借入金の内訳が
+ * すべて当座貸越であることを確認済み)。当座貸越以外の短期借入が入ると利用額が過大になるため、
+ * UIにもこの前提を明記する。科目の内訳名(品目)の文字列で当座貸越かどうかを判定することはしない。
+ */
+export interface OverdraftStatus {
+  /** 枠の合計。未設定ならnull */
+  limitTotal: number | null;
+  used: number;
+  /** 空き枠 = 枠 − 利用額。枠が未設定ならnull */
+  available: number | null;
+}
+
+export function computeOverdraftStatus(loanStatus: LoanStatus, limitTotal: number | null): OverdraftStatus {
+  const used = loanStatus.lines.find((l) => l.key === "shortTerm")?.currentBalance ?? 0;
+  return { limitTotal, used, available: limitTotal === null ? null : limitTotal - used };
+}

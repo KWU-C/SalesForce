@@ -4,67 +4,90 @@ import { getAccountItems } from "@/services/freee/freeeTransactionClient";
 import type { FreeeAccountItem } from "@/services/freee/freeeTransactionClient";
 import { getFreeeCompanyId } from "@/repositories/freeeAuthRepository";
 import { FISCAL_MONTH_ORDER } from "@/config/fiscalPeriods";
-import { BONUS_RESERVE_CONFIGURED, WALLETABLE_PURPOSE_MAP } from "@/config/fundReserveClassification";
+import { WALLETABLE_PURPOSE_MAP } from "@/config/fundReserveClassification";
 import type { FundReservePurpose } from "@/config/fundReserveClassification";
+import type { ManagementReserveSettings } from "./reserveSettings";
 
 /**
- * 「資金の備え」(ストック)。借入状況と同じく月次資金収支(フロー)とは別枠で、
- * 「将来の支出に向けてどれだけ資金を準備しているか」を表す(ユーザー確定、2026-09-15)。
+ * 「資金の備え」(ストック)。借入状況と同じく月次資金収支(フロー)とは別枠で、手元資金のうち
+ * どれだけが拘束・予定済みで、どれだけ余力があるかを表す。
  *
- * 「賞与引当金」(会計上の発生主義の見積り計上)とは意味が異なるため、ここでは
- * 実キャッシュの準備額のみを扱う。対象口座・目標額が未確定の間は推測せず「未設定」とする。
+ * 経理報告「残高表銀行」との照合(2026-10-05)に基づき、次の4つを別々の指標として並べる
+ * (ユーザー確定、2026-10-05。互いに定義が違うので1つの数字に統合しない):
+ * 1. 現預金の内訳: 口座の性格(担保差入・納税用・その他目的・それ以外)による現預金総額の内訳
+ * 2. 資金余力: 経理管理上の実質資金(経理報告の「担保及び消費税・賞与引当分除く実質残」に対応)
+ * 3. 財務ポジション: 現預金総額 − 借入残高 = ネットキャッシュ
+ * 4. その他の備え(参考): 保険積立金。現預金ではないので2・3の計算には含めない
  */
-export interface OtherPurposeLine {
+
+/** スナップショットの算出ロジックの版。保存済みの版が違えばキャッシュを使わず取り直す */
+export const FUND_RESERVE_CALCULATION_VERSION = "fund-reserve-v2-2026-10-05";
+
+export interface CashEarmarkLine {
+  purpose: FundReservePurpose;
   label: string;
   /**
-   * 対象walletableに対応するfreee勘定科目が見つからない場合、またはtrial_bs側に
-   * その科目の情報が無い場合はnull(0円と推測しない)。科目は見つかったがtrial_bs行が
-   * 無い場合は、freeeが残高・動きゼロの科目行を省略する仕様(実データ確認済み)に基づき
-   * 0円として扱う(borrowedと同じ考え方)。
+   * 対象walletableに対応するfreee勘定科目が見つからない場合はnull(0円と推測しない)。
+   * 科目は見つかったがtrial_bs行が無い場合は、freeeが残高・動きゼロの科目行を省略する仕様
+   * (実データ確認済み)に基づき0円として扱う。
    */
   balance: number | null;
 }
 
 /**
- * 資金の備えのうち、freeeから取得できる部分(現預金は含まない)。
- * Firestoreスナップショットとしてキャッシュする対象はこちら(2026-09-15、
- * 過去月=Firestore/当月=freeeライブの切り替え対応)。現預金(cash)は月次資金収支の
- * スナップショットに既に含まれているため、ここでは二重に保存しない。
+ * 資金の備えのうち、freeeから取得できる部分(現預金総額は含まない)。Firestoreスナップショットと
+ * してキャッシュする対象はこちら。現預金総額は月次資金収支のスナップショットに既にあり、
+ * 準備額・当座貸越枠はTCD独自の設定値のため、どちらもここには保存しない。
  */
 export interface FundReserveCore {
-  /** WALLETABLE_PURPOSE_MAPに賞与用の口座が設定されているか。falseの間はUI側で常に「未設定」表示 */
-  bonusReserveConfigured: boolean;
-  bonusReserve: number;
-  /** purpose="other"の口座ごとの内訳(いずれも現金・預金カテゴリ内の、選択月末時点の残高) */
-  otherPurposeLines: OtherPurposeLine[];
+  calculationVersion: string;
   /**
-   * 現預金内の目的別拘束資金合計 = bonusReserve + otherPurposeLinesの合計
-   * (将来purpose="insurance"の口座が追加されればそれも含む)。
-   * WALLETABLE_PURPOSE_MAPの対象はすべてfreeeのwalletable(銀行口座等)であり、
-   * 構造的に必ず「現金・預金」カテゴリに含まれるため、自由資金の控除対象にできる
-   * (ユーザー確定、2026-09-15)。
+   * WALLETABLE_PURPOSE_MAPの口座ごとの、選択月末時点の残高。対象はすべてfreeeのwalletable
+   * (銀行口座)であり、構造的に必ず「現金・預金」カテゴリ=現預金総額の内数になる。
    */
-  cashRestrictedTotal: number;
+  cashEarmarkLines: CashEarmarkLine[];
   /**
    * 保険積立金(freee勘定科目「保険積立金」、account_category_name="投資その他の資産")の
-   * 選択月末時点の残高。実データで確認済みの通り、trial_bsの「現金・預金」カテゴリには
-   * 一切含まれないため、現預金からは控除しない「資産としての備え」として別表示する
-   * (二重控除防止、ユーザー確定、2026-09-15)。
+   * 選択月末時点の残高。trial_bsの「現金・預金」カテゴリには一切含まれない(実データ確認済み)。
    */
   insuranceAssetReserve: number;
 }
 
+/**
+ * 資金余力(経理管理上の実質資金) = 現預金総額 − 当座貸越利用額 − 消費税準備 − 賞与準備。
+ * 経理報告の「担保及び消費税・賞与引当分除く実質残」に対応する。長期借入金は引かない。
+ *
+ * 当座貸越は設定値の「枠」ではなく実際の利用額(freeeの短期借入金残高、loanStatus.tsの
+ * computeOverdraftStatusのused)を引く。返済して利用額が減れば控除も減る(枠全額を引き続けない、
+ * ユーザー確定 2026-10-05)。枠は借入状況の枠/利用額/空き枠の表示にだけ使う。
+ * 消費税準備・賞与準備は設定値。控除項目が1つでも不明なら資金余力はnull(一部だけ引いた数字を出さない)。
+ */
+export interface FundCapacity {
+  /** 当座貸越利用額。借入状況が取得できていなければnull */
+  overdraftUsed: number | null;
+  consumptionTaxReserve: number | null;
+  bonusReserve: number | null;
+  capacity: number | null;
+  /** 適用した設定の基準日・出所。設定が無ければnull */
+  settingsAsOf: string | null;
+  settingsSource: string | null;
+}
+
 export interface FundReserve extends FundReserveCore {
-  /** 現預金(呼び出し側から渡される。月次資金収支の月末現預金と同じ値を使う想定) */
+  /** 現預金総額(呼び出し側から渡される。月次資金収支の月末現預金と同じ値) */
   cash: number | null;
-  /** 自由に使える現預金 = 現預金 - 現預金内の目的別拘束資金(保険積立金は含めない) */
-  freeCash: number | null;
+  /** 現預金総額 − cashEarmarkLinesの合計(通常の運転資金口座の残高) */
+  unearmarkedCash: number | null;
+  capacity: FundCapacity;
+  /** 借入残高(借入状況セクションの合計と同じ値) */
+  loanTotal: number | null;
+  /** ネットキャッシュ = 現預金総額 − 借入残高 */
+  netCash: number | null;
 }
 
 /**
- * Firestoreへキャッシュするスナップショットの形(2026-09-15、過去月=Firestore/当月=freee
- * ライブの切り替え対応)。cash/freeCashは現預金の取得元によって変わり得るためキャッシュ
- * せず、常にcomposeFundReserveでその場で合成する。
+ * Firestoreへキャッシュするスナップショットの形。cash以下の合成値は現預金・設定値・借入残高の
+ * 取得元によって変わり得るためキャッシュせず、常にcomposeFundReserveでその場で合成する。
  */
 export interface FundReserveCoreSnapshot extends FundReserveCore {
   fiscalYear: number;
@@ -82,72 +105,79 @@ export function extractInsuranceAccountBalance(trialBs: FreeeTrialBalanceRespons
 }
 
 /**
- * purpose別の口座残高を、選択月末時点のtrial_bs closing_balanceから取得する。
+ * trial_bs・account_itemsの取得済みレスポンスから資金の備え(freee由来の部分)を合成する。
  *
- * 【2026-09-15修正】以前はgetWalletables()のリアルタイム現在残高を使っていたため、
- * 過去月を表示していても常に「現在」の残高が出てしまう不整合があった(保険積立金は
- * trial_bs経由で正しく月次点だったのに対し、こちらだけ非対称だった)。
- * account_items(walletable_idを持つ)経由でwalletableに対応する勘定科目名を特定し、
- * 保険積立金と同じtrial_bsのclosing_balanceで選択月末時点の残高を取得するよう統一した。
- * これにより8月表示なら8月末残高、9月表示なら9月末残高になる(12か月横並び表示の前提条件)。
- */
-function sumPurposeWalletables(
-  accountItems: FreeeAccountItem[],
-  trialBs: FreeeTrialBalanceResponse,
-  purpose: FundReservePurpose
-): { total: number; lines: OtherPurposeLine[] } {
-  const lines = WALLETABLE_PURPOSE_MAP.filter((m) => m.purpose === purpose).map((m) => {
-    const accountItem = accountItems.find((i) => i.walletable_id === m.walletableId);
-    const balance = accountItem ? (findRow(trialBs.balances, accountItem.name)?.closing_balance ?? 0) : null;
-    return { label: m.label, balance };
-  });
-  const total = lines.reduce((sum, l) => sum + (l.balance ?? 0), 0);
-  return { total, lines };
-}
-
-/**
- * trial_bs・account_itemsの取得済みレスポンスから資金の備え(現預金を除く、freee由来の部分)を
- * 合成する。WALLETABLE_PURPOSE_MAPの口座分類を変更しても、この関数やUI側の変更は不要
- * (purpose別に合算するだけの汎用ロジックのため、ユーザー確定の設計要件2026-09-15)。
+ * 口座残高はgetWalletables()のリアルタイム残高ではなく、account_items(walletable_idを持つ)経由で
+ * 勘定科目名を特定し、trial_bsのclosing_balance(選択月末時点)から取る。過去月を表示しても
+ * 「現在」の残高が混ざらないようにするため(2026-09-15修正)。
+ * WALLETABLE_PURPOSE_MAPの口座分類を変更しても、この関数やUI側の変更は不要。
  */
 export function buildFundReserveCore(params: {
   trialBs: FreeeTrialBalanceResponse;
   accountItems: FreeeAccountItem[];
 }): FundReserveCore {
-  // 保険積立金は勘定科目(資産)であり現金・預金カテゴリには含まれないため、
-  // 現預金内拘束資金(cashRestrictedTotal)には絶対に混ぜない(二重控除防止)
-  const insuranceAssetReserve = extractInsuranceAccountBalance(params.trialBs);
-
-  // WALLETABLE_PURPOSE_MAPの対象はすべてfreeeのwalletableであり、構造的に必ず
-  // 現金・預金カテゴリに含まれるため、purposeを問わずまとめて現預金内拘束資金とする
-  const bonusPurpose = sumPurposeWalletables(params.accountItems, params.trialBs, "bonus");
-  const insurancePurposeWalletables = sumPurposeWalletables(params.accountItems, params.trialBs, "insurance");
-  const otherPurpose = sumPurposeWalletables(params.accountItems, params.trialBs, "other");
-  const cashRestrictedTotal = bonusPurpose.total + insurancePurposeWalletables.total + otherPurpose.total;
+  const cashEarmarkLines = WALLETABLE_PURPOSE_MAP.map((m) => {
+    const accountItem = params.accountItems.find((i) => i.walletable_id === m.walletableId);
+    const balance = accountItem ? (findRow(params.trialBs.balances, accountItem.name)?.closing_balance ?? 0) : null;
+    return { purpose: m.purpose, label: m.label, balance };
+  });
 
   return {
-    bonusReserveConfigured: BONUS_RESERVE_CONFIGURED,
-    bonusReserve: bonusPurpose.total,
-    otherPurposeLines: otherPurpose.lines,
-    cashRestrictedTotal,
-    insuranceAssetReserve,
+    calculationVersion: FUND_RESERVE_CALCULATION_VERSION,
+    cashEarmarkLines,
+    insuranceAssetReserve: extractInsuranceAccountBalance(params.trialBs),
+  };
+}
+
+export function computeFundCapacity(
+  cash: number | null,
+  overdraftUsed: number | null,
+  settings: ManagementReserveSettings | null
+): FundCapacity {
+  const consumptionTaxReserve = settings?.consumptionTaxReserve ?? null;
+  const bonusReserve = settings?.bonusReserve ?? null;
+  const capacity =
+    cash === null || overdraftUsed === null || consumptionTaxReserve === null || bonusReserve === null
+      ? null
+      : cash - overdraftUsed - consumptionTaxReserve - bonusReserve;
+  return {
+    overdraftUsed,
+    consumptionTaxReserve,
+    bonusReserve,
+    capacity,
+    settingsAsOf: settings?.asOf ?? null,
+    settingsSource: settings?.source ?? null,
   };
 }
 
 /**
- * FundReserveCore(freee由来、キャッシュ可能)と現預金(呼び出し側から渡す。月次資金収支の
- * 月末現預金と同じ値を使う想定)から、表示用のFundReserveを合成する。cash/freeCashは
- * 現預金の取得元(月次資金収支のキャッシュ有無)に応じて変わり得るため、常にその場で
- * 計算し、FundReserveCoreの側には保存しない(2026-09-15、過去月=Firestore/当月=freee
- * ライブの切り替え対応)。
+ * FundReserveCore(freee由来、キャッシュ可能)に、現預金総額(月次資金収支の月末現預金)・
+ * 設定値・借入残高・当座貸越利用額を合わせて表示用のFundReserveを合成する。UI側では計算しない。
  */
-export function composeFundReserve(core: FundReserveCore, cash: number | null): FundReserve {
-  const freeCash = cash === null ? null : cash - core.cashRestrictedTotal;
-  return { ...core, cash, freeCash };
+export function composeFundReserve(
+  core: FundReserveCore,
+  inputs: {
+    cash: number | null;
+    settings: ManagementReserveSettings | null;
+    loanTotal: number | null;
+    /** 当座貸越利用額(computeOverdraftStatusのused)。借入状況が取得できていなければnull */
+    overdraftUsed: number | null;
+  }
+): FundReserve {
+  const { cash, settings, loanTotal, overdraftUsed } = inputs;
+  const earmarkedTotal = core.cashEarmarkLines.reduce((sum, l) => sum + (l.balance ?? 0), 0);
+  return {
+    ...core,
+    cash,
+    unearmarkedCash: cash === null ? null : cash - earmarkedTotal,
+    capacity: computeFundCapacity(cash, overdraftUsed, settings),
+    loanTotal,
+    netCash: cash === null || loanTotal === null ? null : cash - loanTotal,
+  };
 }
 
 /**
- * freee接続済みの事業所から資金の備え(現預金を除く部分)を取得する。
+ * freee接続済みの事業所から資金の備え(freee由来の部分)を取得する。
  * company_id未確定(未接続)の場合はnull。
  */
 export async function getFundReserveCore(fiscalYear: number, selectedMonth: number): Promise<FundReserveCore | null> {

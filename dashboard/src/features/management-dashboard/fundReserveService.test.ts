@@ -15,13 +15,12 @@ vi.mock("./fundReserve", async (importOriginal) => {
 });
 
 const { getOrFetchFundReserveCore } = await import("./fundReserveService");
+const { FUND_RESERVE_CALCULATION_VERSION } = await import("./fundReserve");
 
 function makeCore(overrides: Partial<FundReserveCore> = {}): FundReserveCore {
   return {
-    bonusReserveConfigured: false,
-    bonusReserve: 0,
-    otherPurposeLines: [],
-    cashRestrictedTotal: 5000,
+    calculationVersion: FUND_RESERVE_CALCULATION_VERSION,
+    cashEarmarkLines: [],
     insuranceAssetReserve: 300,
     ...overrides,
   };
@@ -56,6 +55,23 @@ describe("getOrFetchFundReserveCore", () => {
       expect.objectContaining({ fiscalYear: 2025, month: 8, insuranceAssetReserve: 999 })
     );
     expect(result?.insuranceAssetReserve).toBe(999);
+  });
+
+  it("ignores a cached snapshot saved by an older calculation version and refetches", async () => {
+    // 旧版のスナップショット(calculationVersionを持たない)
+    getFundReserveSnapshotMock.mockResolvedValue({
+      fiscalYear: 2025,
+      month: 8,
+      insuranceAssetReserve: 111,
+      fetchedAt: new Date("2026-09-14T00:00:00Z"),
+    });
+    getFundReserveCoreMock.mockResolvedValue(makeCore({ insuranceAssetReserve: 222 }));
+
+    const result = await getOrFetchFundReserveCore(2025, 8);
+
+    expect(getFundReserveCoreMock).toHaveBeenCalledWith(2025, 8);
+    expect(saveFundReserveSnapshotMock).toHaveBeenCalled();
+    expect(result?.insuranceAssetReserve).toBe(222);
   });
 
   it("returns null when freee is not connected, never fabricating a snapshot", async () => {

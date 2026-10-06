@@ -141,9 +141,7 @@ export function DashboardClient({
         />
       </div>
 
-      {effectiveCr === "ALL" && (
-        <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
-      )}
+      <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <PeriodComparisonChart
@@ -220,9 +218,7 @@ export function DashboardClient({
         </>
       )}
 
-      {effectiveCr === "ALL" && (
-        <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
-      )}
+      <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ClientRankingTable
@@ -236,10 +232,6 @@ export function DashboardClient({
           accentColorVar="--series-2"
         />
       </div>
-
-      {effectiveCr !== "ALL" && (
-        <hr className="mt-[76px] border-t-2 border-[var(--baseline)]" />
-      )}
 
       {effectiveCr === "ALL" ? (
         <>
@@ -255,9 +247,13 @@ export function DashboardClient({
             </div>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <PeriodSummarySection title="受注：四半期累計" summaries={orderQuarterSummaries} />
-            <PeriodSummarySection title="受注：上半期・下半期累計" summaries={orderHalfSummaries} />
+            <PeriodSummarySection
+              title="受注：上半期・下半期累計"
+              summaries={orderHalfSummaries}
+              spaced
+            />
             <PeriodSummarySection
               title="完了：四半期累計"
               summaries={completedQuarterSummaries}
@@ -265,6 +261,7 @@ export function DashboardClient({
             <PeriodSummarySection
               title="完了：上半期・下半期累計"
               summaries={completedHalfSummaries}
+              spaced
             />
           </div>
         </>

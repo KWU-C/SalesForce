@@ -35,7 +35,7 @@ export function PeriodComparisonChart({
   currentColorVar,
 }: PeriodComparisonChartProps) {
   const seriesCurrent = useCssVar(currentColorVar, "#2a78d6");
-  const seriesPrevious = useCssVar("--series-previous", "#a4a19a");
+  const seriesPrevious = useCssVar("--series-previous", "#c4c1ba");
   const seriesTarget = useCssVar("--series-3", "#1baf7a");
   const gridline = useCssVar("--gridline", "#e1e0d9");
   const muted = useCssVar("--text-muted", "#898781");

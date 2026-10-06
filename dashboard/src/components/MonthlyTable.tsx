@@ -1,12 +1,14 @@
-import type { MonthlyProgress } from "@/domain/types";
+import type { MonthlyProgress, PeriodSummary } from "@/domain/types";
 import { formatPercent, formatYen } from "@/utils/format";
 
 interface MonthlyTableProps {
   title: string;
   data: MonthlyProgress[];
+  /** 最下行に出す通期合計 */
+  total: PeriodSummary;
 }
 
-export function MonthlyTable({ title, data }: MonthlyTableProps) {
+export function MonthlyTable({ title, data, total }: MonthlyTableProps) {
   return (
     <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
       <h3 className="border-b border-[var(--border-hairline)] px-4 py-3 text-sm font-medium text-[var(--text-secondary)]">
@@ -49,6 +51,21 @@ export function MonthlyTable({ title, data }: MonthlyTableProps) {
                 </tr>
               );
             })}
+            <tr className="border-t-2 border-[var(--baseline)] bg-[color-mix(in_srgb,var(--gridline)_50%,transparent)] tabular-nums">
+              <td className="px-4 py-2 text-[var(--text-primary)]">合計</td>
+              <td className="px-4 py-2 text-right text-[var(--text-primary)]">
+                {total.sales === null ? "—" : formatYen(total.sales)}
+              </td>
+              <td className="px-4 py-2 text-right text-[var(--text-primary)]">
+                {total.grossProfit === null ? "—" : formatYen(total.grossProfit)}
+              </td>
+              <td className="px-4 py-2 text-right text-[var(--text-secondary)]">
+                {formatYen(total.targetGrossProfit)}
+              </td>
+              <td className="px-4 py-2 text-right text-[var(--text-secondary)]">
+                {total.achievementRate === null ? "—" : formatPercent(total.achievementRate)}
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>

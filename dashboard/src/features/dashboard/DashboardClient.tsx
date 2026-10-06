@@ -242,8 +242,8 @@ export function DashboardClient({
               全社月別詳細
             </h3>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <MonthlyTable title="受注" data={current.order} />
-              <MonthlyTable title="完了" data={current.completed} />
+              <MonthlyTable title="受注" data={current.order} total={orderYearSummary} />
+              <MonthlyTable title="完了" data={current.completed} total={completedYearSummary} />
             </div>
           </div>
 

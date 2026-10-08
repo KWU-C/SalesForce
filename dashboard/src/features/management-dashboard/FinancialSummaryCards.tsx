@@ -9,9 +9,9 @@ import type { OperatingProfitTrendPoint } from "./operatingProfitTrend";
 interface FinancialSummaryCardsProps {
   /** monthはこのサマリーを取得した月(=累計の対象の終了月)。見出しに対象月を明記する */
   summary: FinancialSummarySnapshot;
-  /** 事業期番号。営業利益推移グラフの年表示(calendarYearForTermMonth)に使う */
+  /** 事業期番号。事業収支の推移グラフの年表示(calendarYearForTermMonth)に使う */
   term: number;
-  /** 9月〜当月の累計営業利益推移(ユーザー確定、2026-09-22)。未取得時は空配列で渡す */
+  /** 9月〜当月の累計(売上高・粗利益・営業利益)推移(ユーザー確定、2026-10-08)。未取得時は空配列で渡す */
   operatingProfitTrend: OperatingProfitTrendPoint[];
 }
 

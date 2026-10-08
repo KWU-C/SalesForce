@@ -209,12 +209,12 @@ export default async function ManagementPage() {
         console.error("[management page] freeeからの当期累計サマリー取得に失敗しました");
         financialSummaryError = true;
       }
-      // 営業利益の推移グラフ用。新たにfreeeへは取得しに行かず、上のfinancialSummary
+      // 事業収支(売上高・粗利益・営業利益)の推移グラフ用。新たにfreeeへは取得しに行かず、上のfinancialSummary
       // (当月分)とFirestoreの過去月分キャッシュだけを読む(ユーザー確定、2026-09-22)
       try {
         operatingProfitTrend = await getOperatingProfitTrend(currentFiscalYear, currentMonth, financialSummary);
       } catch {
-        console.error("[management page] 営業利益推移の取得に失敗しました");
+        console.error("[management page] 事業収支推移の取得に失敗しました");
       }
       // 期をまたぐ境目だけ通期合計(termCashFlowSnapshots)を取得する。一度計算されたら
       // Firestoreキャッシュを無条件で返す(forceRefreshは持たない、ユーザー確定、

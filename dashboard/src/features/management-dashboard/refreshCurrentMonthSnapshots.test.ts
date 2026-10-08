@@ -4,11 +4,13 @@ const getOrFetchMonthlyCashFlowMock = vi.fn();
 const getOrFetchLoanStatusMock = vi.fn();
 const getOrFetchFundReserveCoreMock = vi.fn();
 const getOrFetchFinancialSummaryMock = vi.fn();
+const getOrFetchTermMonthlyPlMock = vi.fn();
 
 vi.mock("./monthlyCashFlowService", () => ({ getOrFetchMonthlyCashFlow: getOrFetchMonthlyCashFlowMock }));
 vi.mock("./loanStatusService", () => ({ getOrFetchLoanStatus: getOrFetchLoanStatusMock }));
 vi.mock("./fundReserveService", () => ({ getOrFetchFundReserveCore: getOrFetchFundReserveCoreMock }));
 vi.mock("./financialSummaryService", () => ({ getOrFetchFinancialSummary: getOrFetchFinancialSummaryMock }));
+vi.mock("./monthlyPlService", () => ({ getOrFetchTermMonthlyPl: getOrFetchTermMonthlyPlMock }));
 
 const { refreshCurrentMonthSnapshots } = await import("./refreshCurrentMonthSnapshots");
 
@@ -16,7 +18,12 @@ function mockAllSucceed() {
   getOrFetchMonthlyCashFlowMock.mockResolvedValue({ fiscalYear: 2025, month: 8 });
   getOrFetchLoanStatusMock.mockResolvedValue({ fiscalYear: 2025, month: 8 });
   getOrFetchFundReserveCoreMock.mockResolvedValue({ fiscalYear: 2025, month: 8 });
-  getOrFetchFinancialSummaryMock.mockResolvedValue({ fiscalYear: 2025, month: 8 });
+  // 月次P/L(9月=600/-300、10月=400/100)の合計が、当期累計サマリー(1000/-200)と一致する状態
+  getOrFetchFinancialSummaryMock.mockResolvedValue({ fiscalYear: 2025, month: 10, revenue: 1000, operatingProfit: -200 });
+  getOrFetchTermMonthlyPlMock.mockResolvedValue([
+    { fiscalYear: 2025, month: 9, revenue: 600, operatingProfit: -300, operatingCost: 900 },
+    { fiscalYear: 2025, month: 10, revenue: 400, operatingProfit: 100, operatingCost: 300 },
+  ]);
 }
 
 afterEach(() => {
@@ -25,6 +32,7 @@ afterEach(() => {
   getOrFetchLoanStatusMock.mockReset();
   getOrFetchFundReserveCoreMock.mockReset();
   getOrFetchFinancialSummaryMock.mockReset();
+  getOrFetchTermMonthlyPlMock.mockReset();
 });
 
 describe("refreshCurrentMonthSnapshots", () => {
@@ -37,16 +45,58 @@ describe("refreshCurrentMonthSnapshots", () => {
     expect(getOrFetchLoanStatusMock).toHaveBeenCalledWith(2025, 8, { forceRefresh: true });
     expect(getOrFetchFundReserveCoreMock).toHaveBeenCalledWith(2025, 8, { forceRefresh: true });
     expect(getOrFetchFinancialSummaryMock).not.toHaveBeenCalled();
+    expect(getOrFetchTermMonthlyPlMock).not.toHaveBeenCalled();
     expect(result).toEqual({ connected: true });
   });
 
   it("also force-refreshes financialSummary when includeFinancialSummary is true", async () => {
     mockAllSucceed();
 
-    const result = await refreshCurrentMonthSnapshots(2025, 9, { includeFinancialSummary: true });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    expect(getOrFetchFinancialSummaryMock).toHaveBeenCalledWith(2025, 9, { forceRefresh: true });
-    expect(result).toEqual({ connected: true });
+    const result = await refreshCurrentMonthSnapshots(2025, 10, { includeFinancialSummary: true });
+
+    expect(getOrFetchFinancialSummaryMock).toHaveBeenCalledWith(2025, 10, { forceRefresh: true });
+    expect(result.connected).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("includeFinancialSummary=trueなら期首〜当月の月次P/Lも強制再取得し、当期累計サマリーとの検算結果(一致)を返す", async () => {
+    mockAllSucceed();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await refreshCurrentMonthSnapshots(2025, 10, { includeFinancialSummary: true });
+
+    expect(getOrFetchTermMonthlyPlMock).toHaveBeenCalledWith(2025, 10, { forceRefresh: true });
+    expect(result).toEqual({
+      connected: true,
+      monthlyPlReconciliation: { revenueDiff: 0, operatingProfitDiff: 0, matches: true },
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("月次P/L合計が当期累計サマリーと一致しない場合、数値は合わせずに差を警告ログと戻り値で残す(更新自体は成功扱い)", async () => {
+    mockAllSucceed();
+    getOrFetchFinancialSummaryMock.mockResolvedValue({ fiscalYear: 2025, month: 10, revenue: 1050, operatingProfit: -200 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await refreshCurrentMonthSnapshots(2025, 10, { includeFinancialSummary: true });
+
+    expect(result).toEqual({
+      connected: true,
+      monthlyPlReconciliation: { revenueDiff: -50, operatingProfitDiff: 0, matches: false },
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain("売上高の差=-50");
+  });
+
+  it("reports connected:false when includeFinancialSummary is true and the monthly P/L is null (freee not connected)", async () => {
+    mockAllSucceed();
+    getOrFetchTermMonthlyPlMock.mockResolvedValue(null);
+
+    const result = await refreshCurrentMonthSnapshots(2025, 10, { includeFinancialSummary: true });
+
+    expect(result).toEqual({ connected: false });
   });
 
   it("reports connected:false when any of the three core snapshots is null (freee not connected)", async () => {

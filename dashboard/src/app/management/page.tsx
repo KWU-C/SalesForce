@@ -21,8 +21,8 @@ import { listManagementReserveSettings } from "@/repositories/managementReserveS
 import type { FundReserve } from "@/features/management-dashboard/fundReserve";
 import { getOrFetchFundReserveCore } from "@/features/management-dashboard/fundReserveService";
 import { getOrFetchFinancialSummary } from "@/features/management-dashboard/financialSummaryService";
-import { getOperatingProfitTrend } from "@/features/management-dashboard/operatingProfitTrend";
-import type { OperatingProfitTrendPoint } from "@/features/management-dashboard/operatingProfitTrend";
+import { getOrFetchTermMonthlyPl, termMonthsThrough } from "@/features/management-dashboard/monthlyPlService";
+import type { MonthlyPlPoint } from "@/features/management-dashboard/businessBalanceRows";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ExpenseCompositionSection } from "@/features/management-dashboard/ExpenseCompositionSection";
 import { RefreshMonthButton } from "@/features/management-dashboard/RefreshMonthButton";
@@ -103,7 +103,7 @@ export default async function ManagementPage() {
   let authorizeUrl: string | null = null;
   let financialSummary: FinancialSummarySnapshot | null = null;
   let financialSummaryError = false;
-  let operatingProfitTrend: OperatingProfitTrendPoint[] = [];
+  let monthlyPl: MonthlyPlPoint[] = [];
   let cashFlowByMonth: (MonthlyCashFlow | null)[] = [];
   let cashFlowError = false;
   let loanStatus: LoanStatusSnapshot | null = null;
@@ -209,12 +209,21 @@ export default async function ManagementPage() {
         console.error("[management page] freeeからの当期累計サマリー取得に失敗しました");
         financialSummaryError = true;
       }
-      // 事業収支(売上高・粗利益・営業利益)の推移グラフ用。新たにfreeeへは取得しに行かず、上のfinancialSummary
-      // (当月分)とFirestoreの過去月分キャッシュだけを読む(ユーザー確定、2026-09-22)
+      // 事業収支の推移グラフ用。期首(9月)〜当月の月次P/L(monthlyPlSnapshots)を読む。当期累計の
+      // financialSummarySnapshotsの差分は使わない(ユーザー確定、2026-10-08)。通常はFirestoreのみを
+      // 読み、当月分が未取得の時だけfreeeから取得する
       try {
-        operatingProfitTrend = await getOperatingProfitTrend(currentFiscalYear, currentMonth, financialSummary);
+        const snapshots = await getOrFetchTermMonthlyPl(currentFiscalYear, currentMonth, { forceRefresh: false });
+        if (snapshots !== null) {
+          monthlyPl = termMonthsThrough(currentMonth).map((month, i) => ({
+            month,
+            revenue: snapshots[i]?.revenue ?? null,
+            operatingProfit: snapshots[i]?.operatingProfit ?? null,
+            operatingCost: snapshots[i]?.operatingCost ?? null,
+          }));
+        }
       } catch {
-        console.error("[management page] 事業収支推移の取得に失敗しました");
+        console.error("[management page] 月次P/L(事業収支の推移)の取得に失敗しました");
       }
       // 期をまたぐ境目だけ通期合計(termCashFlowSnapshots)を取得する。一度計算されたら
       // Firestoreキャッシュを無条件で返す(forceRefreshは持たない、ユーザー確定、
@@ -354,7 +363,7 @@ export default async function ManagementPage() {
                   <FinancialSummaryCards
                     summary={financialSummary}
                     term={currentTerm}
-                    operatingProfitTrend={operatingProfitTrend}
+                    monthlyPl={monthlyPl}
                   />
                 )}
                 {financialSummaryError && (

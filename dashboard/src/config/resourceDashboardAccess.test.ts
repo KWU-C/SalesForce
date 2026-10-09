@@ -8,7 +8,14 @@ describe("isResourceDashboardAuthorized", () => {
   });
 
   it("allows resource-only members without granting management access", () => {
-    for (const email of ["yamamoto.miki@tcd.jp", "kamao@tcd.jp", "nonaka@tcd.jp"]) {
+    for (const email of [
+      "yamamoto.miki@tcd.jp",
+      "kamao@tcd.jp",
+      "nonaka@tcd.jp",
+      "osugi@tcd.jp",
+      "ushio@tcd.jp",
+      "ito@tcd.jp",
+    ]) {
       expect(isResourceDashboardAuthorized(email)).toBe(true);
       expect(isManagementDashboardAuthorized(email)).toBe(false);
     }

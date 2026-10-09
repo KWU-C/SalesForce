@@ -11,6 +11,9 @@ export const RESOURCE_DASHBOARD_ALLOWED_EMAILS: readonly string[] = [
   "yamamoto.miki@tcd.jp",
   "kamao@tcd.jp",
   "nonaka@tcd.jp",
+  "osugi@tcd.jp",
+  "ushio@tcd.jp",
+  "ito@tcd.jp",
 ];
 
 export function isResourceDashboardAuthorized(email: string | null): boolean {

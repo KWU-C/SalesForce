@@ -1,5 +1,5 @@
 substitutions:
-  _SERVICE_NAME: tcd-dashboard-dev
+  _SERVICE_NAME: tcd-dashboard-dev2
   _REGION: asia-northeast1
   # ファイル側のデフォルトは安全側のmock。実際にはdev/prod両トリガーとも
   # トリガー自体にSALES_DATA_SOURCE=salesforceが設定されており、そちらが

@@ -34,7 +34,7 @@ function CrCells({ col, highlightBg }: { col: CrossCrColumn; highlightBg: string
         {col.orderMonthlyRate === null ? "—" : formatPercent2(col.orderMonthlyRate)}
       </td>
       <td
-        className={`px-2 py-1.5 text-right ${highlightBg}`}
+        className="px-2 py-1.5 text-right"
         style={
           col.orderCumulativeRate === null ? undefined : { color: statusColor(col.orderCumulativeRate) }
         }
@@ -53,7 +53,7 @@ function CrCells({ col, highlightBg }: { col: CrossCrColumn; highlightBg: string
         {col.completedMonthlyRate === null ? "—" : formatPercent2(col.completedMonthlyRate)}
       </td>
       <td
-        className={`px-2 py-1.5 text-right ${highlightBg}`}
+        className="px-2 py-1.5 text-right"
         style={
           col.completedCumulativeRate === null
             ? undefined
@@ -127,7 +127,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
               const zebra = i % 2 === 0;
               const rowBg = zebra ? "bg-[var(--gridline)]/50" : "";
               const stickyBg = zebra ? "bg-[var(--gridline)]/50" : "bg-[var(--surface-1)]";
-              // 帯色のある行(9月/11月/...)は少し濃いめ、白地の行(10月/12月/...)は薄めのクリーム色(達成率・累計列)
+              // 帯色のある行(9月/11月/...)は少し濃いめ、白地の行(10月/12月/...)は薄めのクリーム色(達成率列)
               const highlightBg = zebra ? "bg-[#ece2bf]" : "bg-[#fdf3d0]";
 
               return (

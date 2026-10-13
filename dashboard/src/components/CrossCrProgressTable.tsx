@@ -18,7 +18,7 @@ function statusColor(rate: number): string | undefined {
   return undefined;
 }
 
-function CrCells({ col, cumulativeBg }: { col: CrossCrColumn; cumulativeBg: string }) {
+function CrCells({ col, highlightBg }: { col: CrossCrColumn; highlightBg: string }) {
   return (
     <>
       <td className="border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right text-[var(--text-secondary)]">
@@ -28,13 +28,13 @@ function CrCells({ col, cumulativeBg }: { col: CrossCrColumn; cumulativeBg: stri
         {col.orderGrossProfit === null ? "—" : formatThousandYen(col.orderGrossProfit)}
       </td>
       <td
-        className="px-2 py-1.5 text-right"
+        className={`px-2 py-1.5 text-right font-semibold ${highlightBg}`}
         style={col.orderMonthlyRate === null ? undefined : { color: statusColor(col.orderMonthlyRate) }}
       >
         {col.orderMonthlyRate === null ? "—" : formatPercent2(col.orderMonthlyRate)}
       </td>
       <td
-        className={`px-2 py-1.5 text-right font-semibold ${cumulativeBg}`}
+        className={`px-2 py-1.5 text-right ${highlightBg}`}
         style={
           col.orderCumulativeRate === null ? undefined : { color: statusColor(col.orderCumulativeRate) }
         }
@@ -45,7 +45,7 @@ function CrCells({ col, cumulativeBg }: { col: CrossCrColumn; cumulativeBg: stri
         {col.completedGrossProfit === null ? "—" : formatThousandYen(col.completedGrossProfit)}
       </td>
       <td
-        className="px-2 py-1.5 text-right"
+        className={`px-2 py-1.5 text-right font-semibold ${highlightBg}`}
         style={
           col.completedMonthlyRate === null ? undefined : { color: statusColor(col.completedMonthlyRate) }
         }
@@ -53,7 +53,7 @@ function CrCells({ col, cumulativeBg }: { col: CrossCrColumn; cumulativeBg: stri
         {col.completedMonthlyRate === null ? "—" : formatPercent2(col.completedMonthlyRate)}
       </td>
       <td
-        className={`px-2 py-1.5 text-right font-semibold ${cumulativeBg}`}
+        className={`px-2 py-1.5 text-right ${highlightBg}`}
         style={
           col.completedCumulativeRate === null
             ? undefined
@@ -111,13 +111,13 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                   <th className="border-l border-[var(--gridline)] px-2 py-1 text-right font-normal text-[var(--series-1)]">
                     受注
                   </th>
-                  <th className="px-2 py-1 text-right font-normal text-[var(--series-1)]">達成率</th>
-                  <th className="px-2 py-1 text-right font-semibold text-[var(--series-1)]">累計</th>
+                  <th className="px-2 py-1 text-right font-semibold text-[var(--series-1)]">達成率</th>
+                  <th className="px-2 py-1 text-right font-normal text-[var(--series-1)]">累計</th>
                   <th className="border-l border-[var(--gridline)] px-2 py-1 text-right font-normal text-[var(--series-2)]">
                     完了
                   </th>
-                  <th className="px-2 py-1 text-right font-normal text-[var(--series-2)]">達成率</th>
-                  <th className="px-2 py-1 text-right font-semibold text-[var(--series-2)]">累計</th>
+                  <th className="px-2 py-1 text-right font-semibold text-[var(--series-2)]">達成率</th>
+                  <th className="px-2 py-1 text-right font-normal text-[var(--series-2)]">累計</th>
                 </Fragment>
               ))}
             </tr>
@@ -127,8 +127,8 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
               const zebra = i % 2 === 0;
               const rowBg = zebra ? "bg-[var(--gridline)]/50" : "";
               const stickyBg = zebra ? "bg-[var(--gridline)]/50" : "bg-[var(--surface-1)]";
-              // 帯色のある行(9月/11月/...)は少し濃いめ、白地の行(10月/12月/...)は薄めのクリーム色
-              const cumulativeBg = zebra ? "bg-[#ece2bf]" : "bg-[#fdf3d0]";
+              // 帯色のある行(9月/11月/...)は少し濃いめ、白地の行(10月/12月/...)は薄めのクリーム色(達成率・累計列)
+              const highlightBg = zebra ? "bg-[#ece2bf]" : "bg-[#fdf3d0]";
 
               return (
                 <tr key={row.month} className={`border-t border-[var(--gridline)] ${rowBg}`}>
@@ -138,7 +138,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                     {row.month}月
                   </td>
                   {row.columns.map((col) => (
-                    <CrCells key={col.crId} col={col} cumulativeBg={cumulativeBg} />
+                    <CrCells key={col.crId} col={col} highlightBg={highlightBg} />
                   ))}
                 </tr>
               );
@@ -148,7 +148,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                 合計
               </td>
               {totalRow.map((col) => (
-                <CrCells key={col.crId} col={col} cumulativeBg="bg-[#ece2bf]" />
+                <CrCells key={col.crId} col={col} highlightBg="bg-[#ece2bf]" />
               ))}
             </tr>
           </tbody>

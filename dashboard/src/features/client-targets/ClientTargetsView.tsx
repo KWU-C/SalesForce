@@ -133,39 +133,42 @@ interface TableProps {
   periods: PeriodLabels;
 }
 
-function ClientTable({ rows, showCr, currentMonth, periods }: TableProps) {
+/**
+ * クライアント別進捗。列と並び(年間目標の降順)はユーザー確定(2026-10-14)。
+ * 月次はこの表に限り受注基準(当月受注粗利 ÷ 当月目標)。上部タイルの月次達成率は完了基準のまま。
+ */
+function ClientTable({ rows, currentMonth, periods }: Omit<TableProps, "showCr">) {
   if (rows.length === 0) return <EmptyNote />;
   return (
     <TableShell>
       <thead>
         <HeadRow>
-          {showCr && <th className="px-3 py-2">CR</th>}
+          <th className="px-3 py-2">CR</th>
           <th className="px-3 py-2">クライアント</th>
+          <th className="px-3 py-2">担当者</th>
           <th className={TH}>年間目標</th>
           <th className={TH}>累計完了（{periods.toDate}）</th>
           <th className={TH}>年間達成率</th>
-          <th className={TH}>通年完了予定</th>
-          <th className={TH}>{currentMonth}月目標</th>
-          <th className={TH}>{currentMonth}月完了</th>
-          <th className={TH}>月次達成率</th>
-          <th className={TH}>累計受注（{periods.toDate}）</th>
-          <th className={TH}>通年受注</th>
+          <th className={TH}>{currentMonth}月受注目標</th>
+          <th className={TH}>月次受注達成率</th>
         </HeadRow>
       </thead>
       <tbody>
         {rows.map((row) => (
           <tr key={`${row.crId}-${row.clientName ?? ""}`} className="border-t border-[var(--gridline)] tabular-nums">
-            {showCr && <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.crId}</td>}
+            <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.crId}</td>
             <td className="px-3 py-2 text-[var(--text-primary)]">{row.clientName}</td>
+            <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.salesRep ?? "—"}</td>
             <td className="px-3 py-2 text-right">{formatThousandYen(row.annualTarget)}</td>
             <td className="px-3 py-2 text-right">{formatThousandYen(row.completedToDate)}</td>
             <td className={`px-3 py-2 text-right font-medium ${rateClassName(row.annualRate)}`}>{rateText(row.annualRate)}</td>
-            <td className="px-3 py-2 text-right text-[var(--text-secondary)]">{formatThousandYen(row.completedFullYear)}</td>
             <td className="px-3 py-2 text-right">{formatThousandYen(row.monthTarget)}</td>
-            <td className="px-3 py-2 text-right">{formatThousandYen(row.monthCompleted)}</td>
-            <td className={`px-3 py-2 text-right ${rateClassName(row.monthRate)}`}>{rateText(row.monthRate)}</td>
-            <td className="px-3 py-2 text-right">{formatThousandYen(row.orderToDate)}</td>
-            <td className="px-3 py-2 text-right text-[var(--text-secondary)]">{formatThousandYen(row.orderFullYear)}</td>
+            <td
+              className={`px-3 py-2 text-right ${rateClassName(row.monthOrderRate)}`}
+              title={`${currentMonth}月受注粗利 ${formatThousandYen(row.monthOrder)}千円`}
+            >
+              {rateText(row.monthOrderRate)}
+            </td>
           </tr>
         ))}
       </tbody>
@@ -308,8 +311,11 @@ export function ClientTargetsView({ scopes, crList, currentMonth }: ClientTarget
       <SummarySection summary={scope.summary} currentMonth={currentMonth} periods={periods} />
 
       <section className="flex flex-col gap-2">
-        <SectionHeading title="クライアント別進捗" note="単位: 千円／年間達成率 = 累計完了 ÷ 年間目標" />
-        <ClientTable rows={scope.targetedClients} showCr={showCr} currentMonth={currentMonth} periods={periods} />
+        <SectionHeading
+          title="クライアント別進捗"
+          note={`単位: 千円／年間達成率 = 累計完了 ÷ 年間目標／月次受注達成率 = ${currentMonth}月受注粗利 ÷ ${currentMonth}月目標`}
+        />
+        <ClientTable rows={scope.targetedClients} currentMonth={currentMonth} periods={periods} />
       </section>
 
       {scope.unallocatedTargets.length > 0 && (

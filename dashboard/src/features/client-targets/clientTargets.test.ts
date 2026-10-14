@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeClientTargetProgress, type ClientAmountRow, type ClientTargetInput } from "./clientTargets";
+import { computeClientTargetProgress, formatSalesRep, type ClientAmountRow, type ClientTargetInput } from "./clientTargets";
 
 const FISCAL_DATES = ["2026-09-01", "2026-10-01", "2026-11-01", "2026-12-01", "2027-01-01", "2027-02-01",
   "2027-03-01", "2027-04-01", "2027-05-01", "2027-06-01", "2027-07-01", "2027-08-01"];
@@ -15,6 +15,7 @@ function baseInput(overrides: Partial<ClientTargetInput> = {}): ClientTargetInpu
     targets: [],
     completed: [],
     orders: [],
+    salesReps: [],
     crAnnualTargets: { CR1: null, CR2: null },
     ...overrides,
   };
@@ -130,7 +131,7 @@ describe("computeClientTargetProgress", () => {
     expect(all.crTargetGap).toBeNull();
   });
 
-  it("orders company-wide rows by CR first, then by amount, keeping the same client separate per CR", () => {
+  it("orders targeted clients by annual target across CRs, keeping the same client separate per CR", () => {
     const scopes = computeClientTargetProgress(
       baseInput({
         targets: [
@@ -143,10 +144,52 @@ describe("computeClientTargetProgress", () => {
     const all = scopes.find((s) => s.scopeId === "ALL")!;
 
     expect(all.targetedClients.map((r) => [r.crId, r.clientName])).toEqual([
+      ["CR2", "顧客A"],
       ["CR1", "顧客C"],
       ["CR1", "顧客A"],
-      ["CR2", "顧客A"],
     ]);
+  });
+
+  it("computes the monthly order achievement against the current month target", () => {
+    const row = computeClientTargetProgress(
+      baseInput({
+        targets: monthlyTargets("CR1", "顧客A", 200),
+        orders: [
+          { crId: "CR1", clientName: "顧客A", date: "2026-10-03", grossProfit: 50 },
+          { crId: "CR1", clientName: "顧客A", date: "2026-09-03", grossProfit: 999 },
+        ],
+      })
+    ).find((s) => s.scopeId === "CR1")!.targetedClients[0];
+
+    expect(row.monthTarget).toBe(200);
+    expect(row.monthOrder).toBe(50);
+    expect(row.monthOrderRate).toBe(25);
+  });
+
+  it("assigns the sales rep with the largest gross profit per CR × client, not to unallocated targets", () => {
+    const scopes = computeClientTargetProgress(
+      baseInput({
+        targets: [...monthlyTargets("CR1", "顧客A", 100), ...monthlyTargets("CR1", null, 10), ...monthlyTargets("CR2", "顧客A", 100)],
+        salesReps: [
+          { crId: "CR1", clientName: "顧客A", salesRepName: "佐藤", grossProfit: 30 },
+          { crId: "CR1", clientName: "顧客A", salesRepName: "鈴木", grossProfit: 50 },
+          { crId: "CR1", clientName: "顧客A", salesRepName: "佐藤", grossProfit: 30 },
+          // 他CRの案件は数えない
+          { crId: "CR2", clientName: "顧客A", salesRepName: "高橋", grossProfit: 1 },
+          { crId: "CR1", clientName: null, salesRepName: "伊藤", grossProfit: 1 },
+        ],
+      })
+    );
+    const cr1 = scopes.find((s) => s.scopeId === "CR1")!;
+
+    expect(cr1.targetedClients[0].salesRep).toBe("佐藤 他1名");
+    expect(cr1.unallocatedTargets[0].salesRep).toBeNull();
+    expect(scopes.find((s) => s.scopeId === "CR2")!.targetedClients[0].salesRep).toBe("高橋");
+  });
+
+  it("formats sales reps deterministically and returns null without deals", () => {
+    expect(formatSalesRep(undefined)).toBeNull();
+    expect(formatSalesRep(new Map([["B", 10], ["A", 10]]))).toBe("A 他1名");
   });
 
   it("builds a 12-month trend in fiscal order with cumulative values and future flags", () => {

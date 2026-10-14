@@ -56,3 +56,22 @@ export function buildClientOrderRowsQuery(
       AND ${CONFIRMED_PHASE_CLAUSE}
       AND juchuubi__c >= ${dateRange.start} AND juchuubi__c <= ${dateRange.end}`;
 }
+
+/**
+ * 「担当者」列用: CR×クライアントごとの営業担当者を、指定期間に受注日がある案件(失注以外、
+ * 提案・見積を含む)の粗利で重み付けして決める(粗利最大の営業担当者、ユーザー確定、2026-10-14)。
+ * 目標レコードには担当者が無く、Account(社内担当者・所有者)は連携ユーザーが参照できないため、
+ * 案件の営業担当者(eigyoutantousha__c、rida__cと同じUser参照)から導く。
+ * eigyoutantousha__r.Nameは非集計クエリのため、レスポンスでは入れ子のオブジェクトで返る。
+ */
+export function buildClientSalesRepRowsQuery(
+  dateRange: { start: string; end: string },
+  crIds: readonly string[]
+): string {
+  return `SELECT bumonna__c, clientName__c, eigyoutantousha__r.Name, arari__c
+    FROM Process__c
+    WHERE bumonna__c IN (${crInClause(crIds)})
+      AND eigyoutantousha__c != null
+      AND phase__c != '失注'
+      AND juchuubi__c >= ${dateRange.start} AND juchuubi__c <= ${dateRange.end}`;
+}

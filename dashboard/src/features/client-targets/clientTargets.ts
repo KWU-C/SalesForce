@@ -11,6 +11,14 @@ export interface ClientAmountRow {
   grossProfit: number | null;
 }
 
+/** 担当者判定用の案件1行(CR×クライアント×営業担当者) */
+export interface ClientSalesRepRow {
+  crId: ConcreteCrId;
+  clientName: string | null;
+  salesRepName: string;
+  grossProfit: number | null;
+}
+
 export interface ClientTargetInput {
   crIds: readonly ConcreteCrId[];
   /** 当月(暦月)。当月までの累計と月次達成率の基準月 */
@@ -18,6 +26,8 @@ export interface ClientTargetInput {
   targets: ClientAmountRow[];
   completed: ClientAmountRow[];
   orders: ClientAmountRow[];
+  /** 担当者判定用の案件(前期期首〜当期末の受注日、失注以外) */
+  salesReps: ClientSalesRepRow[];
   /** SalesTarget__cのCR別年間目標粗利(営業進捗タブと同じ値)。取得できなければnull */
   crAnnualTargets: Partial<Record<ConcreteCrId, number | null>>;
 }
@@ -34,6 +44,8 @@ export interface ClientProgressRow {
   kind: ClientRowKind;
   crId: ConcreteCrId;
   clientName: string | null;
+  /** 担当者表示(粗利最大の営業担当者。複数いれば「〇〇 他N名」)。該当案件が無ければnull */
+  salesRep: string | null;
   annualTarget: number;
   /** 期首〜当月の完了粗利 */
   completedToDate: number;
@@ -45,6 +57,10 @@ export interface ClientProgressRow {
   monthCompleted: number;
   /** 当月完了粗利 ÷ 当月目標(%)。目標0ならnull */
   monthRate: number | null;
+  /** 当月の受注粗利 */
+  monthOrder: number;
+  /** 当月受注粗利 ÷ 当月目標(%)。目標0ならnull(ユーザー確定、2026-10-14) */
+  monthOrderRate: number | null;
   /** 期首〜当月の受注粗利(先行指標) */
   orderToDate: number;
   /** 当期全月の受注粗利(当月より先の受注日を含む) */
@@ -90,7 +106,7 @@ export interface ClientTargetSummary {
 export interface ClientTargetScope {
   scopeId: CrId;
   summary: ClientTargetSummary;
-  /** クライアント指定済みの目標。CR順・年間目標の降順 */
+  /** クライアント指定済みの目標。年間目標の降順(全社でもCRで区切らない、ユーザー確定、2026-10-14) */
   targetedClients: ClientProgressRow[];
   /** 未配分目標(CRごとに最大1行)。CR順 */
   unallocatedTargets: ClientProgressRow[];
@@ -106,6 +122,10 @@ function rate(actual: number, target: number): number | null {
 
 function monthOf(date: string): number {
   return Number(date.slice(5, 7));
+}
+
+function clientKey(crId: ConcreteCrId, clientName: string | null): string {
+  return `${crId}\u0000${clientName ?? ""}`;
 }
 
 /** 全社表示ではCR順にまとめる */
@@ -136,15 +156,32 @@ function kindOf(acc: Accumulator): ClientRowKind {
   return acc.targetByMonth.size > 0 ? "client" : "untargeted";
 }
 
-function toRow(acc: Accumulator, currentMonth: number, monthsToDate: readonly number[]): ClientProgressRow {
+/**
+ * 粗利最大の営業担当者を担当者とする。複数いれば「〇〇 他N名」。
+ * 粗利が同額なら名前順で決める(表示が実行ごとに揺れないように)。
+ */
+export function formatSalesRep(grossProfitByRep: Map<string, number> | undefined): string | null {
+  if (!grossProfitByRep || grossProfitByRep.size === 0) return null;
+  const [top] = [...grossProfitByRep.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return grossProfitByRep.size === 1 ? top[0] : `${top[0]} 他${grossProfitByRep.size - 1}名`;
+}
+
+function toRow(
+  acc: Accumulator,
+  currentMonth: number,
+  monthsToDate: readonly number[],
+  salesRep: string | null
+): ClientProgressRow {
   const annualTarget = sumMonths(acc.targetByMonth, FISCAL_MONTH_ORDER);
   const completedToDate = sumMonths(acc.completedByMonth, monthsToDate);
   const monthTarget = acc.targetByMonth.get(currentMonth) ?? 0;
   const monthCompleted = acc.completedByMonth.get(currentMonth) ?? 0;
+  const monthOrder = acc.orderByMonth.get(currentMonth) ?? 0;
   return {
     kind: kindOf(acc),
     crId: acc.crId,
     clientName: acc.clientName,
+    salesRep,
     annualTarget,
     completedToDate,
     completedFullYear: sumMonths(acc.completedByMonth, FISCAL_MONTH_ORDER),
@@ -152,6 +189,8 @@ function toRow(acc: Accumulator, currentMonth: number, monthsToDate: readonly nu
     monthTarget,
     monthCompleted,
     monthRate: rate(monthCompleted, monthTarget),
+    monthOrder,
+    monthOrderRate: rate(monthOrder, monthTarget),
     orderToDate: sumMonths(acc.orderByMonth, monthsToDate),
     orderFullYear: sumMonths(acc.orderByMonth, FISCAL_MONTH_ORDER),
   };
@@ -161,11 +200,14 @@ function buildScope(
   scopeId: CrId,
   accumulators: Accumulator[],
   currentMonth: number,
-  crAnnualTarget: number | null
+  crAnnualTarget: number | null,
+  salesRepByKey: Map<string, Map<string, number>>
 ): ClientTargetScope {
   const currentIndex = FISCAL_MONTH_ORDER.indexOf(currentMonth);
   const monthsToDate = FISCAL_MONTH_ORDER.slice(0, currentIndex + 1);
-  const rows = accumulators.map((acc) => toRow(acc, currentMonth, monthsToDate));
+  const rows = accumulators.map((acc) =>
+    toRow(acc, currentMonth, monthsToDate, acc.isUnallocatedSlot ? null : formatSalesRep(salesRepByKey.get(clientKey(acc.crId, acc.clientName))))
+  );
   const ofKind = (kind: ClientRowKind) => rows.filter((r) => r.kind === kind);
   const sum = (items: ClientProgressRow[], pick: (r: ClientProgressRow) => number) =>
     items.reduce((total, r) => total + pick(r), 0);
@@ -208,7 +250,7 @@ function buildScope(
       crAnnualTarget,
       crTargetGap: crAnnualTarget === null ? null : crAnnualTarget - annualTarget,
     },
-    targetedClients: ofKind("client").sort((a, b) => byCr(a, b) || b.annualTarget - a.annualTarget),
+    targetedClients: ofKind("client").sort((a, b) => b.annualTarget - a.annualTarget || byCr(a, b)),
     unallocatedTargets: ofKind("unallocated").sort(byCr),
     untargetedClients: untargeted.sort(
       (a, b) => byCr(a, b) || b.completedToDate - a.completedToDate || b.completedFullYear - a.completedFullYear
@@ -232,7 +274,7 @@ function buildScope(
 export function computeClientTargetProgress(input: ClientTargetInput): ClientTargetScope[] {
   const byKey = new Map<string, Accumulator>();
   const get = (crId: ConcreteCrId, clientName: string | null, isUnallocatedSlot: boolean) => {
-    const key = `${crId}\u0000${isUnallocatedSlot ? "\u0001" : ""}${clientName ?? ""}`;
+    const key = isUnallocatedSlot ? `${crId}\u0000\u0001` : clientKey(crId, clientName);
     let acc = byKey.get(key);
     if (!acc) {
       acc = {
@@ -258,6 +300,14 @@ export function computeClientTargetProgress(input: ClientTargetInput): ClientTar
     addTo(get(row.crId, row.clientName, false).orderByMonth, monthOf(row.date), row.grossProfit);
   }
 
+  const salesRepByKey = new Map<string, Map<string, number>>();
+  for (const row of input.salesReps) {
+    const key = clientKey(row.crId, row.clientName);
+    const byRep = salesRepByKey.get(key) ?? new Map<string, number>();
+    byRep.set(row.salesRepName, (byRep.get(row.salesRepName) ?? 0) + (row.grossProfit ?? 0));
+    salesRepByKey.set(key, byRep);
+  }
+
   const all = [...byKey.values()];
   const crTargets = input.crIds.map((crId) => input.crAnnualTargets[crId] ?? null);
   const companyCrTarget = crTargets.every((v) => v !== null)
@@ -265,13 +315,14 @@ export function computeClientTargetProgress(input: ClientTargetInput): ClientTar
     : null;
 
   return [
-    buildScope("ALL", all, input.currentMonth, companyCrTarget),
+    buildScope("ALL", all, input.currentMonth, companyCrTarget, salesRepByKey),
     ...input.crIds.map((crId) =>
       buildScope(
         crId,
         all.filter((acc) => acc.crId === crId),
         input.currentMonth,
-        input.crAnnualTargets[crId] ?? null
+        input.crAnnualTargets[crId] ?? null,
+        salesRepByKey
       )
     ),
   ];

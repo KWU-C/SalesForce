@@ -11,7 +11,7 @@
  */
 
 /** 受注確定フェーズ。「提案」「見積」(パイプライン一覧側)と「失注」を含めない */
-const CONFIRMED_PHASE_CLAUSE = "phase__c IN ('受注','納品','請求','入金')";
+export const CONFIRMED_PHASE_CLAUSE = "phase__c IN ('受注','納品','請求','入金')";
 
 /**
  * 対象CR一覧は事業期によって変わる（48・49期はCR1〜3、50期以降はCR1〜4、
@@ -19,7 +19,7 @@ const CONFIRMED_PHASE_CLAUSE = "phase__c IN ('受注','納品','請求','入金'
  * ここではハードコードせず、呼び出し側(salesforceSalesProgressDataSource.ts)から
  * 事業期に応じたCR一覧を受け取る。
  */
-function crInClause(crIds: readonly string[]): string {
+export function crInClause(crIds: readonly string[]): string {
   return crIds.map((id) => `'${id}'`).join(",");
 }
 

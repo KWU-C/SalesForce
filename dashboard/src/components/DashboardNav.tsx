@@ -1,8 +1,12 @@
 import Link from "next/link";
 
-/** 並びは営業進捗→勤怠→経営(ユーザー確定、2026-09-29)。/resourceのラベルは「勤怠」 */
+/**
+ * 並びは営業進捗→勤怠→経営(ユーザー確定、2026-09-29)。/resourceのラベルは「勤怠」。
+ * クライアント別目標は営業進捗の右(ユーザー確定、2026-10-14)
+ */
 const NAV_ITEMS = [
   { href: "/", label: "営業進捗" },
+  { href: "/client-targets", label: "クライアント別目標" },
   { href: "/resource", label: "勤怠" },
   { href: "/management", label: "経営" },
 ] as const;

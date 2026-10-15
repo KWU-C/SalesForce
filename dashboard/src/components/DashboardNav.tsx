@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isPreReleaseEnabled, isPreReleasePath } from "@/config/deployEnvironment";
 
 /**
  * 並びは営業進捗→勤怠→経営(ユーザー確定、2026-09-29)。/resourceのラベルは「勤怠」。
@@ -28,7 +29,10 @@ interface DashboardNavProps {
  * (layout/page.tsx)も別途アクセス制御している(fail-closed)。
  */
 export function DashboardNav({ active, showManagementTab, showResourceTab }: DashboardNavProps) {
+  // 本番未公開のタブ(クライアント別目標・注力クライアント)はdev・ローカルでだけ出す(deployEnvironment.ts)
+  const preReleaseEnabled = isPreReleaseEnabled();
   const items = NAV_ITEMS.filter((item) => {
+    if (!preReleaseEnabled && isPreReleasePath(item.href)) return false;
     if (item.href === "/management") return showManagementTab;
     if (item.href === "/resource") return showResourceTab;
     return true;

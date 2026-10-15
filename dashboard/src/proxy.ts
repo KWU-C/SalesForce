@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { isRetiredDeployment } from "@/config/deployEnvironment";
+import { isPreReleaseEnabled, isPreReleasePath, isRetiredDeployment } from "@/config/deployEnvironment";
 
 const MOVED_PATH = "/moved";
 
@@ -13,9 +13,22 @@ const MOVED_PATH = "/moved";
  * 到達させない(廃止済みURLからデータを読み書きできる状態を残さない)。
  */
 export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // 本番未公開の機能(クライアント別目標・注力クライアント)は、dev・ローカル以外では届かないようにする。
+  // ページは営業進捗へ戻し、APIは404(Salesforce・Firestoreに到達させない)
+  if (!isPreReleaseEnabled() && isPreReleasePath(pathname)) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   if (!isRetiredDeployment()) return NextResponse.next();
 
-  const { pathname } = request.nextUrl;
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "gone" }, { status: 410 });
   }

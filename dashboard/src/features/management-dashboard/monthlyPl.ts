@@ -18,6 +18,14 @@ export interface MonthlyPl {
   operatingProfit: number | null;
   /** 単月営業コスト(売上原価+販管費に相当) = 単月売上高 − 単月営業利益。コスト額として正の値 */
   operatingCost: number | null;
+  /**
+   * 期首からこの月末までの売上高累計・経常利益累計(同じtrial_plの小計行のclosing_balance)。
+   * 経理月次報告とfreeeの比較にだけ使う(ユーザー確定、2026-10-15)。freeeの呼び出しは増えない。
+   * この項目の追加前に保存されたスナップショットには無い(undefined)。次回の更新で入るため、
+   * 算出バージョンは上げない(事業収支の推移の値・表示は変わらないので取り直しを強制しない)。
+   */
+  revenueCumulative?: number | null;
+  ordinaryProfitCumulative?: number | null;
 }
 
 /** Firestore(monthlyPlSnapshots)へ保存する形。(fiscalYear, month)ごとに1件を上書きする */
@@ -48,6 +56,8 @@ export function extractMonthlyPl(trialPl: FreeeTrialBalanceResponse): MonthlyPl 
     revenue,
     operatingProfit,
     operatingCost: revenue === null || operatingProfit === null ? null : revenue - operatingProfit,
+    revenueCumulative: findSubtotalRow(trialPl.balances, "売上高")?.closing_balance ?? null,
+    ordinaryProfitCumulative: findSubtotalRow(trialPl.balances, "経常損益金額")?.closing_balance ?? null,
   };
 }
 

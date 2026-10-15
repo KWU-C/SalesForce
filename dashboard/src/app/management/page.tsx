@@ -26,6 +26,9 @@ import type { MonthlyPlPoint } from "@/features/management-dashboard/businessBal
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ExpenseCompositionSection } from "@/features/management-dashboard/ExpenseCompositionSection";
 import { RefreshMonthButton } from "@/features/management-dashboard/RefreshMonthButton";
+import { AccountingReportsSection } from "@/features/management-dashboard/AccountingReportsSection";
+import { getAccountingReportsView } from "@/features/management-dashboard/accountingReportsService";
+import type { AccountingReportsView } from "@/features/management-dashboard/accountingReportsService";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { getFreeeConnectionStatus } from "@/repositories/freeeAuthRepository";
@@ -113,6 +116,8 @@ export default async function ManagementPage() {
   let fundReserve: FundReserve | null = null;
   let fundReserveError = false;
   const termTotalsByTerm = new Map<number, TermCashFlowTotal>();
+  let accountingReports: AccountingReportsView | null = null;
+  let accountingReportsError = false;
 
   const { term: currentTerm, currentMonth } = getCurrentFiscalPeriod();
   const currentFiscalYear = freeeFiscalYearForTerm(currentTerm);
@@ -126,6 +131,14 @@ export default async function ManagementPage() {
   }
 
   if (authorized) {
+    // 経理月次報告・資金繰り予定(経理資料の記録、ユーザー確定 2026-10-15)。freee連携の有無に
+    // かかわらず表示する。freee APIは呼ばない(比較値は保存済みの月次P/Lスナップショットから読む)
+    try {
+      accountingReports = await getAccountingReportsView();
+    } catch {
+      console.error("[management page] 経理月次報告・資金繰り予定の取得に失敗しました");
+      accountingReportsError = true;
+    }
     try {
       connectionStatus = await getFreeeConnectionStatus();
     } catch {
@@ -377,6 +390,13 @@ export default async function ManagementPage() {
             ) : (
               <p className="text-center text-sm text-[var(--text-muted)]">
                 freee連携の設定が未完了です（Secret Manager未接続）。
+              </p>
+            )}
+
+            {accountingReports && <AccountingReportsSection view={accountingReports} />}
+            {accountingReportsError && (
+              <p className="text-center text-sm text-[var(--text-muted)]">
+                経理月次報告・資金繰り予定の取得に失敗しました。
               </p>
             )}
 

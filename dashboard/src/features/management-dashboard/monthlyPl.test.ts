@@ -23,7 +23,7 @@ function trialPl(revenue: [number, number], operatingProfit: [number, number]): 
       subtotal("売上高", ...revenue),
       subtotal("売上総損益金額", 0, 0),
       subtotal("営業損益金額", ...operatingProfit),
-      subtotal("経常損益金額", 0, 0),
+      subtotal("経常損益金額", 0, 777),
     ],
   } as FreeeTrialBalanceResponse;
 }
@@ -34,6 +34,8 @@ describe("extractMonthlyPl", () => {
       revenue: 24_000_000,
       operatingProfit: -14_000_000,
       operatingCost: 38_000_000,
+      revenueCumulative: 24_000_000,
+      ordinaryProfitCumulative: 777,
     });
   });
 
@@ -43,13 +45,22 @@ describe("extractMonthlyPl", () => {
       revenue: 0,
       operatingProfit: -2_000_000,
       operatingCost: 2_000_000,
+      // 累計は期首からその月末まで(closing_balance)
+      revenueCumulative: 24_000_000,
+      ordinaryProfitCumulative: 777,
     });
   });
 
   it("小計行が無ければnull(営業コストも算出しない)", () => {
     const response = { balances: [subtotal("売上高", 0, 100)] } as FreeeTrialBalanceResponse;
 
-    expect(extractMonthlyPl(response)).toEqual({ revenue: 100, operatingProfit: null, operatingCost: null });
+    expect(extractMonthlyPl(response)).toEqual({
+      revenue: 100,
+      operatingProfit: null,
+      operatingCost: null,
+      revenueCumulative: 100,
+      ordinaryProfitCumulative: null,
+    });
   });
 });
 

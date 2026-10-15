@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ChangeTypeRequiredError, listCashPlans, saveAccountingReport } from "./accountingReportRepository";
+import { ChangeTypeRequiredError, NoteUpdateChangesValuesError, listCashPlans, saveAccountingReport } from "./accountingReportRepository";
 import type { AccountingReportStore } from "./accountingReportRepository";
 import type { CashPlanValues, MonthlyReportValues } from "@/features/management-dashboard/accountingReports";
 
@@ -115,5 +115,43 @@ describe("saveAccountingReport", () => {
     );
     expect(corrected.revisions).toHaveLength(1);
     expect(corrected.revisions[0].changeType).toBe("correction");
+  });
+
+  it("accepts a note-only update as メモ更新 and keeps the previous values in history", async () => {
+    const store = memoryStore();
+    await saveAccountingReport({ kind: "cash-plan", targetMonth: "2026-10", values: plan(12, "2026-10-14"), updatedBy: "a@tcd.jp", now: T1 }, store);
+    const saved = await saveAccountingReport(
+      {
+        kind: "cash-plan",
+        targetMonth: "2026-10",
+        values: { ...plan(12, "2026-10-14"), note: "確認事項" },
+        changeType: "noteUpdate",
+        updatedBy: "b@tcd.jp",
+        now: T2,
+      },
+      store
+    );
+    expect(saved.changeType).toBe("noteUpdate");
+    expect(saved.values.note).toBe("確認事項");
+    expect(saved.values.bonusReserve).toBe(12);
+    expect(saved.revisions).toHaveLength(1);
+    expect(saved.revisions[0]).toMatchObject({ changeType: "noteUpdate", values: { note: null }, previousUpdatedBy: "a@tcd.jp" });
+  });
+
+  it("rejects メモ更新 that also changes an amount, date or document name, leaving the stored entry unchanged", async () => {
+    const store = memoryStore();
+    await saveAccountingReport({ kind: "cash-plan", targetMonth: "2026-10", values: plan(12, "2026-10-14"), updatedBy: "a@tcd.jp", now: T1 }, store);
+    for (const values of [
+      { ...plan(13, "2026-10-14"), note: "x" },
+      { ...plan(12, "2026-10-15"), note: "x" },
+      { ...plan(12, "2026-10-14"), documentName: "別資料", note: "x" },
+    ]) {
+      await expect(
+        saveAccountingReport({ kind: "cash-plan", targetMonth: "2026-10", values, changeType: "noteUpdate", updatedBy: "b@tcd.jp", now: T2 }, store)
+      ).rejects.toBeInstanceOf(NoteUpdateChangesValuesError);
+    }
+    const [stored] = await listCashPlans(store);
+    expect(stored.revisions).toHaveLength(0);
+    expect(stored.values.note).toBeNull();
   });
 });

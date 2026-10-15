@@ -3,18 +3,18 @@ import type { NextRequest } from "next/server";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { isTargetMonth, parseReportValues } from "@/features/management-dashboard/accountingReports";
 import type { AccountingReportKind, ChangeType } from "@/features/management-dashboard/accountingReports";
-import { ChangeTypeRequiredError, saveAccountingReport } from "@/repositories/accountingReportRepository";
+import { ChangeTypeRequiredError, NoteUpdateChangesValuesError, saveAccountingReport } from "@/repositories/accountingReportRepository";
 import { verifyIapJwt } from "@/services/iap/verifyIapJwt";
 
 const KINDS: readonly AccountingReportKind[] = ["monthly-report", "cash-plan"];
-const OVERWRITE_TYPES: readonly ChangeType[] = ["correction", "forecastUpdate"];
+const OVERWRITE_TYPES: readonly ChangeType[] = ["correction", "forecastUpdate", "noteUpdate"];
 
 /**
  * 経理月次報告・資金繰り予定の登録・訂正API(ユーザー確定、2026-10-15)。
  * 経営タブの閲覧許可リスト(managementDashboardAccess)の人だけが使える。IAPのJWTをサーバー側で
  * 検証し、検証済みのemailで許可リストを照合して更新者に記録する(クライアントのemailは使わない)。
- * 本文: { values: {...}, changeType?: "correction" | "forecastUpdate" }。既存の値がある月への保存は
- * changeTypeが必須(無ければ409)。
+ * 本文: { values: {...}, changeType?: "correction" | "forecastUpdate" | "noteUpdate" }。既存の値がある月への
+ * 保存はchangeTypeが必須(無ければ409)。メモ更新でメモ以外の項目が変わっていれば400。
  */
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ kind: string; month: string }> }) {
   const { kind, month } = await params;
@@ -55,6 +55,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   } catch (error) {
     if (error instanceof ChangeTypeRequiredError) {
       return NextResponse.json({ error: "change_type_required" }, { status: 409 });
+    }
+    if (error instanceof NoteUpdateChangesValuesError) {
+      return NextResponse.json({ error: "note_update_changes_values" }, { status: 400 });
     }
     console.error("[accounting-reports PUT] Firestoreへの保存に失敗しました");
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

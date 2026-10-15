@@ -17,20 +17,30 @@ import { getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
 
 export type AccountingReportKind = "monthly-report" | "cash-plan";
 
-/** 既存の値を上書きする理由。初回登録はinitial */
-export type ChangeType = "initial" | "correction" | "forecastUpdate";
+/** 既存の値を上書きする理由。初回登録はinitial。noteUpdateはメモだけの変更(数値・日付・資料名は変えられない) */
+export type ChangeType = "initial" | "correction" | "forecastUpdate" | "noteUpdate";
 
 export const CHANGE_TYPE_LABELS: Record<ChangeType, string> = {
   initial: "初回登録",
   correction: "訂正",
   forecastUpdate: "予測更新",
+  noteUpdate: "メモ更新",
 };
 
 /** 種類ごとに、既存の値を上書きするときに選べる理由。経理月次報告は実績のため予測更新は無い */
 export const ALLOWED_OVERWRITE_TYPES: Record<AccountingReportKind, readonly ChangeType[]> = {
-  "monthly-report": ["correction"],
-  "cash-plan": ["correction", "forecastUpdate"],
+  "monthly-report": ["correction", "noteUpdate"],
+  "cash-plan": ["correction", "forecastUpdate", "noteUpdate"],
 };
+
+/** メモ更新で変えてよい項目 */
+const NOTE_FIELDS: readonly string[] = ["note"];
+
+/** メモ以外の項目(数値・日付・資料名・差額の説明)が現在値と同じか。メモ更新の保存前に確認する */
+export function changesOnlyNote(current: Record<string, unknown>, next: Record<string, unknown>): boolean {
+  const keys = new Set([...Object.keys(current), ...Object.keys(next)]);
+  return [...keys].every((k) => NOTE_FIELDS.includes(k) || (current[k] ?? null) === (next[k] ?? null));
+}
 
 /** 経理月次報告の値(登録・訂正の単位) */
 export interface MonthlyReportValues {

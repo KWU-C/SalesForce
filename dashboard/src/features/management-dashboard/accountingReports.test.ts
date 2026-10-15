@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  changesOnlyNote,
   checkCashPlan,
   difference,
   parseReportValues,
@@ -109,5 +110,15 @@ describe("helpers", () => {
       { targetMonth: "2026-09" },
       { targetMonth: "2025-12" },
     ]);
+  });
+});
+
+describe("changesOnlyNote", () => {
+  it("allows only the note to differ (null and missing are the same)", () => {
+    const base = { revenueCumulative: 1, ordinaryProfitCumulative: -1, documentName: "経理報告", note: null };
+    expect(changesOnlyNote(base, { ...base, note: "確認事項" })).toBe(true);
+    expect(changesOnlyNote(base, { ...base, ordinaryProfitCumulative: -2, note: "確認事項" })).toBe(false);
+    expect(changesOnlyNote(base, { ...base, differenceExplanation: "説明" })).toBe(false);
+    expect(changesOnlyNote({ ...base, basisDate: null }, base)).toBe(true);
   });
 });

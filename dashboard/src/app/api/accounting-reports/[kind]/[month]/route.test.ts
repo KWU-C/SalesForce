@@ -11,7 +11,7 @@ vi.mock("@/repositories/accountingReportRepository", async (importOriginal) => {
 });
 
 const { PUT } = await import("./route");
-const { ChangeTypeRequiredError } = await import("@/repositories/accountingReportRepository");
+const { ChangeTypeRequiredError, NoteUpdateChangesValuesError } = await import("@/repositories/accountingReportRepository");
 
 const VALUES = { revenueCumulative: 100, ordinaryProfitCumulative: -1, documentName: "経理報告" };
 
@@ -68,5 +68,20 @@ describe("PUT /api/accounting-reports/[kind]/[month]", () => {
     verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
     saveAccountingReportMock.mockRejectedValue(new ChangeTypeRequiredError());
     expect((await put("monthly-report", "2026-09", { values: VALUES })).status).toBe(409);
+  });
+
+  it("passes メモ更新 through and returns 400 when it would change values other than the note", async () => {
+    verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
+    saveAccountingReportMock.mockResolvedValue({});
+    expect((await put("monthly-report", "2026-09", { values: VALUES, changeType: "noteUpdate" })).status).toBe(200);
+    expect(saveAccountingReportMock).toHaveBeenCalledWith(expect.objectContaining({ changeType: "noteUpdate" }));
+    saveAccountingReportMock.mockRejectedValue(new NoteUpdateChangesValuesError());
+    expect((await put("monthly-report", "2026-09", { values: VALUES, changeType: "noteUpdate" })).status).toBe(400);
+  });
+
+  it("rejects initial as an overwrite reason", async () => {
+    verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
+    expect((await put("monthly-report", "2026-09", { values: VALUES, changeType: "initial" })).status).toBe(400);
+    expect(saveAccountingReportMock).not.toHaveBeenCalled();
   });
 });

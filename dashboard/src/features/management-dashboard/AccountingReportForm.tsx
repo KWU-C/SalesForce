@@ -127,7 +127,7 @@ export function AccountingReportForm({ monthlyReports, cashPlans }: AccountingRe
   async function handleSave() {
     if (!targetMonth) return setStatus({ type: "error", message: "対象月を選んでください" });
     if (typeof preview === "string") return setStatus({ type: "error", message: preview });
-    if (existing && !changeType) return setStatus({ type: "error", message: "既存の値があります。訂正か予測更新かを選んでください" });
+    if (existing && !changeType) return setStatus({ type: "error", message: "既存の値があります。上書きの理由を選んでください" });
     setStatus({ type: "saving" });
     try {
       const response = await fetch(`/api/accounting-reports/${kind}/${targetMonth}`, {
@@ -142,7 +142,9 @@ export function AccountingReportForm({ monthlyReports, cashPlans }: AccountingRe
             : response.status === 409
               ? "他の人が先に登録しました。画面を再読み込みしてから訂正してください"
               : response.status === 400
-                ? "入力内容を確認してください"
+                ? changeType === "noteUpdate"
+                  ? "メモ更新ではメモ以外の項目を変更できません。数値などを直す場合は「訂正」を選んでください"
+                  : "入力内容を確認してください"
                 : "保存に失敗しました";
         return setStatus({ type: "error", message: reason });
       }

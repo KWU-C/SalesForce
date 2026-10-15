@@ -1,5 +1,5 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
-import { ALLOWED_OVERWRITE_TYPES } from "@/features/management-dashboard/accountingReports";
+import { ALLOWED_OVERWRITE_TYPES, changesOnlyNote } from "@/features/management-dashboard/accountingReports";
 import type {
   AccountingReportKind,
   CashPlan,
@@ -80,6 +80,9 @@ export function listCashPlans(store: AccountingReportStore = createFirestoreStor
 
 export class ChangeTypeRequiredError extends Error {}
 
+/** メモ更新なのにメモ以外の項目が変わっている */
+export class NoteUpdateChangesValuesError extends Error {}
+
 export interface SaveAccountingReportInput<K extends AccountingReportKind> {
   kind: K;
   targetMonth: string;
@@ -92,7 +95,7 @@ export interface SaveAccountingReportInput<K extends AccountingReportKind> {
 
 /**
  * 1か月分を登録・上書きする。既存の値がある場合は、上書き前の値・登録者・日時を履歴に追加し、
- * 理由(訂正/予測更新)を必須にする。無い場合は初回登録。読み込みと書き込みは1トランザクションで
+ * 理由(訂正/予測更新/メモ更新)を必須にする。メモ更新はメモ以外の項目が現在値と同じ場合だけ受け付ける。無い場合は初回登録。読み込みと書き込みは1トランザクションで
  * 行い、同時保存で履歴が欠けないようにする。updatedByはAPIルートがIAP検証済みJWTから渡す値。
  */
 export async function saveAccountingReport<K extends AccountingReportKind>(
@@ -117,6 +120,9 @@ export async function saveAccountingReport<K extends AccountingReportKind>(
     const changeType = input.changeType;
     if (!changeType || !ALLOWED_OVERWRITE_TYPES[input.kind].includes(changeType)) {
       throw new ChangeTypeRequiredError();
+    }
+    if (changeType === "noteUpdate" && !changesOnlyNote(current.values, values)) {
+      throw new NoteUpdateChangesValuesError();
     }
     const revision: Revision<Record<string, unknown>> = {
       values: current.values,

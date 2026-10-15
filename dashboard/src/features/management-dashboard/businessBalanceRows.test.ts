@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toBusinessBalanceRows } from "./businessBalanceRows";
+import { provisionalPlMonths, provisionalPlNote, toBusinessBalanceRows } from "./businessBalanceRows";
 import type { MonthlyPlPoint } from "./businessBalanceRows";
 
 const FISCAL_MONTHS = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8];
@@ -92,5 +92,17 @@ describe("toBusinessBalanceRows", () => {
     const rows = toBusinessBalanceRows([{ month: 9, ...MISSING }, { month: 10, ...MISSING }]);
 
     expect(rows.every((r) => r.monthlyRevenue === null && r.cumulativeOperatingProfit === null)).toBe(true);
+  });
+});
+
+describe("provisionalPlMonths", () => {
+  it("marks the current and previous month as provisional", () => {
+    expect(provisionalPlMonths(10)).toEqual([9, 10]);
+    expect(provisionalPlMonths(1)).toEqual([12, 1]);
+    expect(provisionalPlNote(10)).toMatch(/^9月・10月の損益は、月次決算/);
+  });
+
+  it("marks only the current month at the start of a term (the previous month belongs to the previous term)", () => {
+    expect(provisionalPlMonths(9)).toEqual([9]);
   });
 });

@@ -11,7 +11,7 @@ vi.mock("@/repositories/freeeAuthRepository", () => ({
   getFreeeCompanyId: getFreeeCompanyIdMock,
 }));
 
-const { extractPlSummary, getFinancialSummary } = await import("./financialSummary");
+const { extractPlSummary, getFinancialSummary, profitRate } = await import("./financialSummary");
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -67,6 +67,28 @@ describe("extractPlSummary", () => {
     expect(summary.operatingProfit).toBe(200);
     expect(summary.operatingProfitRate).toBe(20.0);
     expect(summary.ordinaryProfit).toBe(210);
+  });
+
+  it("computes signed rates from the amounts instead of freee's unsigned composition_ratio", () => {
+    const trialPl: FreeeTrialBalanceResponse = {
+      company_id: 1,
+      fiscal_year: 2026,
+      balances: [
+        row({ total_line: true, account_category_name: "売上高", closing_balance: 1000 }),
+        // freeeのcomposition_ratioは損失でも正の値で返る
+        row({ total_line: true, account_category_name: "売上総損益金額", closing_balance: -300, composition_ratio: 30 }),
+        row({ total_line: true, account_category_name: "営業損益金額", closing_balance: -500, composition_ratio: 50 }),
+      ],
+    };
+    const summary = extractPlSummary(trialPl);
+    expect(summary.grossProfitRate).toBe(-30);
+    expect(summary.operatingProfitRate).toBe(-50);
+  });
+
+  it("returns a null rate when revenue is 0 or missing", () => {
+    expect(profitRate(100, 0)).toBeNull();
+    expect(profitRate(100, null)).toBeNull();
+    expect(profitRate(null, 1000)).toBeNull();
   });
 
   it("returns null (not 0) for a subtotal category that doesn't appear in the response", () => {

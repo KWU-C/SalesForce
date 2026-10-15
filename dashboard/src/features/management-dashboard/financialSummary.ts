@@ -10,7 +10,7 @@ import { getFreeeCompanyId } from "@/repositories/freeeAuthRepository";
 export interface FinancialSummary {
   revenue: number | null;
   grossProfit: number | null;
-  /** %。累計ベースのためfreeeのcomposition_ratioをそのまま使用(単月とは異なり妥当) */
+  /** %。利益÷売上高で求める符号付きの値(損失ならマイナス)。profitRate参照 */
   grossProfitRate: number | null;
   operatingProfit: number | null;
   operatingProfitRate: number | null;
@@ -35,17 +35,31 @@ function findSubtotalRow(
   return balances.find((b) => b.total_line === true && b.account_category_name === categoryName) ?? null;
 }
 
+/**
+ * 利益率(%) = 利益 ÷ 売上高 × 100。損失ならマイナスになる。売上高が0・未取得ならnull。
+ * freeeのcomposition_ratio(構成比)は符号の無い絶対値で返るため使わない。営業損失
+ * −13,859,051円に対して「営業利益率 49.27%」と表示されていた(2026-10-15発見、ユーザー指示で修正)。
+ * 保存済みスナップショットにも旧値が残るため、表示側もこの関数で金額から計算し直す。
+ */
+export function profitRate(profit: number | null, revenue: number | null): number | null {
+  if (profit === null || revenue === null || revenue === 0) return null;
+  return (profit / revenue) * 100;
+}
+
 export function extractPlSummary(trialPl: FreeeTrialBalanceResponse): FinancialSummary {
   const revenueRow = findSubtotalRow(trialPl.balances, "売上高");
   const grossProfitRow = findSubtotalRow(trialPl.balances, "売上総損益金額");
   const operatingProfitRow = findSubtotalRow(trialPl.balances, "営業損益金額");
   const ordinaryProfitRow = findSubtotalRow(trialPl.balances, "経常損益金額");
+  const revenue = revenueRow?.closing_balance ?? null;
+  const grossProfit = grossProfitRow?.closing_balance ?? null;
+  const operatingProfit = operatingProfitRow?.closing_balance ?? null;
   return {
-    revenue: revenueRow?.closing_balance ?? null,
-    grossProfit: grossProfitRow?.closing_balance ?? null,
-    grossProfitRate: grossProfitRow?.composition_ratio ?? null,
-    operatingProfit: operatingProfitRow?.closing_balance ?? null,
-    operatingProfitRate: operatingProfitRow?.composition_ratio ?? null,
+    revenue,
+    grossProfit,
+    grossProfitRate: profitRate(grossProfit, revenue),
+    operatingProfit,
+    operatingProfitRate: profitRate(operatingProfit, revenue),
     ordinaryProfit: ordinaryProfitRow?.closing_balance ?? null,
   };
 }

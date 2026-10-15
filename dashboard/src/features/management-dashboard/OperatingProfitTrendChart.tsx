@@ -21,6 +21,8 @@ interface OperatingProfitTrendChartProps {
   term: number;
   /** 期首月(9月)から当月までの月次P/L。未取得の月は値がnull */
   points: MonthlyPlPoint[];
+  /** 速報値(月次決算前の数値を含む)として印を付ける月(暦月)。provisionalPlMonths参照 */
+  provisionalMonths: number[];
 }
 
 interface ChartRow {
@@ -36,6 +38,8 @@ interface ChartRow {
   operatingProfit: number | null;
   /** 最新月(=現在月)かどうか。ポイントを目立たせるのに使う */
   isCurrent: boolean;
+  /** 速報値の月か。X軸ラベルとツールチップに印を付ける */
+  isProvisional: boolean;
 }
 
 const REVENUE_LABEL = "売上高（単月）";
@@ -116,7 +120,7 @@ function TrendTooltip({
   return (
     <div className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-1)] px-3 py-2 text-sm shadow-sm">
       <p className="mb-1 text-xs text-[var(--text-muted)]">
-        {row.year}年{row.month}月
+        {row.year}年{row.month}月{row.isProvisional && "（速報値・月次決算前を含む）"}
       </p>
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-2">
@@ -151,7 +155,7 @@ function TrendTooltip({
  * 累積営業利益は単月営業利益の積み上げで、未取得の月(null)は棒を出さず、折れ線もつながない
  * (補間しない)。更新時に月次合計と上部カード(当期累計)が一致することを検算している。
  */
-export function OperatingProfitTrendChart({ term, points }: OperatingProfitTrendChartProps) {
+export function OperatingProfitTrendChart({ term, points, provisionalMonths }: OperatingProfitTrendChartProps) {
   const revenueColor = useCssVar("--series-1", "#2a78d6");
   const costColor = useCssVar("--series-2", "#eb6834");
   // 折れ線は主役(今期ここまでプラスかマイナスか)。色付きの棒に重なっても埋もれないよう、
@@ -173,7 +177,9 @@ export function OperatingProfitTrendChart({ term, points }: OperatingProfitTrend
     costBar: r.monthlyOperatingCost === null ? null : -r.monthlyOperatingCost,
     operatingProfit: r.cumulativeOperatingProfit,
     isCurrent: i === rows.length - 1,
+    isProvisional: provisionalMonths.includes(r.month),
   }));
+  const hasProvisional = data.some((d) => d.isProvisional);
 
   const values = data
     .flatMap((d) => [d.revenue, d.costBar, d.operatingProfit])
@@ -232,7 +238,7 @@ export function OperatingProfitTrendChart({ term, points }: OperatingProfitTrend
               <CartesianGrid stroke={gridline} vertical={false} />
               <XAxis
                 dataKey="month"
-                tickFormatter={(m: number) => `${m}月`}
+                tickFormatter={(m: number) => `${m}月${provisionalMonths.includes(m) ? "*" : ""}`}
                 stroke={muted}
                 tick={{ fill: muted, fontSize: 12 }}
                 axisLine={{ stroke: baseline }}
@@ -303,6 +309,9 @@ export function OperatingProfitTrendChart({ term, points }: OperatingProfitTrend
       {/* 当月の値は「今日まで」ではなく、freee上で当月の日付で登録済みの仕訳すべて(先日付を含む)を
           反映した値であることを明記する(ユーザー確定、2026-10-08) */}
       <p className="text-xs text-[var(--text-muted)]">※ 当月はfreeeに登録済みの当月仕訳を反映</p>
+      {hasProvisional && (
+        <p className="text-xs text-[var(--text-muted)]">* 速報値（月次決算前の数値を含む）</p>
+      )}
     </div>
   );
 }

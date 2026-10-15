@@ -3,8 +3,16 @@ import { fiscalYearToDateMonthsLabel } from "@/config/fiscalPeriods";
 import { KpiTile } from "./KpiTile";
 import { SectionBanner } from "./SectionBanner";
 import { OperatingProfitTrendChart } from "./OperatingProfitTrendChart";
+import { profitRate } from "./financialSummary";
 import type { FinancialSummarySnapshot } from "./financialSummary";
+import { provisionalPlMonths, provisionalPlNote } from "./businessBalanceRows";
 import type { MonthlyPlPoint } from "./businessBalanceRows";
+
+/** 利益率の補助表示。保存済みの率は旧算出(符号なし)の可能性があるため、常に金額から計算し直す */
+function rateLabel(label: string, profit: number | null, revenue: number | null): string | undefined {
+  const rate = profitRate(profit, revenue);
+  return rate === null ? undefined : `${label} ${formatPercent(rate)}`;
+}
 
 interface FinancialSummaryCardsProps {
   /** monthはこのサマリーを取得した月(=累計の対象の終了月)。見出しに対象月を明記する */
@@ -31,23 +39,26 @@ export function FinancialSummaryCards({ summary, term, monthlyPl }: FinancialSum
           title="粗利益"
           value={summary.grossProfit}
           formatter={formatYen}
-          subLabel={summary.grossProfitRate === null ? undefined : `粗利率 ${formatPercent(summary.grossProfitRate)}`}
+          subLabel={rateLabel("粗利率", summary.grossProfit, summary.revenue)}
         />
         <KpiTile
           title="営業利益"
           value={summary.operatingProfit}
           formatter={formatYen}
-          subLabel={
-            summary.operatingProfitRate === null
-              ? undefined
-              : `営業利益率 ${formatPercent(summary.operatingProfitRate)}`
-          }
+          subLabel={rateLabel("営業利益率", summary.operatingProfit, summary.revenue)}
         />
         <KpiTile title="経常利益" value={summary.ordinaryProfit} formatter={formatYen} />
       </div>
+      <p className="text-xs text-[var(--text-muted)]">
+        ※ {provisionalPlNote(summary.month)}
+      </p>
 
       {monthlyPl.length > 0 && (
-        <OperatingProfitTrendChart term={term} points={monthlyPl} />
+        <OperatingProfitTrendChart
+          term={term}
+          points={monthlyPl}
+          provisionalMonths={provisionalPlMonths(summary.month)}
+        />
       )}
     </div>
   );

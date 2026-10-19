@@ -27,7 +27,7 @@ export function getCrListForTerm(term: number): { id: CrId; label: string }[] {
   ];
 }
 
-const CONCRETE_CR_IDS: readonly ConcreteCrId[] = ["CR1", "CR2", "CR3", "CR4"];
+export const CONCRETE_CR_IDS: readonly ConcreteCrId[] = ["CR1", "CR2", "CR3", "CR4"];
 
 /** 外部入力（APIリクエストボディ等）がConcreteCrIdかどうかを判定する */
 export function isConcreteCrId(value: unknown): value is ConcreteCrId {

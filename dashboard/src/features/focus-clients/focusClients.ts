@@ -45,6 +45,9 @@ export interface FocusClientMaster {
   updatedAt: string | null;
 }
 
+/** 社内担当(User.Name)→所属CR(User.Department) */
+export type OwnerCrMap = Record<string, ConcreteCrId>;
+
 export type DealStatus = "open" | "won" | "lost";
 
 /** 注力クライアントの案件1件(Process__c) */

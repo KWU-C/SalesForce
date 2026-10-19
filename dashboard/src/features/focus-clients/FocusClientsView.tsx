@@ -15,6 +15,7 @@ import type {
   FocusClientSummary,
   FocusDeal,
   OwnerCrMap,
+  ScopeTargets,
 } from "./focusClients";
 
 const DASH = "―";
@@ -45,14 +46,23 @@ function Tile({ label, value, sub, valueClassName }: { label: string; value: str
 }
 
 /** 上部のサマリー。完了粗利・目標粗利・達成率の合算3つ(ユーザー指示、2026-10-19) */
-function SummarySection({ summary }: { summary: FocusClientSummary }) {
+/** 目標粗利の下は全社目標(CRタブではそのCRの目標)を参考に出す(ユーザー指示、2026-10-19) */
+function SummarySection({
+  summary,
+  scopeLabel,
+  scopeTarget,
+}: {
+  summary: FocusClientSummary;
+  scopeLabel: string;
+  scopeTarget: number | null;
+}) {
   return (
     <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <Tile label="完了粗利" value={formatYen(summary.completedGrossProfitFullYear)} sub="通年（当期の請求予定を含む）" />
       <Tile
         label="目標粗利"
         value={formatYen(summary.targetGrossProfit)}
-        sub={`目標入力 ${summary.targetedCount}/${summary.clientCount}社`}
+        sub={`${scopeLabel}目標 ${scopeTarget ? formatYen(scopeTarget) : DASH}`}
       />
       <Tile
         label="達成率"
@@ -192,6 +202,7 @@ interface FocusClientsViewProps {
   ownerCrs: OwnerCrMap;
   ownerCrsFailed: boolean;
   crList: { id: CrId; label: string }[];
+  scopeTargets: ScopeTargets;
 }
 
 /**
@@ -210,6 +221,7 @@ export function FocusClientsView({
   ownerCrs,
   ownerCrsFailed,
   crList,
+  scopeTargets,
 }: FocusClientsViewProps) {
   const [masters, setMasters] = useState(initialMasters);
   const [selectedCr, setSelectedCr] = useState<CrId>("ALL");
@@ -264,7 +276,11 @@ export function FocusClientsView({
         </p>
       </div>
 
-      <SummarySection summary={visibleSummary} />
+      <SummarySection
+        summary={visibleSummary}
+        scopeLabel={selectedCr === "ALL" ? "全社" : selectedCr}
+        scopeTarget={scopeTargets[selectedCr]}
+      />
 
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

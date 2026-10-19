@@ -80,6 +80,7 @@ export default async function FocusClientsPage({ searchParams }: FocusClientsPag
             deals={loaded.deals}
             ownerCrs={loaded.ownerCrs}
             ownerCrsFailed={loaded.ownerCrsFailed}
+            scopeTargets={loaded.scopeTargets}
             crList={getCrListForTerm(selectedTerm)}
             term={selectedTerm}
             currentMonth={displayMonth}

@@ -70,6 +70,7 @@ function SummarySection({ summary, toDate }: { summary: FocusClientSummary; toDa
 
 type SortKey =
   | "name"
+  | "category"
   | "owner"
   | "targetGrossProfit"
   | "completedGrossProfitToDate"
@@ -85,6 +86,8 @@ function sortValue(row: FocusClientRow, key: SortKey): string | number | null {
   switch (key) {
     case "name":
       return row.master.name;
+    case "category":
+      return row.master.category;
     case "owner":
       return row.master.owner;
     case "targetGrossProfit":
@@ -168,6 +171,7 @@ function DealsTable({ deals }: { deals: FocusDeal[] }) {
 
 const COLUMNS: { key: SortKey; label: (toDate: string) => string; numeric: boolean }[] = [
   { key: "name", label: () => "クライアント", numeric: false },
+  { key: "category", label: () => "区分", numeric: false },
   { key: "owner", label: () => "社内担当", numeric: false },
   { key: "targetGrossProfit", label: () => "目標粗利", numeric: true },
   { key: "completedGrossProfitToDate", label: (t) => `完了粗利（${t}）`, numeric: true },
@@ -194,6 +198,7 @@ interface FocusClientsViewProps {
  */
 export function FocusClientsView({ masters: initialMasters, deals, term, currentMonth, isCurrentTerm }: FocusClientsViewProps) {
   const [masters, setMasters] = useState(initialMasters);
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "targetGrossProfit", desc: true });
@@ -203,19 +208,24 @@ export function FocusClientsView({ masters: initialMasters, deals, term, current
     () => computeFocusClients({ term, termRange: fiscalTermDateRange(term), currentMonth, masters, deals }),
     [term, currentMonth, masters, deals]
   );
+  const categories = useMemo(
+    () => [...new Set(masters.map((m) => m.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja")),
+    [masters]
+  );
   const owners = useMemo(
     () => [...new Set(masters.map((m) => m.owner).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja")),
     [masters]
   );
 
   const visibleRows = result.rows
+    .filter((row) => !categoryFilter || row.master.category === categoryFilter)
     .filter((row) => !ownerFilter || row.master.owner === ownerFilter)
     .filter((row) => {
       const q = query.trim();
       return !q || row.master.name.includes(q) || row.master.theme.includes(q);
     })
     .sort((a, b) => compareRows(a, b, sort.key, sort.desc));
-  const isFiltered = Boolean(ownerFilter || query.trim());
+  const isFiltered = Boolean(categoryFilter || ownerFilter || query.trim());
   const visibleSummary = isFiltered
     ? computeFocusClients({
         term,
@@ -246,6 +256,21 @@ export function FocusClientsView({ masters: initialMasters, deals, term, current
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6">
       <div className="flex flex-wrap items-center gap-3 text-sm">
+        <label className="flex items-center gap-2 text-[var(--text-secondary)]">
+          区分
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="rounded border border-[var(--border-hairline)] bg-[var(--surface-1)] px-2 py-1 text-[var(--text-primary)]"
+          >
+            <option value="">すべて</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="flex items-center gap-2 text-[var(--text-secondary)]">
           社内担当
           <select
@@ -314,6 +339,7 @@ export function FocusClientsView({ masters: initialMasters, deals, term, current
                           {row.master.name}
                         </button>
                       </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.master.category || DASH}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.master.owner || DASH}</td>
                       <td className="px-3 py-2 text-right">{targetText(row.target.grossProfit)}</td>
                       <td className="px-3 py-2 text-right">{formatThousandYen(row.completedGrossProfitToDate)}</td>

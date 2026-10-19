@@ -3,7 +3,7 @@ import { getFirestoreClient } from "@/services/firestore/firestoreClient";
 
 /**
  * 注力クライアントマスタ(ダッシュボード側が正本、ユーザー確定 2026-10-15)。
- * ドキュメントID = SalesforceのAccount ID(18桁)。初期データはAccount(ターゲット区分=注力)から
+ * ドキュメントID = SalesforceのAccount ID(18桁)。初期データはAccount(ターゲット区分=注力・掘り起こし)から
  * 一度だけ投入し、以後はダッシュボードの画面から編集する(Salesforceへは書き戻さない)。
  */
 const COLLECTION = "focusClients";

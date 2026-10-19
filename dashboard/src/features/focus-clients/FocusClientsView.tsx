@@ -46,7 +46,7 @@ function Tile({ label, value, sub, valueClassName }: { label: string; value: str
 }
 
 /** 上部のサマリー。完了粗利・目標粗利・達成率の合算3つ(ユーザー指示、2026-10-19) */
-/** 目標粗利の下は全社目標(CRタブではそのCRの目標)を参考に出す(ユーザー指示、2026-10-19) */
+/** 目標粗利の下は全社目標(CRタブではそのCRの目標)と、そのうち注力クライアントの目標粗利が占める割合を出す(ユーザー指示、2026-10-19) */
 function SummarySection({
   summary,
   scopeLabel,
@@ -62,7 +62,11 @@ function SummarySection({
       <Tile
         label="目標粗利"
         value={formatYen(summary.targetGrossProfit)}
-        sub={`${scopeLabel}目標 ${scopeTarget ? formatYen(scopeTarget) : DASH}`}
+        sub={
+          scopeTarget
+            ? `${scopeLabel}目標 ${formatYen(scopeTarget)} の内${formatPercent((summary.targetGrossProfit / scopeTarget) * 100)}`
+            : `${scopeLabel}目標 ${DASH}`
+        }
       />
       <Tile
         label="達成率"

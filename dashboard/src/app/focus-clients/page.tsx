@@ -9,6 +9,7 @@ import {
   getCurrentFiscalPeriod,
   getSelectableTerms,
 } from "@/config/fiscalPeriods";
+import { getCrListForTerm } from "@/domain/types";
 import { formatTime } from "@/utils/format";
 
 // 毎リクエストSalesforce・Firestoreから取得する(営業進捗タブと同じ)
@@ -77,6 +78,9 @@ export default async function FocusClientsPage({ searchParams }: FocusClientsPag
           <FocusClientsView
             masters={loaded.masters}
             deals={loaded.deals}
+            ownerCrs={loaded.ownerCrs}
+            ownerCrsFailed={loaded.ownerCrsFailed}
+            crList={getCrListForTerm(selectedTerm)}
             term={selectedTerm}
             currentMonth={displayMonth}
             isCurrentTerm={isCurrentTerm}

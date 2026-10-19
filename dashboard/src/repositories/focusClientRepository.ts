@@ -3,8 +3,8 @@ import { fiscalTermDateRange } from "@/config/fiscalPeriods";
 import { getSalesforceJwtConfig } from "@/config/salesforce";
 import { SalesforceClient } from "@/services/salesforce/salesforceClient";
 import type { SalesforceQueryClient } from "@/services/salesforce/salesforceClient";
-import { buildFocusClientDealsQuery } from "@/services/salesforce/focusClientQueries";
-import type { FocusClientMaster, FocusDeal } from "@/features/focus-clients/focusClients";
+import { buildFocusClientDealsQuery, buildOwnerDepartmentsQuery } from "@/services/salesforce/focusClientQueries";
+import type { FocusClientMaster, FocusDeal, OwnerCrMap } from "@/features/focus-clients/focusClients";
 import { getFocusClientMasters } from "./focusClientMasterRepository";
 
 /** 明細取得(非集計)クエリのため、生のAPI名のまま返ってくる */
@@ -22,6 +22,24 @@ interface RawDealRow {
   seikyuubi__c: string | null;
   uriageyoteibi__c: string | null;
   shicchu_riyu__c: string | null;
+}
+
+interface RawOwnerRow {
+  Name: string | null;
+  Department: string | null;
+}
+
+/** 同名のユーザーが別々のCRにいる場合はどちらとも決められないため振り分けない */
+export function toOwnerCrMap(rows: RawOwnerRow[]): OwnerCrMap {
+  const result: OwnerCrMap = {};
+  const ambiguous = new Set<string>();
+  for (const row of rows) {
+    if (!row.Name || !isConcreteCrId(row.Department)) continue;
+    if (result[row.Name] && result[row.Name] !== row.Department) ambiguous.add(row.Name);
+    result[row.Name] = row.Department;
+  }
+  for (const name of ambiguous) delete result[name];
+  return result;
 }
 
 function toDeal(row: RawDealRow): FocusDeal | null {
@@ -44,7 +62,7 @@ function toDeal(row: RawDealRow): FocusDeal | null {
 }
 
 export type FocusClientsLoadResult =
-  | { ok: true; masters: FocusClientMaster[]; deals: FocusDeal[] }
+  | { ok: true; masters: FocusClientMaster[]; deals: FocusDeal[]; ownerCrs: OwnerCrMap; ownerCrsFailed: boolean }
   | { ok: false; failed: "master" | "salesforce" };
 
 /**
@@ -68,9 +86,11 @@ export async function getFocusClients(
 
   const termRange = fiscalTermDateRange(term);
   let deals: FocusDeal[] = [];
+  let ownerCrs: OwnerCrMap = {};
+  let ownerCrsFailed = false;
   if (masters.length > 0) {
+    const queryClient = deps.client ?? new SalesforceClient(getSalesforceJwtConfig());
     try {
-      const queryClient = deps.client ?? new SalesforceClient(getSalesforceJwtConfig());
       const rows = await queryClient.query<RawDealRow>(
         buildFocusClientDealsQuery(
           masters.map((m) => m.accountId),
@@ -84,7 +104,15 @@ export async function getFocusClients(
       console.error(`[focusClientRepository] 注力クライアントの案件取得に失敗しました(term=${term}, ${kind})`);
       return { ok: false, failed: "salesforce" };
     }
+    // 所属CRが取れなくても全社タブは表示できるため、失敗はタブ側の注記にとどめる
+    try {
+      ownerCrs = toOwnerCrMap(await queryClient.query<RawOwnerRow>(buildOwnerDepartmentsQuery()));
+    } catch (error) {
+      const kind = error instanceof Error ? error.name : typeof error;
+      console.error(`[focusClientRepository] 社内担当の所属CRの取得に失敗しました(${kind})`);
+      ownerCrsFailed = true;
+    }
   }
 
-  return { ok: true, masters, deals };
+  return { ok: true, masters, deals, ownerCrs, ownerCrsFailed };
 }

@@ -1,11 +1,20 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import { CrTabs } from "@/components/CrTabs";
+import type { CrId } from "@/domain/types";
 import { fiscalTermDateRange, fiscalYearToDateMonthsLabel } from "@/config/fiscalPeriods";
 import { formatPercent, formatThousandYen, formatYen } from "@/utils/format";
 import { FocusClientEditor } from "./FocusClientEditor";
 import { computeFocusClients, dealStatus } from "./focusClients";
-import type { DealStatus, FocusClientMaster, FocusClientRow, FocusClientSummary, FocusDeal } from "./focusClients";
+import type {
+  DealStatus,
+  FocusClientMaster,
+  FocusClientRow,
+  FocusClientSummary,
+  FocusDeal,
+  OwnerCrMap,
+} from "./focusClients";
 
 const DASH = "―";
 
@@ -190,14 +199,29 @@ interface FocusClientsViewProps {
   term: number;
   currentMonth: number;
   isCurrentTerm: boolean;
+  ownerCrs: OwnerCrMap;
+  ownerCrsFailed: boolean;
+  crList: { id: CrId; label: string }[];
 }
 
 /**
- * 注力クライアント管理タブ本体。全体サマリー、絞り込み・並び替えできる一覧、
+ * 注力クライアント管理タブ本体。CRタブ、全体サマリー、絞り込み・並び替えできる一覧、
  * 会社名クリックで開く詳細(マスタ編集+案件一覧)からなる(ユーザー確定、2026-10-15)。
+ * CRタブは社内担当の所属CRで振り分ける(ユーザー指示、2026-10-19)。目標・実績は会社単位のままで、
+ * 他CRの案件も含む。所属CRが分からない社は全社タブにだけ出る。
  */
-export function FocusClientsView({ masters: initialMasters, deals, term, currentMonth, isCurrentTerm }: FocusClientsViewProps) {
+export function FocusClientsView({
+  masters: initialMasters,
+  deals,
+  term,
+  currentMonth,
+  isCurrentTerm,
+  ownerCrs,
+  ownerCrsFailed,
+  crList,
+}: FocusClientsViewProps) {
   const [masters, setMasters] = useState(initialMasters);
+  const [selectedCr, setSelectedCr] = useState<CrId>("ALL");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [query, setQuery] = useState("");
@@ -217,7 +241,9 @@ export function FocusClientsView({ masters: initialMasters, deals, term, current
     [masters]
   );
 
-  const visibleRows = result.rows
+  const crRows = result.rows.filter((row) => selectedCr === "ALL" || ownerCrs[row.master.owner] === selectedCr);
+  const unassignedCount = result.rows.filter((row) => !ownerCrs[row.master.owner]).length;
+  const visibleRows = crRows
     .filter((row) => !categoryFilter || row.master.category === categoryFilter)
     .filter((row) => !ownerFilter || row.master.owner === ownerFilter)
     .filter((row) => {
@@ -226,7 +252,7 @@ export function FocusClientsView({ masters: initialMasters, deals, term, current
     })
     .sort((a, b) => compareRows(a, b, sort.key, sort.desc));
   const isFiltered = Boolean(categoryFilter || ownerFilter || query.trim());
-  const visibleSummary = isFiltered
+  const visibleSummary = isFiltered || selectedCr !== "ALL"
     ? computeFocusClients({
         term,
         termRange: fiscalTermDateRange(term),
@@ -255,6 +281,15 @@ export function FocusClientsView({ masters: initialMasters, deals, term, current
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6">
+      <div className="flex flex-col gap-1">
+        <CrTabs crList={crList} selected={selectedCr} onSelect={setSelectedCr} />
+        <p className="text-xs text-[var(--text-muted)]">
+          CRは社内担当の所属CR（Salesforceのユーザーの部署）で振り分けています。目標・実績は会社単位で、他CRの案件も含みます。
+          {ownerCrsFailed
+            ? "所属CRを取得できなかったため、CRタブには表示されません。"
+            : unassignedCount > 0 && `所属CRが分からない${unassignedCount}社は全社タブにだけ表示しています。`}
+        </p>
+      </div>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <label className="flex items-center gap-2 text-[var(--text-secondary)]">
           区分
@@ -295,7 +330,7 @@ export function FocusClientsView({ masters: initialMasters, deals, term, current
         />
         {isFiltered && (
           <span className="text-xs text-[var(--text-muted)]">
-            {visibleRows.length}/{result.rows.length}社を表示（サマリーも絞り込み後の値）
+            {visibleRows.length}/{crRows.length}社を表示（サマリーも絞り込み後の値）
           </span>
         )}
       </div>

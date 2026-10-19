@@ -6,6 +6,7 @@
  * (kuraiantomei__c)はAPIから見えない。clientAccountId__cは数式項目のためGROUP BYできず、
  * 明細のまま取得してアプリ側で集計する。
  */
+import { CONCRETE_CR_IDS } from "@/domain/types";
 import { OPEN_PHASES } from "@/features/focus-clients/focusClients";
 
 /** SalesforceのId(15/18桁英数字)以外はSOQLに埋め込まない */
@@ -43,4 +44,12 @@ export function buildFocusClientDealsQuery(
     FROM Process__c
     WHERE clientAccountId__c IN (${ids})
       AND (${conditions.join(" OR ")})`;
+}
+
+/**
+ * 社内担当の所属CR(Userの部署)。CRタブの振り分けは社内担当が所属するCRで行う(ユーザー指示、2026-10-19)。
+ * マスタの社内担当は文字列なので、User.Nameと名前で突き合わせる。
+ */
+export function buildOwnerDepartmentsQuery(): string {
+  return `SELECT Name, Department FROM User WHERE Department IN (${CONCRETE_CR_IDS.map((id) => `'${id}'`).join(",")})`;
 }

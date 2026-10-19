@@ -13,7 +13,7 @@
  * 失注(フェーズ=失注)は集計から除外し、案件一覧には残す。
  */
 import { fiscalMonthIndex } from "@/config/fiscalPeriods";
-import type { ConcreteCrId } from "@/domain/types";
+import type { ConcreteCrId, CrId } from "@/domain/types";
 
 /** 期ごとの目標(円)。未入力はnull(0円目標とは区別し、達成率は「―」にする) */
 export interface FocusClientTarget {
@@ -52,6 +52,9 @@ export interface FocusClientMaster {
 
 /** 社内担当(User.Name)→所属CR(User.Department) */
 export type OwnerCrMap = Record<string, ConcreteCrId>;
+
+/** 全社(ALL)・CR別の年間目標粗利(SalesTarget__c)。未設定はnull */
+export type ScopeTargets = Record<CrId, number | null>;
 
 export type DealStatus = "open" | "won" | "lost";
 

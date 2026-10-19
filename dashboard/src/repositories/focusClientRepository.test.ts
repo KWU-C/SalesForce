@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SalesforceQueryClient } from "@/services/salesforce/salesforceClient";
 import type { FocusClientMaster } from "@/features/focus-clients/focusClients";
-import { getFocusClients, toOwnerCrMap } from "./focusClientRepository";
+import { getFocusClients, toOwnerCrMap, toScopeTargets } from "./focusClientRepository";
 
 const MASTER: FocusClientMaster = {
   accountId: "001000000000001AAA",
@@ -67,5 +67,18 @@ describe("getFocusClients", () => {
       }),
     });
     expect(result).toMatchObject({ ok: true, deals: [], ownerCrs: {}, ownerCrsFailed: true });
+  });
+});
+
+describe("toScopeTargets", () => {
+  it("全社目標とCR別目標を返す。未設定・レコードなしはnull", () => {
+    expect(toScopeTargets({ TargetGrossProfit__c: 300, CR1TargetGrossProfit__c: 100, CR2TargetGrossProfit__c: null })).toEqual({
+      ALL: 300,
+      CR1: 100,
+      CR2: null,
+      CR3: null,
+      CR4: null,
+    });
+    expect(toScopeTargets(undefined)).toEqual({ ALL: null, CR1: null, CR2: null, CR3: null, CR4: null });
   });
 });

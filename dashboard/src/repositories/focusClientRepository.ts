@@ -1,10 +1,11 @@
-import { isConcreteCrId } from "@/domain/types";
+import { CONCRETE_CR_IDS, isConcreteCrId } from "@/domain/types";
 import { fiscalTermDateRange } from "@/config/fiscalPeriods";
 import { getSalesforceJwtConfig } from "@/config/salesforce";
 import { SalesforceClient } from "@/services/salesforce/salesforceClient";
 import type { SalesforceQueryClient } from "@/services/salesforce/salesforceClient";
 import { buildFocusClientDealsQuery, buildOwnerDepartmentsQuery } from "@/services/salesforce/focusClientQueries";
-import type { FocusClientMaster, FocusDeal, OwnerCrMap } from "@/features/focus-clients/focusClients";
+import { buildSalesTargetQuery } from "@/services/salesforce/salesforceQueries";
+import type { FocusClientMaster, FocusDeal, OwnerCrMap, ScopeTargets } from "@/features/focus-clients/focusClients";
 import { getFocusClientMasters } from "./focusClientMasterRepository";
 
 /** 明細取得(非集計)クエリのため、生のAPI名のまま返ってくる */
@@ -42,6 +43,16 @@ export function toOwnerCrMap(rows: RawOwnerRow[]): OwnerCrMap {
   return result;
 }
 
+type SalesTargetRow = { TargetGrossProfit__c?: number | null } & Partial<
+  Record<`CR${1 | 2 | 3 | 4}TargetGrossProfit__c`, number | null>
+>;
+
+export function toScopeTargets(row: SalesTargetRow | undefined): ScopeTargets {
+  const result = { ALL: row?.TargetGrossProfit__c ?? null } as ScopeTargets;
+  for (const crId of CONCRETE_CR_IDS) result[crId] = row?.[`${crId}TargetGrossProfit__c`] ?? null;
+  return result;
+}
+
 function toDeal(row: RawDealRow): FocusDeal | null {
   if (!row.clientAccountId__c) return null;
   return {
@@ -62,7 +73,7 @@ function toDeal(row: RawDealRow): FocusDeal | null {
 }
 
 export type FocusClientsLoadResult =
-  | { ok: true; masters: FocusClientMaster[]; deals: FocusDeal[]; ownerCrs: OwnerCrMap; ownerCrsFailed: boolean }
+  | { ok: true; masters: FocusClientMaster[]; deals: FocusDeal[]; ownerCrs: OwnerCrMap; ownerCrsFailed: boolean; scopeTargets: ScopeTargets }
   | { ok: false; failed: "master" | "salesforce" };
 
 /**
@@ -88,6 +99,7 @@ export async function getFocusClients(
   let deals: FocusDeal[] = [];
   let ownerCrs: OwnerCrMap = {};
   let ownerCrsFailed = false;
+  let scopeTargets = toScopeTargets(undefined);
   if (masters.length > 0) {
     const queryClient = deps.client ?? new SalesforceClient(getSalesforceJwtConfig());
     try {
@@ -112,7 +124,14 @@ export async function getFocusClients(
       console.error(`[focusClientRepository] 社内担当の所属CRの取得に失敗しました(${kind})`);
       ownerCrsFailed = true;
     }
+    // 全社・CR目標はサマリーの参考表示のため、取れなくても画面は出す(「―」表示)
+    try {
+      scopeTargets = toScopeTargets((await queryClient.query<SalesTargetRow>(buildSalesTargetQuery(term)))[0]);
+    } catch (error) {
+      const kind = error instanceof Error ? error.name : typeof error;
+      console.error(`[focusClientRepository] 全社目標の取得に失敗しました(term=${term}, ${kind})`);
+    }
   }
 
-  return { ok: true, masters, deals, ownerCrs, ownerCrsFailed };
+  return { ok: true, masters, deals, ownerCrs, ownerCrsFailed, scopeTargets };
 }

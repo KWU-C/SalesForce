@@ -83,7 +83,6 @@ export type FocusClientsLoadResult =
  */
 export async function getFocusClients(
   term: number,
-  isCurrentTerm: boolean,
   deps: { masters?: () => Promise<FocusClientMaster[]>; client?: SalesforceQueryClient } = {}
 ): Promise<FocusClientsLoadResult> {
   let masters: FocusClientMaster[];
@@ -106,8 +105,7 @@ export async function getFocusClients(
       const rows = await queryClient.query<RawDealRow>(
         buildFocusClientDealsQuery(
           masters.map((m) => m.accountId),
-          termRange,
-          isCurrentTerm
+          termRange
         )
       );
       deals = rows.map(toDeal).filter((d): d is FocusDeal => d !== null);

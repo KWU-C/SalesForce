@@ -52,7 +52,7 @@ describe("getFocusClients", () => {
   }
 
   it("所属CRを返す", async () => {
-    const result = await getFocusClients(50, true, {
+    const result = await getFocusClients(50, {
       masters: async () => [MASTER],
       client: clientReturning(async () => [{ Name: "担当 一郎", Department: "CR2" }]),
     });
@@ -60,7 +60,7 @@ describe("getFocusClients", () => {
   });
 
   it("所属CRの取得に失敗しても案件は返し、失敗を知らせる", async () => {
-    const result = await getFocusClients(50, true, {
+    const result = await getFocusClients(50, {
       masters: async () => [MASTER],
       client: clientReturning(async () => {
         throw new Error("boom");

@@ -51,7 +51,7 @@ export default async function FocusClientsPage({ searchParams }: FocusClientsPag
       ? FISCAL_MONTH_ORDER[0]
       : FISCAL_YEAR_END_MONTH;
 
-  const loaded = await getFocusClients(selectedTerm, isCurrentTerm);
+  const loaded = await getFocusClients(selectedTerm);
   const fetchedAt = new Date();
 
   return (
@@ -84,7 +84,6 @@ export default async function FocusClientsPage({ searchParams }: FocusClientsPag
             crList={getCrListForTerm(selectedTerm)}
             term={selectedTerm}
             currentMonth={displayMonth}
-            isCurrentTerm={isCurrentTerm}
           />
         ) : (
           <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-24 text-center">

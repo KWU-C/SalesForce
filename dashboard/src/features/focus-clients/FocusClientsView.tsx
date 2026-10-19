@@ -200,7 +200,6 @@ interface FocusClientsViewProps {
   deals: FocusDeal[];
   term: number;
   currentMonth: number;
-  isCurrentTerm: boolean;
   ownerCrs: OwnerCrMap;
   ownerCrsFailed: boolean;
   crList: { id: CrId; label: string }[];
@@ -219,7 +218,6 @@ export function FocusClientsView({
   deals,
   term,
   currentMonth,
-  isCurrentTerm,
   ownerCrs,
   ownerCrsFailed,
   crList,
@@ -383,9 +381,7 @@ export function FocusClientsView({
                                 第{term}期の案件（{row.deals.length}件、単位: 千円）
                               </h3>
                               <p className="text-xs text-[var(--text-muted)]">
-                                受注日・請求日・売上予定日のいずれかが当期内の案件
-                                {isCurrentTerm && "と、日付によらず進行中（提案・見積）の案件"}
-                                。完了・受注の実績は確度Aかつ受注以降のフェーズのみ集計しています。
+                                受注日・請求日・売上予定日のいずれかが当期内の案件（日付が未入力なら当期内に作成された案件）。完了・受注の実績は確度Aかつ受注以降のフェーズのみ集計しています。
                               </p>
                               <DealsTable deals={row.deals} />
                             </div>

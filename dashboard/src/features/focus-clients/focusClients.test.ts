@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeFocusClients, type FocusClientMaster, type FocusDeal } from "./focusClients";
+import { categoryGroup, computeFocusClients, type FocusClientMaster, type FocusDeal } from "./focusClients";
 
 const TERM_RANGE = { start: "2026-09-01", end: "2027-08-31" };
 
@@ -14,6 +14,9 @@ function master(accountId: string, targets: FocusClientMaster["targets"] = {}): 
     currentStatus: "",
     monthAction: "",
     nextAction: "",
+    memo: "",
+    memoUpdatedBy: null,
+    memoUpdatedAt: null,
     targets,
     updatedBy: null,
     updatedAt: null,
@@ -132,5 +135,33 @@ describe("computeFocusClients", () => {
     expect(summary.completedGrossProfitToDate).toBe(1200);
     expect(summary.grossProfitRate).toBe(50);
     expect(summary.salesRate).toBeNull();
+  });
+});
+
+describe("通年の粗利達成率", () => {
+  it("通年完了予定(当月より先の請求予定を含む)を年間目標で割る。サマリーは目標入力済みの社だけで計算する", () => {
+    const { rows, summary } = compute(
+      [master("A", { "50": { sales: null, grossProfit: 1000 } }), master("B")],
+      [
+        deal({ id: "d1", accountId: "A", invoiceDate: "2026-09-10", grossProfit: 200 }),
+        deal({ id: "d2", accountId: "A", invoiceDate: "2027-03-10", grossProfit: 300 }),
+        deal({ id: "d3", accountId: "B", invoiceDate: "2026-09-10", grossProfit: 999 }),
+      ]
+    );
+    expect(rows[0].grossProfitRate).toBe(20);
+    expect(rows[0].grossProfitRateFullYear).toBe(50);
+    expect(rows[1].grossProfitRateFullYear).toBeNull();
+    expect(summary.grossProfitRateFullYear).toBe(50);
+  });
+});
+
+describe("categoryGroup", () => {
+  it("注力→掘り起こし→その他・未入力の順", () => {
+    expect(["", "その他", "掘り起こし", "注力"].sort((a, b) => categoryGroup(a) - categoryGroup(b))).toEqual([
+      "注力",
+      "掘り起こし",
+      "",
+      "その他",
+    ]);
   });
 });

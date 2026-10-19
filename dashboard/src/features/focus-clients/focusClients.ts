@@ -39,6 +39,11 @@ export interface FocusClientMaster {
   monthAction: string;
   /** 次回アクション */
   nextAction: string;
+  /** 一覧に表示するメモ(ユーザー指示、2026-10-19) */
+  memo: string;
+  /** メモ専用の最終更新(他項目の保存では変わらない) */
+  memoUpdatedBy: string | null;
+  memoUpdatedAt: string | null;
   /** 事業期番号(文字列)→目標 */
   targets: Record<string, FocusClientTarget>;
   updatedBy: string | null;
@@ -98,6 +103,8 @@ export interface FocusClientRow {
   /** 年間達成率(%) = 累計完了 ÷ 年間目標。目標未入力・0円はnull */
   salesRate: number | null;
   grossProfitRate: number | null;
+  /** 通年達成率(%) = 通年完了予定 ÷ 年間目標。一覧・サマリーはこちらを表示する(ユーザー指示、2026-10-19) */
+  grossProfitRateFullYear: number | null;
   openCount: number;
   openSales: number;
   openGrossProfit: number;
@@ -119,6 +126,7 @@ export interface FocusClientSummary {
   /** 目標入力済みの社だけで計算した達成率(未入力社の実績を分子に混ぜない) */
   salesRate: number | null;
   grossProfitRate: number | null;
+  grossProfitRateFullYear: number | null;
   openCount: number;
   openGrossProfit: number;
   lostCount: number;
@@ -195,6 +203,7 @@ export function computeFocusClients(input: ComputeFocusClientsInput): FocusClien
       orderGrossProfitToDate: 0,
       salesRate: null,
       grossProfitRate: null,
+      grossProfitRateFullYear: null,
       openCount: 0,
       openSales: 0,
       openGrossProfit: 0,
@@ -231,6 +240,7 @@ export function computeFocusClients(input: ComputeFocusClientsInput): FocusClien
     }
     row.salesRate = rate(row.completedSalesToDate, target.sales);
     row.grossProfitRate = rate(row.completedGrossProfitToDate, target.grossProfit);
+    row.grossProfitRateFullYear = rate(row.completedGrossProfitFullYear, target.grossProfit);
     return row;
   });
 
@@ -242,6 +252,7 @@ function summarize(rows: FocusClientRow[]): FocusClientSummary {
   let targetGrossProfit = 0;
   let salesActualForRate = 0;
   let grossProfitActualForRate = 0;
+  let grossProfitFullYearForRate = 0;
   let targetedCount = 0;
   const summary = {
     completedSalesToDate: 0,
@@ -261,6 +272,7 @@ function summarize(rows: FocusClientRow[]): FocusClientSummary {
       targetedCount += 1;
       targetGrossProfit += row.target.grossProfit;
       grossProfitActualForRate += row.completedGrossProfitToDate;
+      grossProfitFullYearForRate += row.completedGrossProfitFullYear;
     }
     summary.completedSalesToDate += row.completedSalesToDate;
     summary.completedGrossProfitToDate += row.completedGrossProfitToDate;
@@ -278,5 +290,16 @@ function summarize(rows: FocusClientRow[]): FocusClientSummary {
     ...summary,
     salesRate: rate(salesActualForRate, targetSales || null),
     grossProfitRate: rate(grossProfitActualForRate, targetGrossProfit || null),
+    grossProfitRateFullYear: rate(grossProfitFullYearForRate, targetGrossProfit || null),
   };
+}
+
+/**
+ * 一覧の区分グループ。常に注力を上、掘り起こしを下にまとめ、並び替えはグループ内で行う
+ * (ユーザー指示、2026-10-19)。それ以外・未入力の区分は最下部。
+ */
+export function categoryGroup(category: string): number {
+  if (category === "注力") return 0;
+  if (category === "掘り起こし") return 1;
+  return 2;
 }

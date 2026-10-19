@@ -57,6 +57,7 @@ function toTargets(value: unknown): Record<string, FocusClientTarget> {
 
 export function toFocusClientMaster(id: string, data: Record<string, unknown>): FocusClientMaster {
   const updatedAt = data.updatedAt as FirestoreTimestampLike | undefined;
+  const memoUpdatedAt = data.memoUpdatedAt as FirestoreTimestampLike | undefined;
   return {
     accountId: id,
     name: str(data.name),
@@ -67,6 +68,9 @@ export function toFocusClientMaster(id: string, data: Record<string, unknown>): 
     currentStatus: str(data.currentStatus),
     monthAction: str(data.monthAction),
     nextAction: str(data.nextAction),
+    memo: str(data.memo),
+    memoUpdatedBy: typeof data.memoUpdatedBy === "string" ? data.memoUpdatedBy : null,
+    memoUpdatedAt: memoUpdatedAt ? memoUpdatedAt.toDate().toISOString() : null,
     targets: toTargets(data.targets),
     updatedBy: typeof data.updatedBy === "string" ? data.updatedBy : null,
     updatedAt: updatedAt ? updatedAt.toDate().toISOString() : null,
@@ -93,6 +97,7 @@ export const EDITABLE_TEXT_FIELDS = [
   "currentStatus",
   "monthAction",
   "nextAction",
+  "memo",
 ] as const;
 
 export type EditableTextField = (typeof EDITABLE_TEXT_FIELDS)[number];
@@ -118,7 +123,13 @@ export async function saveFocusClient(
   const existing = await store.get(input.accountId);
   if (!existing) throw new FocusClientNotFoundError();
 
-  const data: Record<string, unknown> = { ...input.fields, updatedBy: input.updatedBy, updatedAt: new Date() };
+  const updatedAt = new Date();
+  const data: Record<string, unknown> = { ...input.fields, updatedBy: input.updatedBy, updatedAt };
+  // メモ専用の更新者・日時。一覧のメモ欄に表示する(他項目だけの保存では触らない)
+  if (input.fields.memo !== undefined) {
+    data.memoUpdatedBy = input.updatedBy;
+    data.memoUpdatedAt = updatedAt;
+  }
   if (input.target) {
     data.targets = {
       [String(input.target.term)]: { sales: input.target.sales, grossProfit: input.target.grossProfit },

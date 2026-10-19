@@ -3,10 +3,11 @@
 import { Fragment, useMemo, useState } from "react";
 import { CrTabs } from "@/components/CrTabs";
 import type { CrId } from "@/domain/types";
-import { fiscalTermDateRange, fiscalYearToDateMonthsLabel } from "@/config/fiscalPeriods";
+import { fiscalTermDateRange } from "@/config/fiscalPeriods";
 import { formatPercent, formatThousandYen, formatYen } from "@/utils/format";
 import { FocusClientEditor } from "./FocusClientEditor";
-import { computeFocusClients, dealStatus } from "./focusClients";
+import { FocusClientMemoEditor } from "./FocusClientMemoEditor";
+import { categoryGroup, computeFocusClients, dealStatus } from "./focusClients";
 import type {
   DealStatus,
   FocusClientMaster,
@@ -43,53 +44,27 @@ function Tile({ label, value, sub, valueClassName }: { label: string; value: str
   );
 }
 
-function SummarySection({ summary, toDate }: { summary: FocusClientSummary; toDate: string }) {
+/** 上部のサマリー。完了粗利・目標粗利・達成率の合算3つ(ユーザー指示、2026-10-19) */
+function SummarySection({ summary }: { summary: FocusClientSummary }) {
   return (
     <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <Tile label="完了粗利" value={formatYen(summary.completedGrossProfitFullYear)} sub="通年（当期の請求予定を含む）" />
       <Tile
-        label={`粗利達成率（${toDate}）`}
-        value={rateText(summary.grossProfitRate)}
-        valueClassName={rateClassName(summary.grossProfitRate)}
-        sub={`目標粗利 ${formatYen(summary.targetGrossProfit)}（目標入力 ${summary.targetedCount}/${summary.clientCount}社）`}
+        label="目標粗利"
+        value={formatYen(summary.targetGrossProfit)}
+        sub={`目標入力 ${summary.targetedCount}/${summary.clientCount}社`}
       />
       <Tile
-        label={`累計完了粗利（${toDate}・請求日基準）`}
-        value={formatYen(summary.completedGrossProfitToDate)}
-        sub={`通年完了予定 ${formatYen(summary.completedGrossProfitFullYear)}`}
+        label="達成率"
+        value={rateText(summary.grossProfitRateFullYear)}
+        valueClassName={rateClassName(summary.grossProfitRateFullYear)}
+        sub="目標入力済みの社の完了粗利 ÷ 目標粗利"
       />
-      <Tile
-        label={`累計受注粗利（${toDate}・受注日基準、先行指標）`}
-        value={formatYen(summary.orderGrossProfitToDate)}
-      />
-      <Tile
-        label={`売上達成率（${toDate}）`}
-        value={rateText(summary.salesRate)}
-        valueClassName={rateClassName(summary.salesRate)}
-        sub={`目標売上 ${formatYen(summary.targetSales)}／累計完了売上 ${formatYen(summary.completedSalesToDate)}`}
-      />
-      <Tile
-        label="進行中（提案・見積）"
-        value={`${summary.openCount}件`}
-        sub={`見込み粗利 ${formatYen(summary.openGrossProfit)}`}
-      />
-      <Tile label="失注" value={`${summary.lostCount}件`} sub="集計からは除外、案件一覧には表示" />
     </section>
   );
 }
 
-type SortKey =
-  | "name"
-  | "category"
-  | "owner"
-  | "targetGrossProfit"
-  | "completedGrossProfitToDate"
-  | "grossProfitRate"
-  | "targetSales"
-  | "completedSalesToDate"
-  | "salesRate"
-  | "orderGrossProfitToDate"
-  | "openGrossProfit"
-  | "lostCount";
+type SortKey = "category" | "name" | "owner" | "targetGrossProfit" | "completedGrossProfitFullYear" | "grossProfitRateFullYear" | "openCount";
 
 function sortValue(row: FocusClientRow, key: SortKey): string | number | null {
   switch (key) {
@@ -101,21 +76,34 @@ function sortValue(row: FocusClientRow, key: SortKey): string | number | null {
       return row.master.owner;
     case "targetGrossProfit":
       return row.target.grossProfit || null;
-    case "targetSales":
-      return row.target.sales || null;
     default:
       return row[key];
   }
 }
 
-/** 未入力(null)は昇順・降順どちらでも末尾 */
+/** 区分グループ(注力→掘り起こし)が常に優先。未入力(null)は昇順・降順どちらでもグループ内の末尾 */
 function compareRows(a: FocusClientRow, b: FocusClientRow, key: SortKey, desc: boolean): number {
+  const byGroup = categoryGroup(a.master.category) - categoryGroup(b.master.category);
+  if (byGroup !== 0) return byGroup;
   const va = sortValue(a, key);
   const vb = sortValue(b, key);
   if (va === null || va === "") return vb === null || vb === "" ? 0 : 1;
   if (vb === null || vb === "") return -1;
   const cmp = typeof va === "string" ? va.localeCompare(String(vb), "ja") : va - (vb as number);
   return desc ? -cmp : cmp;
+}
+
+/** 達成率バー(幅80px)。100%以上は満タン、100%未満は達成率の文字と同じ色 */
+function RateBar({ rate }: { rate: number | null }) {
+  if (rate === null) return null;
+  return (
+    <div className="h-2 w-20 overflow-hidden rounded-sm bg-[var(--surface-sunken)]" aria-hidden>
+      <div
+        className={`h-full ${rate < 100 ? "bg-[var(--status-serious)]" : "bg-[var(--series-1)]"}`}
+        style={{ width: `${Math.min(Math.max(rate, 0), 100)}%` }}
+      />
+    </div>
+  );
 }
 
 const STATUS_LABEL: Record<DealStatus, string> = { open: "進行中", won: "受注以降", lost: "失注" };
@@ -178,20 +166,22 @@ function DealsTable({ deals }: { deals: FocusDeal[] }) {
   );
 }
 
-const COLUMNS: { key: SortKey; label: (toDate: string) => string; numeric: boolean }[] = [
-  { key: "name", label: () => "クライアント", numeric: false },
-  { key: "category", label: () => "区分", numeric: false },
-  { key: "owner", label: () => "社内担当", numeric: false },
-  { key: "targetGrossProfit", label: () => "目標粗利", numeric: true },
-  { key: "completedGrossProfitToDate", label: (t) => `完了粗利（${t}）`, numeric: true },
-  { key: "grossProfitRate", label: () => "粗利達成率", numeric: true },
-  { key: "targetSales", label: () => "目標売上", numeric: true },
-  { key: "completedSalesToDate", label: (t) => `完了売上（${t}）`, numeric: true },
-  { key: "salesRate", label: () => "売上達成率", numeric: true },
-  { key: "orderGrossProfitToDate", label: (t) => `受注粗利（${t}）`, numeric: true },
-  { key: "openGrossProfit", label: () => "進行中", numeric: true },
-  { key: "lostCount", label: () => "失注", numeric: true },
+/**
+ * 一覧の列(ユーザー指示、2026-10-19)。keyの無い列(達成率バー)は並び替えなし。
+ * 担当以外は内容幅(w-px)に詰め、表の余りは担当列が受け持つ(クライアント列を全角12文字幅に保つため)
+ */
+const COLUMNS: { key: SortKey | null; label: string; numeric: boolean }[] = [
+  { key: "category", label: "区分", numeric: false },
+  { key: "name", label: "クライアント", numeric: false },
+  { key: "owner", label: "担当", numeric: false },
+  { key: "targetGrossProfit", label: "目標粗利", numeric: true },
+  { key: "completedGrossProfitFullYear", label: "完了粗利", numeric: true },
+  { key: "grossProfitRateFullYear", label: "達成率", numeric: true },
+  { key: null, label: "", numeric: false },
+  { key: "openCount", label: "案件数", numeric: true },
 ];
+/** メモ行が担当〜案件数の下に入るため、区分・クライアントの2列は2行にまたがる */
+const MEMO_COL_SPAN = COLUMNS.length - 2;
 
 interface FocusClientsViewProps {
   masters: FocusClientMaster[];
@@ -207,6 +197,7 @@ interface FocusClientsViewProps {
 /**
  * 注力クライアント管理タブ本体。CRタブ、全体サマリー、絞り込み・並び替えできる一覧、
  * 会社名クリックで開く詳細(マスタ編集+案件一覧)からなる(ユーザー確定、2026-10-15)。
+ * 絞り込み・検索欄は廃止し、一覧は区分→クライアント→担当→粗利の列と行内メモにした(ユーザー指示、2026-10-19)。
  * CRタブは社内担当の所属CRで振り分ける(ユーザー指示、2026-10-19)。目標・実績は会社単位のままで、
  * 他CRの案件も含む。所属CRが分からない社は全社タブにだけ出る。
  */
@@ -222,9 +213,6 @@ export function FocusClientsView({
 }: FocusClientsViewProps) {
   const [masters, setMasters] = useState(initialMasters);
   const [selectedCr, setSelectedCr] = useState<CrId>("ALL");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [ownerFilter, setOwnerFilter] = useState("");
-  const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "targetGrossProfit", desc: true });
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -232,36 +220,21 @@ export function FocusClientsView({
     () => computeFocusClients({ term, termRange: fiscalTermDateRange(term), currentMonth, masters, deals }),
     [term, currentMonth, masters, deals]
   );
-  const categories = useMemo(
-    () => [...new Set(masters.map((m) => m.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja")),
-    [masters]
-  );
-  const owners = useMemo(
-    () => [...new Set(masters.map((m) => m.owner).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja")),
-    [masters]
-  );
 
-  const crRows = result.rows.filter((row) => selectedCr === "ALL" || ownerCrs[row.master.owner] === selectedCr);
   const unassignedCount = result.rows.filter((row) => !ownerCrs[row.master.owner]).length;
-  const visibleRows = crRows
-    .filter((row) => !categoryFilter || row.master.category === categoryFilter)
-    .filter((row) => !ownerFilter || row.master.owner === ownerFilter)
-    .filter((row) => {
-      const q = query.trim();
-      return !q || row.master.name.includes(q) || row.master.theme.includes(q);
-    })
+  const visibleRows = result.rows
+    .filter((row) => selectedCr === "ALL" || ownerCrs[row.master.owner] === selectedCr)
     .sort((a, b) => compareRows(a, b, sort.key, sort.desc));
-  const isFiltered = Boolean(categoryFilter || ownerFilter || query.trim());
-  const visibleSummary = isFiltered || selectedCr !== "ALL"
-    ? computeFocusClients({
-        term,
-        termRange: fiscalTermDateRange(term),
-        currentMonth,
-        masters: visibleRows.map((r) => r.master),
-        deals,
-      }).summary
-    : result.summary;
-  const toDate = fiscalYearToDateMonthsLabel(currentMonth);
+  const visibleSummary =
+    selectedCr !== "ALL"
+      ? computeFocusClients({
+          term,
+          termRange: fiscalTermDateRange(term),
+          currentMonth,
+          masters: visibleRows.map((r) => r.master),
+          deals,
+        }).summary
+      : result.summary;
 
   function handleSort(key: SortKey) {
     setSort((prev) => (prev.key === key ? { key, desc: !prev.desc } : { key, desc: COLUMNS.find((c) => c.key === key)!.numeric }));
@@ -284,111 +257,87 @@ export function FocusClientsView({
       <div className="flex flex-col gap-1">
         <CrTabs crList={crList} selected={selectedCr} onSelect={setSelectedCr} />
         <p className="text-xs text-[var(--text-muted)]">
-          CRは社内担当の所属CR（Salesforceのユーザーの部署）で振り分けています。目標・実績は会社単位で、他CRの案件も含みます。
+          CRは担当の所属CR（Salesforceのユーザーの部署）で振り分けています。目標・実績は会社単位で、他CRの案件も含みます。
           {ownerCrsFailed
             ? "所属CRを取得できなかったため、CRタブには表示されません。"
             : unassignedCount > 0 && `所属CRが分からない${unassignedCount}社は全社タブにだけ表示しています。`}
         </p>
       </div>
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <label className="flex items-center gap-2 text-[var(--text-secondary)]">
-          区分
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="rounded border border-[var(--border-hairline)] bg-[var(--surface-1)] px-2 py-1 text-[var(--text-primary)]"
-          >
-            <option value="">すべて</option>
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-2 text-[var(--text-secondary)]">
-          社内担当
-          <select
-            value={ownerFilter}
-            onChange={(e) => setOwnerFilter(e.target.value)}
-            className="rounded border border-[var(--border-hairline)] bg-[var(--surface-1)] px-2 py-1 text-[var(--text-primary)]"
-          >
-            <option value="">すべて</option>
-            {owners.map((owner) => (
-              <option key={owner} value={owner}>
-                {owner}
-              </option>
-            ))}
-          </select>
-        </label>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="クライアント名・テーマで検索"
-          className="w-full rounded border border-[var(--border-hairline)] bg-[var(--surface-1)] px-2 py-1 text-[var(--text-primary)] sm:w-64"
-        />
-        {isFiltered && (
-          <span className="text-xs text-[var(--text-muted)]">
-            {visibleRows.length}/{crRows.length}社を表示（サマリーも絞り込み後の値）
-          </span>
-        )}
-      </div>
 
-      <SummarySection summary={visibleSummary} toDate={toDate} />
+      <SummarySection summary={visibleSummary} />
 
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base font-semibold text-[var(--text-primary)]">注力クライアント一覧</h2>
           <span className="text-xs text-[var(--text-muted)]">
-            単位: 千円／達成率 = 累計完了 ÷ 年間目標／目標未入力は「―」／列名クリックで並び替え、クライアント名クリックで詳細
+            単位: 千円／完了粗利は通年（当期の請求予定を含む）／達成率 = 完了粗利 ÷ 目標粗利／案件数は進行中（提案・見積）／目標未入力は「―」／列名クリックで並び替え（注力・掘り起こしの区分内）、クライアント名クリックで詳細
           </span>
         </div>
         <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-[var(--gridline)] bg-[var(--surface-sunken)] text-xs font-medium whitespace-nowrap text-[var(--text-muted)]">
-                {COLUMNS.map((col) => (
-                  <th key={col.key} className={`px-3 py-2 ${col.numeric ? "text-right" : "text-left"}`}>
-                    <button type="button" onClick={() => handleSort(col.key)} className="hover:text-[var(--text-primary)]">
-                      {col.label(toDate)}
-                      {sort.key === col.key && (sort.desc ? " ▼" : " ▲")}
-                    </button>
+                {COLUMNS.map((col, i) => (
+                  <th
+                    key={col.key ?? `col-${i}`}
+                    className={`px-3 py-2 ${col.numeric ? "text-right" : "text-left"} ${col.key === "owner" ? "" : "w-px"}`}
+                  >
+                    {col.key && (
+                      <button type="button" onClick={() => handleSort(col.key!)} className="hover:text-[var(--text-primary)]">
+                        {col.label}
+                        {sort.key === col.key && (sort.desc ? " ▼" : " ▲")}
+                      </button>
+                    )}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {visibleRows.map((row) => {
+              {visibleRows.map((row, i) => {
                 const isOpen = expanded === row.master.accountId;
+                // 境界線を太くするのは注力→掘り起こしの切り替わりだけ(ユーザー指示、2026-10-19)
+                const prev = visibleRows[i - 1];
+                const isGroupBoundary =
+                  prev !== undefined &&
+                  categoryGroup(prev.master.category) === 0 &&
+                  categoryGroup(row.master.category) === 1;
+                const rowBg = isOpen ? "bg-[var(--surface-reference)]" : "";
                 return (
                   <Fragment key={row.master.accountId}>
-                    <tr className={`border-t border-[var(--gridline)] tabular-nums ${isOpen ? "bg-[var(--surface-reference)]" : ""}`}>
-                      <td className="px-3 py-2">
+                    <tr
+                      className={`tabular-nums ${rowBg} ${
+                        isGroupBoundary ? "border-t-[3px] border-[var(--text-muted)]" : "border-t border-[var(--gridline)]"
+                      }`}
+                    >
+                      <td rowSpan={2} className="px-3 py-2 align-top whitespace-nowrap text-[var(--text-secondary)]">
+                        {row.master.category || DASH}
+                      </td>
+                      <td rowSpan={2} className="px-3 py-2 align-top">
+                        {/* 全角12文字が改行なしで入る幅(ユーザー指示、2026-10-19) */}
                         <button
                           type="button"
                           onClick={() => setExpanded(isOpen ? null : row.master.accountId)}
                           aria-expanded={isOpen}
-                          className="text-left font-medium text-[var(--series-1)] hover:underline"
+                          className="block w-[12em] text-left font-medium text-[var(--series-1)] hover:underline"
                         >
                           {row.master.name}
                         </button>
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.master.category || DASH}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.master.owner || DASH}</td>
                       <td className="px-3 py-2 text-right">{targetText(row.target.grossProfit)}</td>
-                      <td className="px-3 py-2 text-right">{formatThousandYen(row.completedGrossProfitToDate)}</td>
-                      <td className={`px-3 py-2 text-right font-medium ${rateClassName(row.grossProfitRate)}`}>
-                        {rateText(row.grossProfitRate)}
+                      <td className="px-3 py-2 text-right">{formatThousandYen(row.completedGrossProfitFullYear)}</td>
+                      <td className={`px-3 py-2 text-right font-medium ${rateClassName(row.grossProfitRateFullYear)}`}>
+                        {rateText(row.grossProfitRateFullYear)}
                       </td>
-                      <td className="px-3 py-2 text-right">{targetText(row.target.sales)}</td>
-                      <td className="px-3 py-2 text-right">{formatThousandYen(row.completedSalesToDate)}</td>
-                      <td className={`px-3 py-2 text-right ${rateClassName(row.salesRate)}`}>{rateText(row.salesRate)}</td>
-                      <td className="px-3 py-2 text-right">{formatThousandYen(row.orderGrossProfitToDate)}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap" title={`見込み売上 ${formatThousandYen(row.openSales)}千円`}>
-                        {row.openCount > 0 ? `${row.openCount}件 ${formatThousandYen(row.openGrossProfit)}` : DASH}
+                      <td className="px-3 py-2">
+                        <RateBar rate={row.grossProfitRateFullYear} />
                       </td>
-                      <td className="px-3 py-2 text-right">{row.lostCount > 0 ? `${row.lostCount}件` : DASH}</td>
+                      <td className="px-3 py-2 text-right">{row.openCount > 0 ? `${row.openCount}件` : DASH}</td>
+                    </tr>
+                    <tr className={rowBg}>
+                      <td colSpan={MEMO_COL_SPAN} className="px-3 pb-2">
+                        <FocusClientMemoEditor key={row.master.accountId} master={row.master} onSaved={handleSaved} />
+                      </td>
                     </tr>
                     {isOpen && (
                       <tr className="border-t border-[var(--gridline)] bg-[var(--surface-reference)]">

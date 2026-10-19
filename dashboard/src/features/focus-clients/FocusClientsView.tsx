@@ -74,7 +74,7 @@ function SummarySection({
   );
 }
 
-type SortKey = "category" | "name" | "owner" | "targetGrossProfit" | "completedGrossProfitFullYear" | "grossProfitRateFullYear" | "openCount";
+type SortKey = "category" | "name" | "owner" | "targetGrossProfit" | "completedGrossProfitFullYear" | "grossProfitRateFullYear" | "dealCount";
 
 function sortValue(row: FocusClientRow, key: SortKey): string | number | null {
   switch (key) {
@@ -86,6 +86,8 @@ function sortValue(row: FocusClientRow, key: SortKey): string | number | null {
       return row.master.owner;
     case "targetGrossProfit":
       return row.target.grossProfit || null;
+    case "dealCount":
+      return row.deals.length;
     default:
       return row[key];
   }
@@ -188,7 +190,7 @@ const COLUMNS: { key: SortKey | null; label: string; numeric: boolean }[] = [
   { key: "completedGrossProfitFullYear", label: "完了粗利", numeric: true },
   { key: "grossProfitRateFullYear", label: "達成率", numeric: true },
   { key: null, label: "", numeric: false },
-  { key: "openCount", label: "案件数", numeric: true },
+  { key: "dealCount", label: "案件数", numeric: true },
 ];
 /** メモ行が担当〜案件数の下に入るため、区分・クライアントの2列は2行にまたがる */
 const MEMO_COL_SPAN = COLUMNS.length - 2;
@@ -286,7 +288,7 @@ export function FocusClientsView({
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base font-semibold text-[var(--text-primary)]">注力クライアント一覧</h2>
           <span className="text-xs text-[var(--text-muted)]">
-            単位: 千円／完了粗利は通年（当期の請求予定を含む）／達成率 = 完了粗利 ÷ 目標粗利／案件数は進行中（提案・見積）／目標未入力は「―」／列名クリックで並び替え（注力・掘り起こしの区分内）、クライアント名クリックで詳細
+            単位: 千円／完了粗利は通年（当期の請求予定を含む）／達成率 = 完了粗利 ÷ 目標粗利／案件数は詳細に出る当期の案件の件数（内訳: 進行中＝提案・見積、受注＝受注以降、失注）／目標未入力は「―」／列名クリックで並び替え（注力・掘り起こしの区分内）、クライアント名クリックで詳細
           </span>
         </div>
         <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
@@ -348,7 +350,18 @@ export function FocusClientsView({
                       <td className="px-3 py-2">
                         <RateBar rate={row.grossProfitRateFullYear} />
                       </td>
-                      <td className="px-3 py-2 text-right">{row.openCount > 0 ? `${row.openCount}件` : DASH}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {row.deals.length > 0 ? (
+                          <>
+                            {row.deals.length}件
+                            <span className="block text-xs text-[var(--text-muted)]">
+                              進行中{row.openCount}・受注{row.deals.length - row.openCount - row.lostCount}・失注{row.lostCount}
+                            </span>
+                          </>
+                        ) : (
+                          DASH
+                        )}
+                      </td>
                     </tr>
                     <tr className={rowBg}>
                       <td colSpan={MEMO_COL_SPAN} className="px-3 pb-2">

@@ -1,14 +1,7 @@
-import { listCashPlans, listMonthlyReports } from "@/repositories/accountingReportRepository";
-import { getMonthlyPlSnapshot } from "@/repositories/monthlyPlSnapshotRepository";
+import { listCashPlans } from "@/repositories/accountingReportRepository";
 import { getMonthlyCashFlowSnapshot } from "@/repositories/monthlyCashFlowSnapshotRepository";
 import { monthEndBoundary, resolveCashPlanActual, sortByTargetMonthDesc, targetMonthPeriod } from "./accountingReports";
-import type { CashPlan, CashPlanActual, FreeeCumulative, MonthlyReport } from "./accountingReports";
-
-export interface MonthlyReportWithFreee {
-  report: MonthlyReport;
-  /** 比較できるfreeeの値が無ければnull(その月の月次P/Lが未取得、または累計項目の追加前の取得分) */
-  freee: FreeeCumulative | null;
-}
+import type { CashPlan, CashPlanActual } from "./accountingReports";
 
 export interface CashPlanWithActual {
   plan: CashPlan;
@@ -17,36 +10,18 @@ export interface CashPlanWithActual {
 }
 
 export interface AccountingReportsView {
-  monthlyReports: MonthlyReportWithFreee[];
   cashPlans: CashPlanWithActual[];
 }
 
 /**
- * 経理月次報告・資金繰り予定セクションの表示データ。freeeの値は既存のスナップショット
- * (月次P/L=monthlyPlSnapshots、月末残高=monthlyCashFlowSnapshots。定時更新・「更新」ボタンで
- * 取得済みのもの)から読むだけで、freee APIは呼ばない(ユーザー確定、2026-10-15・2026-10-21)。
- * 経理の登録値は読むだけで、freeeの値で書き換えない。
+ * 資金繰り見通しセクションの表示データ。登録済みの資金繰り予定(cashPlanForecasts)と、freeeの月末実績
+ * (既存の月次資金収支スナップショット、定時更新・「更新」ボタンで取得済みのもの)を読むだけで、
+ * freee APIは呼ばず、登録値も書き換えない(ユーザー確定、2026-10-21)。
+ * 経理月次報告(accountingMonthlyReports)は、売上・利益を当期累計・事業収支の推移に集約したため
+ * 画面では使わない(Firestoreのデータ・変更履歴はそのまま残す、ユーザー確定 2026-10-21)。
  */
 export async function getAccountingReportsView(now: Date = new Date()): Promise<AccountingReportsView> {
-  const [reports, plans] = await Promise.all([listMonthlyReports(), listCashPlans()]);
-  const monthlyReports = await Promise.all(
-    sortByTargetMonthDesc(reports).map(async (report) => {
-      const { fiscalYear, month } = targetMonthPeriod(report.targetMonth);
-      const snapshot = await getMonthlyPlSnapshot(fiscalYear, month);
-      const hasCumulative =
-        snapshot !== null && (snapshot.revenueCumulative !== undefined || snapshot.ordinaryProfitCumulative !== undefined);
-      return {
-        report,
-        freee: hasCumulative
-          ? {
-              revenueCumulative: snapshot.revenueCumulative ?? null,
-              ordinaryProfitCumulative: snapshot.ordinaryProfitCumulative ?? null,
-              fetchedAt: snapshot.fetchedAt.toISOString(),
-            }
-          : null,
-      };
-    })
-  );
+  const plans = await listCashPlans();
   const cashPlans = await Promise.all(
     sortByTargetMonthDesc(plans).map(async (plan) => {
       const { fiscalYear, month } = targetMonthPeriod(plan.targetMonth);
@@ -55,5 +30,5 @@ export async function getAccountingReportsView(now: Date = new Date()): Promise<
       return { plan, actual: resolveCashPlanActual(plan.targetMonth, snapshot, now) };
     })
   );
-  return { monthlyReports, cashPlans };
+  return { cashPlans };
 }

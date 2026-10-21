@@ -44,5 +44,8 @@ describe("getAccountingReportsView", () => {
       ["2026-10", "fetched"],
     ]);
     expect(view.cashPlans[1].plan).toEqual(plan("2026-10"));
+    // 経理月次報告は画面で使わないので読まない(データは残す)
+    expect(listMonthlyReportsMock).not.toHaveBeenCalled();
+    expect(view).not.toHaveProperty("monthlyReports");
   });
 });

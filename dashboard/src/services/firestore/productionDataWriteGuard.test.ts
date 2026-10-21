@@ -3,6 +3,7 @@ import {
   ProductionDataWriteBlockedError,
   assertProductionDataWritable,
   canWriteProductionData,
+  describeRuntimeEnvironment,
 } from "./productionDataWriteGuard";
 
 const env = (service?: string, job?: string, localOverride?: string) => ({ service, job, localOverride });
@@ -38,5 +39,14 @@ describe("assertProductionDataWritable", () => {
       ProductionDataWriteBlockedError
     );
     expect(() => assertProductionDataWritable("monthlyCashFlowSnapshots", env("tcd-dashboard-prod"))).not.toThrow();
+  });
+});
+
+describe("describeRuntimeEnvironment", () => {
+  it("names the environment (job/service/local) together with the decision", () => {
+    expect(describeRuntimeEnvironment(env(undefined, "tcd-dashboard-prod-finance-refresh"))).toEqual({ kind: "job", name: "tcd-dashboard-prod-finance-refresh", productionWritable: true });
+    expect(describeRuntimeEnvironment(env(undefined, "tcd-dashboard-dev2-finance-refresh"))).toEqual({ kind: "job", name: "tcd-dashboard-dev2-finance-refresh", productionWritable: false });
+    expect(describeRuntimeEnvironment(env("tcd-dashboard-prod"))).toEqual({ kind: "service", name: "tcd-dashboard-prod", productionWritable: true });
+    expect(describeRuntimeEnvironment(env())).toEqual({ kind: "local", name: null, productionWritable: false });
   });
 });

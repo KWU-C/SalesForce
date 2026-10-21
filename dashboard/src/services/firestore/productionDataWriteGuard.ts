@@ -72,3 +72,18 @@ export function canWriteFreeeTokenDocument(docId: string, env: RuntimeEnvironmen
 export function assertOwnFreeeTokenDocument(docId: string, env: RuntimeEnvironment = currentEnvironment()): void {
   if (!canWriteFreeeTokenDocument(docId, env)) throw new ProductionDataWriteBlockedError(`freeeAuth/${docId}`);
 }
+
+export interface RuntimeEnvironmentDescription {
+  kind: "service" | "job" | "local";
+  /** サービス名またはJob名(ローカルはnull)。機密情報ではないのでログに出してよい */
+  name: string | null;
+  productionWritable: boolean;
+}
+
+/** 実行環境の種類・名前と、本番データへの書き込み可否(ジョブ開始時のログ用) */
+export function describeRuntimeEnvironment(env: RuntimeEnvironment = currentEnvironment()): RuntimeEnvironmentDescription {
+  const productionWritable = canWriteProductionData(env);
+  if (env.service !== undefined) return { kind: "service", name: env.service, productionWritable };
+  if (env.job !== undefined) return { kind: "job", name: env.job, productionWritable };
+  return { kind: "local", name: null, productionWritable };
+}

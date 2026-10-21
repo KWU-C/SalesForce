@@ -1,7 +1,7 @@
 import { refreshCurrentMonthSnapshots } from "../features/management-dashboard/refreshCurrentMonthSnapshots";
 import { refreshPastCashFlows } from "../features/management-dashboard/refreshPastCashFlows";
 import { getCurrentFiscalPeriod, freeeFiscalYearForTerm } from "../config/fiscalPeriods";
-import { canWriteProductionData } from "../services/firestore/productionDataWriteGuard";
+import { describeRuntimeEnvironment } from "../services/firestore/productionDataWriteGuard";
 
 /**
  * Cloud Run Jobのエントリポイント本体。Cloud Schedulerが毎日18:00(Asia/Tokyo)に
@@ -46,40 +46,58 @@ export async function runScheduledFinanceRefresh(): Promise<{
   };
 }
 
-async function main(): Promise<void> {
+export interface FinanceRefreshJobDeps {
+  run?: typeof runScheduledFinanceRefresh;
+  log?: (message: string) => void;
+  error?: (message: string) => void;
+}
+
+/**
+ * Jobの本体。終了コード(0=成功、1=失敗・中止)を返し、プロセスは終了しない(テストできるようにするため)。
+ *
+ * 最初に実行環境の名前と本番データへの書き込み可否をログに出す(名前はCloud Runが設定する
+ * CLOUD_RUN_JOB/K_SERVICEの値で、機密情報ではない)。書き込めない環境(devのJob・ローカルなど)では、
+ * freee・Firestoreに一切触れる前に中止する(共有Firestoreの上書き防止、2026-10-21)。
+ * 環境名を出すのは、「変数が無い」と「別のJobで動いている」を本番デプロイ前にログで見分けるため。
+ */
+export async function runFinanceRefreshJob(deps: FinanceRefreshJobDeps = {}): Promise<number> {
+  const run = deps.run ?? runScheduledFinanceRefresh;
+  const log = deps.log ?? ((m: string) => console.log(m));
+  const error = deps.error ?? ((m: string) => console.error(m));
+  const runtime = describeRuntimeEnvironment();
+  const where = runtime.name === null ? runtime.kind : `${runtime.kind}=${runtime.name}`;
+  if (!runtime.productionWritable) {
+    error(`[scheduledFinanceRefresh] 実行環境: ${where} / 本番データへの書き込み: 不可のため、更新を行いません`);
+    return 1;
+  }
+  log(`[scheduledFinanceRefresh] 実行環境: ${where} / 本番データへの書き込み: 許可`);
   try {
-    // 本番データへ書き込める環境(本番の定時更新Job=CLOUD_RUN_JOB)かを最初に確かめ、結果をログに残す。
-    // 書き込めない環境(devのJobなど)では、freeeに触れる前に止める(共有Firestoreの上書き防止、2026-10-21)
-    if (!canWriteProductionData()) {
-      console.error("[scheduledFinanceRefresh] この実行環境では本番データへ書き込めないため、更新を行いません");
-      process.exitCode = 1;
-      return;
-    }
-    console.log("[scheduledFinanceRefresh] 本番データへの書き込み: 許可された実行環境です");
-    const { fiscalYear, month, connected, refreshedPastMonths, refreshedPreviousTerm } =
-      await runScheduledFinanceRefresh();
+    const { fiscalYear, month, connected, refreshedPastMonths, refreshedPreviousTerm } = await run();
     if (!connected) {
-      console.error(`[scheduledFinanceRefresh] freee未接続のため${fiscalYear}期${month}月分を更新できませんでした`);
-      process.exitCode = 1;
-      return;
+      error(`[scheduledFinanceRefresh] freee未接続のため${fiscalYear}期${month}月分を更新できませんでした`);
+      return 1;
     }
-    console.log(
+    log(
       `[scheduledFinanceRefresh] ${fiscalYear}年度${month}月分の当月スナップショットと、過去月の資金収支` +
         `(${refreshedPastMonths.length > 0 ? refreshedPastMonths.map((m) => `${m}月`).join(",") : "なし"}` +
         `${refreshedPreviousTerm !== null ? `、${refreshedPreviousTerm}期の12か月・通期` : ""})を更新しました`
     );
-  } catch (error) {
+    return 0;
+  } catch (e) {
     // ここで出すのは自前でthrowしているエラーメッセージのみ(freee_api_error等の
     // 固定文言、トークン等の機微情報は含まない。既存のpage.tsx/refresh routeと同じ方針)
-    const detail = error instanceof Error ? error.message : String(error);
-    console.error(`[scheduledFinanceRefresh] 更新に失敗しました: ${detail}`);
-    process.exitCode = 1;
-  } finally {
-    // Firestore Admin SDKはgRPCストリームを開いたままにするため、正常終了時も
-    // プロセスが自然終了しない。Cloud Run Jobは1回きりのバッチ実行なので、
-    // 明示的にプロセスを終了させる(放置するとtask-timeoutまで無駄に課金される)。
-    process.exit(process.exitCode ?? 0);
+    const detail = e instanceof Error ? e.message : String(e);
+    error(`[scheduledFinanceRefresh] 更新に失敗しました: ${detail}`);
+    return 1;
   }
+}
+
+async function main(): Promise<void> {
+  const code = await runFinanceRefreshJob();
+  // Firestore Admin SDKはgRPCストリームを開いたままにするため、正常終了時も
+  // プロセスが自然終了しない。Cloud Run Jobは1回きりのバッチ実行なので、
+  // 明示的にプロセスを終了させる(放置するとtask-timeoutまで無駄に課金される)。
+  process.exit(code);
 }
 
 if (require.main === module) {

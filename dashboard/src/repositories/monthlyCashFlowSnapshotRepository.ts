@@ -1,4 +1,5 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
+import { assertProductionDataWritable } from "@/services/firestore/productionDataWriteGuard";
 import type { MonthlyCashFlow } from "@/features/management-dashboard/types";
 
 // processMemos/freeeAuth/monthlyFinanceとは別コレクション。Dashboard表示に必要な
@@ -43,6 +44,7 @@ function createFirestoreStore(): MonthlyCashFlowStore {
       return toSnapshot(data);
     },
     async save(snapshot) {
+      assertProductionDataWritable(COLLECTION);
       await getFirestoreClient()
         .collection(COLLECTION)
         .doc(docId(snapshot.fiscalYear, snapshot.month))

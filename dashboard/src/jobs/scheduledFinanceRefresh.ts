@@ -1,6 +1,7 @@
 import { refreshCurrentMonthSnapshots } from "../features/management-dashboard/refreshCurrentMonthSnapshots";
 import { refreshPastCashFlows } from "../features/management-dashboard/refreshPastCashFlows";
 import { getCurrentFiscalPeriod, freeeFiscalYearForTerm } from "../config/fiscalPeriods";
+import { canWriteProductionData } from "../services/firestore/productionDataWriteGuard";
 
 /**
  * Cloud Run Jobのエントリポイント本体。Cloud Schedulerが毎日18:00(Asia/Tokyo)に
@@ -47,6 +48,14 @@ export async function runScheduledFinanceRefresh(): Promise<{
 
 async function main(): Promise<void> {
   try {
+    // 本番データへ書き込める環境(本番の定時更新Job=CLOUD_RUN_JOB)かを最初に確かめ、結果をログに残す。
+    // 書き込めない環境(devのJobなど)では、freeeに触れる前に止める(共有Firestoreの上書き防止、2026-10-21)
+    if (!canWriteProductionData()) {
+      console.error("[scheduledFinanceRefresh] この実行環境では本番データへ書き込めないため、更新を行いません");
+      process.exitCode = 1;
+      return;
+    }
+    console.log("[scheduledFinanceRefresh] 本番データへの書き込み: 許可された実行環境です");
     const { fiscalYear, month, connected, refreshedPastMonths, refreshedPreviousTerm } =
       await runScheduledFinanceRefresh();
     if (!connected) {

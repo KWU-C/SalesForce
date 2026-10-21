@@ -1,4 +1,5 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
+import { assertProductionDataWritable } from "@/services/firestore/productionDataWriteGuard";
 import type { LoanStatusSnapshot } from "@/features/management-dashboard/loanStatus";
 
 // monthlyCashFlowSnapshotsとは別コレクション。過去月=Firestore/当月=freeeライブの
@@ -32,6 +33,7 @@ function createFirestoreStore(): LoanStatusStore {
       return toSnapshot(doc.data() as StoredFields);
     },
     async save(snapshot) {
+      assertProductionDataWritable(COLLECTION);
       await getFirestoreClient()
         .collection(COLLECTION)
         .doc(docId(snapshot.fiscalYear, snapshot.month))

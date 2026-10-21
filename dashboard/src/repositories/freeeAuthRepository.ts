@@ -1,4 +1,5 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
+import { assertOwnFreeeTokenDocument } from "@/services/firestore/productionDataWriteGuard";
 import { exchangeFreeeAuthorizationCode, refreshFreeeToken } from "@/services/freee/freeeTokenClient";
 
 // processMemosとは別コレクション。ブラウザから直接アクセスさせず、Cloud Runサーバー側のみが
@@ -83,6 +84,7 @@ function createFirestoreFreeeAuthStore(): FreeeAuthStore {
       return toRecord(doc.data() as StoredFields);
     },
     async saveTokens(record) {
+      assertOwnFreeeTokenDocument(getDocId());
       await docRef().set(
         {
           accessToken: record.accessToken,
@@ -97,6 +99,7 @@ function createFirestoreFreeeAuthStore(): FreeeAuthStore {
       );
     },
     async tryAcquireRefreshLock(now, ttlMs) {
+      assertOwnFreeeTokenDocument(getDocId());
       return getFirestoreClient().runTransaction(async (tx) => {
         const ref = docRef();
         const snap = await tx.get(ref);
@@ -110,6 +113,7 @@ function createFirestoreFreeeAuthStore(): FreeeAuthStore {
       });
     },
     async releaseRefreshLock() {
+      assertOwnFreeeTokenDocument(getDocId());
       await docRef().set({ refreshLockedAt: null }, { merge: true });
     },
   };

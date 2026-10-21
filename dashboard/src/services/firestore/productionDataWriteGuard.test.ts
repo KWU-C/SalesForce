@@ -1,0 +1,42 @@
+import { describe, expect, it } from "vitest";
+import {
+  ProductionDataWriteBlockedError,
+  assertProductionDataWritable,
+  canWriteProductionData,
+} from "./productionDataWriteGuard";
+
+const env = (service?: string, job?: string, localOverride?: string) => ({ service, job, localOverride });
+
+describe("canWriteProductionData", () => {
+  it("allows only the production service and the production job", () => {
+    expect(canWriteProductionData(env("tcd-dashboard-prod"))).toBe(true);
+    expect(canWriteProductionData(env(undefined, "tcd-dashboard-prod-finance-refresh"))).toBe(true);
+  });
+
+  it("blocks dev2, the retired dev, the dev2 job and unknown services", () => {
+    expect(canWriteProductionData(env("tcd-dashboard-dev2"))).toBe(false);
+    expect(canWriteProductionData(env("tcd-dashboard-dev"))).toBe(false);
+    expect(canWriteProductionData(env(undefined, "tcd-dashboard-dev2-finance-refresh"))).toBe(false);
+    expect(canWriteProductionData(env("something-else"))).toBe(false);
+  });
+
+  it("does not let the local override unlock a non-production Cloud Run environment", () => {
+    expect(canWriteProductionData(env("tcd-dashboard-dev2", undefined, "true"))).toBe(false);
+    expect(canWriteProductionData(env(undefined, "tcd-dashboard-dev2-finance-refresh", "true"))).toBe(false);
+  });
+
+  it("blocks local runs unless explicitly allowed", () => {
+    expect(canWriteProductionData(env())).toBe(false);
+    expect(canWriteProductionData(env(undefined, undefined, "1"))).toBe(false);
+    expect(canWriteProductionData(env(undefined, undefined, "true"))).toBe(true);
+  });
+});
+
+describe("assertProductionDataWritable", () => {
+  it("throws a dedicated error naming only the collection", () => {
+    expect(() => assertProductionDataWritable("monthlyCashFlowSnapshots", env("tcd-dashboard-dev2"))).toThrow(
+      ProductionDataWriteBlockedError
+    );
+    expect(() => assertProductionDataWritable("monthlyCashFlowSnapshots", env("tcd-dashboard-prod"))).not.toThrow();
+  });
+});

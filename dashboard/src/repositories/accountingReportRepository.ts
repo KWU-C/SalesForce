@@ -1,4 +1,5 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
+import { assertProductionDataWritable } from "@/services/firestore/productionDataWriteGuard";
 import { ALLOWED_OVERWRITE_TYPES, changesOnlyNote } from "@/features/management-dashboard/accountingReports";
 import type {
   AccountingReportKind,
@@ -39,6 +40,7 @@ function createFirestoreStore(): AccountingReportStore {
       return snapshot.docs.map((doc) => doc.data());
     },
     async readModifyWrite(kind, targetMonth, update) {
+      assertProductionDataWritable(COLLECTIONS[kind]);
       const db = getFirestoreClient();
       const ref = db.collection(COLLECTIONS[kind]).doc(targetMonth);
       return db.runTransaction(async (tx) => {

@@ -1,4 +1,5 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
+import { assertProductionDataWritable } from "@/services/firestore/productionDataWriteGuard";
 import type { TermCashFlowTotal } from "@/features/management-dashboard/termCashFlowTotal";
 
 // monthlyCashFlowSnapshots等とは別コレクション。月次スナップショットとは別種の
@@ -32,6 +33,7 @@ function createFirestoreStore(): TermCashFlowStore {
       return toSnapshot(doc.data() as StoredFields);
     },
     async save(snapshot) {
+      assertProductionDataWritable(COLLECTION);
       await getFirestoreClient().collection(COLLECTION).doc(docId(snapshot.term)).set(snapshot, { merge: true });
     },
   };

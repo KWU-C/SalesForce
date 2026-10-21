@@ -1,5 +1,6 @@
 import type { FocusClientMaster, FocusClientTarget } from "@/features/focus-clients/focusClients";
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
+import { assertProductionDataWritable } from "@/services/firestore/productionDataWriteGuard";
 
 /**
  * 注力クライアントマスタ(ダッシュボード側が正本、ユーザー確定 2026-10-15)。
@@ -33,6 +34,7 @@ function createFirestoreStore(): FocusClientMasterStore {
       return { id: doc.id, data: doc.data() ?? {} };
     },
     async save(accountId, data) {
+      assertProductionDataWritable(COLLECTION);
       await getFirestoreClient().collection(COLLECTION).doc(accountId).set(data, { merge: true });
     },
   };

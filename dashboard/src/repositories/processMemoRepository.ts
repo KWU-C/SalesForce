@@ -1,5 +1,6 @@
 import type { ConcreteCrId, ProcessMemo } from "@/domain/types";
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
+import { assertProductionDataWritable } from "@/services/firestore/productionDataWriteGuard";
 
 const COLLECTION = "processMemos";
 
@@ -31,6 +32,7 @@ function createFirestoreProcessMemoStore(): ProcessMemoStore {
       return { id: doc.id, data: doc.data() ?? {} };
     },
     async save(processId, data) {
+      assertProductionDataWritable(COLLECTION);
       await getFirestoreClient().collection(COLLECTION).doc(processId).set(data, { merge: true });
     },
   };

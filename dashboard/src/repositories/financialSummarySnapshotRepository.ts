@@ -1,4 +1,5 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
+import { assertProductionDataWritable } from "@/services/firestore/productionDataWriteGuard";
 import type { FinancialSummarySnapshot } from "@/features/management-dashboard/financialSummary";
 
 // monthlyCashFlowSnapshots/loanStatusSnapshotsとは別コレクション。当期累計サマリーを
@@ -33,6 +34,7 @@ function createFirestoreStore(): FinancialSummaryStore {
       return toSnapshot(doc.data() as StoredFields);
     },
     async save(snapshot) {
+      assertProductionDataWritable(COLLECTION);
       await getFirestoreClient()
         .collection(COLLECTION)
         .doc(docId(snapshot.fiscalYear, snapshot.month))

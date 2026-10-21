@@ -275,10 +275,123 @@ export interface FreeeCumulative {
   fetchedAt: string;
 }
 
-/** 経理の値 − freeeの値。どちらかが無ければnull(0とみなさない) */
-export function difference(accounting: number | null, freee: number | null | undefined): number | null {
-  if (accounting === null || freee === null || freee === undefined) return null;
-  return accounting - freee;
+/**
+ * 差額 = freeeの値 − 経理の値(ユーザー確定、2026-10-21。freeeを主表示にしたため向きを統一)。
+ * どちらかが無ければnull(0とみなさない)
+ */
+export function difference(freee: number | null | undefined, accounting: number | null | undefined): number | null {
+  if (freee === null || freee === undefined || accounting === null || accounting === undefined) return null;
+  return freee - accounting;
+}
+
+/**
+ * freeeの月末実績(月次資金収支スナップショットの種類別月末残高)。経理の資金繰り予定と比べる。
+ * 月次決算の確定は判定しない(freeeの月締めはAPIで取れない)ので、画面では「実績(取得日時)」とだけ出す。
+ */
+export interface FreeeMonthEndBalances {
+  checkingSavings: number;
+  timeDeposit: number;
+  /** 現金(小口現金)。経理の予定に対応する項目が無いので比較差額には含めない */
+  cashOnHand: number;
+  /** 月末現預金(月次資金収支と同じ値)。種類別の合計との検算にだけ使う */
+  cashClosing: number;
+  fetchedAt: string;
+}
+
+/**
+ * - beforeMonthEnd: 対象月がまだ終わっていない
+ * - notFetched: 月末後だが、月末後に取得した種類別の残高がまだ無い(項目追加前の保存分・月末前の取得分を含む)
+ */
+export type CashPlanActual =
+  | { status: "beforeMonthEnd" }
+  | { status: "notFetched" }
+  | ({ status: "fetched" } & FreeeMonthEndBalances);
+
+/** 資金繰り予定と比べるのに必要な、月次資金収支スナップショットの項目 */
+export interface MonthEndCashSnapshot {
+  cashClosing: number | null;
+  checkingSavingsClosing?: number | null;
+  timeDepositClosing?: number | null;
+  cashOnHandClosing?: number | null;
+  fetchedAt: Date;
+}
+
+/** 対象月(YYYY-MM)の翌月1日0時(日本時間)。この時刻以降を「月末後」とする */
+export function monthEndBoundary(targetMonth: string): Date {
+  const [year, month] = targetMonth.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 1) - 9 * 60 * 60 * 1000);
+}
+
+/**
+ * 資金繰り予定の対象月のfreee実績を決める。月末前に取得したスナップショットは月末残高ではないので
+ * 使わない。種類別の項目が1つでも欠けていれば(追加前の保存分)、0円とみなさず未取得にする。
+ */
+export function resolveCashPlanActual(targetMonth: string, snapshot: MonthEndCashSnapshot | null, now: Date): CashPlanActual {
+  const boundary = monthEndBoundary(targetMonth);
+  if (now.getTime() < boundary.getTime()) return { status: "beforeMonthEnd" };
+  if (snapshot === null || snapshot.fetchedAt.getTime() < boundary.getTime()) return { status: "notFetched" };
+  const { cashClosing, checkingSavingsClosing, timeDepositClosing, cashOnHandClosing } = snapshot;
+  if (
+    cashClosing === null ||
+    checkingSavingsClosing === null ||
+    checkingSavingsClosing === undefined ||
+    timeDepositClosing === null ||
+    timeDepositClosing === undefined ||
+    cashOnHandClosing === null ||
+    cashOnHandClosing === undefined
+  ) {
+    return { status: "notFetched" };
+  }
+  return {
+    status: "fetched",
+    checkingSavings: checkingSavingsClosing,
+    timeDeposit: timeDepositClosing,
+    cashOnHand: cashOnHandClosing,
+    cashClosing,
+    fetchedAt: snapshot.fetchedAt.toISOString(),
+  };
+}
+
+/**
+ * 月末現預金 − (当座・普通 + 定期 + 現金)。0でなければ、分類ルールに当たらない科目がある等で
+ * 種類別の内訳が月末現預金と合っていない(画面で警告し、数値は補正しない)。
+ */
+export function actualKindsDifference(actual: FreeeMonthEndBalances): number {
+  return actual.cashClosing - (actual.checkingSavings + actual.timeDeposit + actual.cashOnHand);
+}
+
+/** 予定と実績の比較行(現金は含めない) */
+export interface CashPlanComparisonRow {
+  label: string;
+  planned: number | null;
+  /** 実績が無ければnull */
+  actual: number | null;
+  /** freee − 経理。どちらかが無ければnull */
+  difference: number | null;
+}
+
+function sumOrNull(a: number | null, b: number | null): number | null {
+  return a === null || b === null ? null : a + b;
+}
+
+/** 当座・普通/定期/担保控除前の預金合計の、経理予定とfreee実績の比較 */
+export function compareCashPlan(v: CashPlanValues, actual: CashPlanActual): CashPlanComparisonRow[] {
+  const fetched = actual.status === "fetched" ? actual : null;
+  const row = (label: string, planned: number | null, actualValue: number | null): CashPlanComparisonRow => ({
+    label,
+    planned,
+    actual: actualValue,
+    difference: difference(actualValue, planned),
+  });
+  return [
+    row("当座・普通預金", v.checkingSavingsTotal, fetched?.checkingSavings ?? null),
+    row("定期預金", v.timeDepositTotal, fetched?.timeDeposit ?? null),
+    row(
+      "預金合計（担保控除前）",
+      sumOrNull(v.checkingSavingsTotal, v.timeDepositTotal),
+      fetched ? fetched.checkingSavings + fetched.timeDeposit : null
+    ),
+  ];
 }
 
 /** 対象月の新しい順 */

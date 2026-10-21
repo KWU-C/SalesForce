@@ -43,10 +43,42 @@ describe("assertProductionDataWritable", () => {
 });
 
 describe("describeRuntimeEnvironment", () => {
-  it("names the environment (job/service/local) together with the decision", () => {
-    expect(describeRuntimeEnvironment(env(undefined, "tcd-dashboard-prod-finance-refresh"))).toEqual({ kind: "job", name: "tcd-dashboard-prod-finance-refresh", productionWritable: true });
-    expect(describeRuntimeEnvironment(env(undefined, "tcd-dashboard-dev2-finance-refresh"))).toEqual({ kind: "job", name: "tcd-dashboard-dev2-finance-refresh", productionWritable: false });
-    expect(describeRuntimeEnvironment(env("tcd-dashboard-prod"))).toEqual({ kind: "service", name: "tcd-dashboard-prod", productionWritable: true });
-    expect(describeRuntimeEnvironment(env())).toEqual({ kind: "local", name: null, productionWritable: false });
+  it("names the environment (job/service/local) and the database together with the decision", () => {
+    expect(describeRuntimeEnvironment(env(undefined, "tcd-dashboard-prod-finance-refresh"))).toEqual({ kind: "job", name: "tcd-dashboard-prod-finance-refresh", databaseId: "dashboard", writable: true });
+    expect(describeRuntimeEnvironment(env(undefined, "tcd-dashboard-dev2-finance-refresh"))).toEqual({ kind: "job", name: "tcd-dashboard-dev2-finance-refresh", databaseId: "dashboard", writable: false });
+    expect(describeRuntimeEnvironment(env("tcd-dashboard-prod"))).toEqual({ kind: "service", name: "tcd-dashboard-prod", databaseId: "dashboard", writable: true });
+    expect(describeRuntimeEnvironment(env())).toEqual({ kind: "local", name: null, databaseId: "dashboard", writable: false });
+    expect(describeRuntimeEnvironment({ ...env(undefined, "tcd-dashboard-dev2-finance-refresh"), databaseId: "dashboard-dev" })).toEqual({ kind: "job", name: "tcd-dashboard-dev2-finance-refresh", databaseId: "dashboard-dev", writable: true });
+  });
+});
+
+describe("接続先データベースによる判定(環境分離)", () => {
+  const onDb = (databaseId: string, service?: string, job?: string) => ({ ...env(service, job), databaseId });
+
+  it("allows only the approved environment → database pairs", () => {
+    expect(canWriteProductionData(onDb("dashboard", "tcd-dashboard-prod"))).toBe(true);
+    expect(canWriteProductionData(onDb("dashboard", undefined, "tcd-dashboard-prod-finance-refresh"))).toBe(true);
+    expect(canWriteProductionData(onDb("dashboard-dev", "tcd-dashboard-dev2"))).toBe(true);
+    expect(canWriteProductionData(onDb("dashboard-dev", undefined, "tcd-dashboard-dev2-finance-refresh"))).toBe(true);
+  });
+
+  it("denies production → dashboard-dev and every other combination", () => {
+    expect(canWriteProductionData(onDb("dashboard-dev", "tcd-dashboard-prod"))).toBe(false);
+    expect(canWriteProductionData(onDb("dashboard-dev", undefined, "tcd-dashboard-prod-finance-refresh"))).toBe(false);
+    expect(canWriteProductionData(onDb("dashboard-dev", "tcd-dashboard-dev"))).toBe(false);
+    expect(canWriteProductionData(onDb("dashboard-dev", "something-else"))).toBe(false);
+    expect(canWriteProductionData(onDb("other-db", "tcd-dashboard-dev2"))).toBe(false);
+    expect(canWriteProductionData(onDb("other-db", "tcd-dashboard-prod"))).toBe(false);
+    // ローカルは明示許可が無ければどのデータベースも拒否、明示すれば従来どおり許可
+    expect(canWriteProductionData(onDb("dashboard-dev"))).toBe(false);
+    expect(canWriteProductionData({ ...env(undefined, undefined, "true"), databaseId: "dashboard-dev" })).toBe(true);
+  });
+
+  it("keeps the production-only rule when the database is production (e.g. a dev2 misconfiguration)", () => {
+    expect(canWriteProductionData(onDb("dashboard", "tcd-dashboard-dev2"))).toBe(false);
+    expect(canWriteProductionData(onDb("dashboard", undefined, "tcd-dashboard-dev2-finance-refresh"))).toBe(false);
+    expect(canWriteProductionData(onDb("dashboard", "tcd-dashboard-prod"))).toBe(true);
+    // 未指定は本番のデータベースとして扱う
+    expect(canWriteProductionData(env("tcd-dashboard-dev2"))).toBe(false);
   });
 });

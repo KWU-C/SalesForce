@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProductionDataWriteBlockedError, canWriteFreeeTokenDocument } from "@/services/firestore/productionDataWriteGuard";
 
 // 読み取りは成功し、書き込みが呼ばれたら記録するFirestoreの偽物
@@ -29,6 +29,10 @@ afterEach(() => {
   writes.mockReset();
 });
 
+beforeEach(() => {
+  delete process.env.FIRESTORE_DATABASE_ID;
+});
+
 describe("注力クライアントのマスタ", () => {
   it("is not written from dev2", async () => {
     process.env.K_SERVICE = "tcd-dashboard-dev2";
@@ -40,11 +44,20 @@ describe("注力クライアントのマスタ", () => {
 });
 
 describe("freeeトークン: 自分の環境のドキュメントだけ書ける", () => {
-  it("lets dev2 write its own token document", async () => {
+  it("lets dev2 write its own token document in dashboard-dev", async () => {
     process.env.K_SERVICE = "tcd-dashboard-dev2";
     process.env.FREEE_TOKEN_DOC_ID = "tcd-dashboard-dev2";
+    process.env.FIRESTORE_DATABASE_ID = "dashboard-dev";
     await connectFreeeWithAuthorizationCode("code", "tester@example.com");
     expect(writes).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks dev2 from writing even its own token document into the production database", async () => {
+    process.env.K_SERVICE = "tcd-dashboard-dev2";
+    process.env.FREEE_TOKEN_DOC_ID = "tcd-dashboard-dev2";
+    delete process.env.FIRESTORE_DATABASE_ID;
+    await expect(connectFreeeWithAuthorizationCode("code", "tester@example.com")).rejects.toBeInstanceOf(ProductionDataWriteBlockedError);
+    expect(writes).not.toHaveBeenCalled();
   });
 
   it("blocks dev2 from writing the production token document", async () => {
@@ -55,10 +68,12 @@ describe("freeeトークン: 自分の環境のドキュメントだけ書ける
   });
 
   it("maps each job to its own service document only", () => {
-    const job = (name: string) => ({ service: undefined, job: name, localOverride: undefined });
+    const job = (name: string, databaseId = "dashboard") => ({ service: undefined, job: name, localOverride: undefined, databaseId });
     expect(canWriteFreeeTokenDocument("tcd-dashboard-prod", job("tcd-dashboard-prod-finance-refresh"))).toBe(true);
     expect(canWriteFreeeTokenDocument("tcd-dashboard-prod", job("tcd-dashboard-dev2-finance-refresh"))).toBe(false);
-    expect(canWriteFreeeTokenDocument("tcd-dashboard-dev2", job("tcd-dashboard-dev2-finance-refresh"))).toBe(true);
+    expect(canWriteFreeeTokenDocument("tcd-dashboard-dev2", job("tcd-dashboard-dev2-finance-refresh", "dashboard-dev"))).toBe(true);
+    expect(canWriteFreeeTokenDocument("tcd-dashboard-dev2", job("tcd-dashboard-dev2-finance-refresh"))).toBe(false);
+    expect(canWriteFreeeTokenDocument("tcd-dashboard-prod", job("tcd-dashboard-prod-finance-refresh", "dashboard-dev"))).toBe(false);
     expect(canWriteFreeeTokenDocument("tcd-dashboard-prod", job("tcd-dashboard-prod"))).toBe(false);
     expect(canWriteFreeeTokenDocument("tcd-dashboard-prod", { service: "tcd-dashboard-prod", job: undefined, localOverride: undefined })).toBe(true);
     expect(canWriteFreeeTokenDocument("tcd-dashboard-prod", { service: undefined, job: undefined, localOverride: undefined })).toBe(false);

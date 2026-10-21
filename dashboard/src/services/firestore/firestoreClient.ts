@@ -1,4 +1,5 @@
 import { Firestore } from "@google-cloud/firestore";
+import { resolveFirestoreDatabaseId } from "./databaseId";
 
 /**
  * Firestore Admin SDKクライアント。認証はADC(Application Default Credentials)に
@@ -11,17 +12,18 @@ import { Firestore } from "@google-cloud/firestore";
  * （Nativeモード、asia-northeast1、2026-09-13作成）を使うため、明示的に指定する
  * （省略すると存在しない"(default)"データベースを探しにいき失敗する）。
  *
+ * 接続先は環境別に FIRESTORE_DATABASE_ID で切り替える(本番=dashboard、dev2=dashboard-dev。
+ * 未設定なら dashboard。databaseId.ts)。
+ *
  * Cloud Runのインスタンスは複数リクエストにまたがって生存するため、
  * モジュールスコープでシングルトンとしてキャッシュする。
  */
-const DEFAULT_DATABASE_ID = "dashboard";
-
 let cachedClient: Firestore | null = null;
 
 export function getFirestoreClient(): Firestore {
   if (!cachedClient) {
     cachedClient = new Firestore({
-      databaseId: process.env.FIRESTORE_DATABASE_ID ?? DEFAULT_DATABASE_ID,
+      databaseId: resolveFirestoreDatabaseId(),
     });
   }
   return cachedClient;

@@ -44,8 +44,16 @@ describe("本番データの書き込みはdev2では止まる(Firestoreに触�
   it.each(writes)("%s", async (_name, write) => {
     process.env.K_SERVICE = "tcd-dashboard-dev2";
     delete process.env.CLOUD_RUN_JOB;
+    delete process.env.FIRESTORE_DATABASE_ID;
     await expect(write()).rejects.toBeInstanceOf(ProductionDataWriteBlockedError);
     expect(firestoreTouched).not.toHaveBeenCalled();
+  });
+
+  it.each(writes)("%s: dev2でも接続先がdashboard-devならガードを通過する", async (_name, write) => {
+    process.env.K_SERVICE = "tcd-dashboard-dev2";
+    process.env.FIRESTORE_DATABASE_ID = "dashboard-dev";
+    await expect(write()).rejects.toThrow("Firestore must not be reached");
+    expect(firestoreTouched).toHaveBeenCalled();
   });
 
   it.each(writes)("%s: 本番サービスではガードを通過する(この後のFirestore呼び出しはモック)", async (_name, write) => {

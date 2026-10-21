@@ -55,7 +55,7 @@ export interface FinanceRefreshJobDeps {
 /**
  * Jobの本体。終了コード(0=成功、1=失敗・中止)を返し、プロセスは終了しない(テストできるようにするため)。
  *
- * 最初に実行環境の名前と本番データへの書き込み可否をログに出す(名前はCloud Runが設定する
+ * 最初に実行環境の名前・接続先データベース・書き込み可否をログに出す(名前はCloud Runが設定する
  * CLOUD_RUN_JOB/K_SERVICEの値で、機密情報ではない)。書き込めない環境(devのJob・ローカルなど)では、
  * freee・Firestoreに一切触れる前に中止する(共有Firestoreの上書き防止、2026-10-21)。
  * 環境名を出すのは、「変数が無い」と「別のJobで動いている」を本番デプロイ前にログで見分けるため。
@@ -65,12 +65,12 @@ export async function runFinanceRefreshJob(deps: FinanceRefreshJobDeps = {}): Pr
   const log = deps.log ?? ((m: string) => console.log(m));
   const error = deps.error ?? ((m: string) => console.error(m));
   const runtime = describeRuntimeEnvironment();
-  const where = runtime.name === null ? runtime.kind : `${runtime.kind}=${runtime.name}`;
-  if (!runtime.productionWritable) {
-    error(`[scheduledFinanceRefresh] 実行環境: ${where} / 本番データへの書き込み: 不可のため、更新を行いません`);
+  const where = `${runtime.name === null ? runtime.kind : `${runtime.kind}=${runtime.name}`} / 書き込み先DB: ${runtime.databaseId}`;
+  if (!runtime.writable) {
+    error(`[scheduledFinanceRefresh] 実行環境: ${where} / 書き込み: 不可のため、更新を行いません`);
     return 1;
   }
-  log(`[scheduledFinanceRefresh] 実行環境: ${where} / 本番データへの書き込み: 許可`);
+  log(`[scheduledFinanceRefresh] 実行環境: ${where} / 書き込み: 許可`);
   try {
     const { fiscalYear, month, connected, refreshedPastMonths, refreshedPreviousTerm } = await run();
     if (!connected) {

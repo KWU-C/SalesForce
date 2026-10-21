@@ -26,6 +26,14 @@ substitutions:
   # まま動いても外部からの攻撃面にはならないため)。dev/prodそれぞれのビルドトリガー
   # 側の置換変数として設定する(_IAP_EXPECTED_AUDIENCEと同じ運用)。
   _FREEE_JOB_SERVICE_ACCOUNT_EMAIL: ""
+  # Firestoreの接続先データベース(環境分離、2026-10-21)。既定値は本番のdashboard
+  # (コードの既定値と同じで、本番の動作は変わらない)。dev2のビルドトリガーでだけ
+  # dashboard-devを指定する。サービスとJobの両方に渡す。
+  _FIRESTORE_DATABASE_ID: dashboard
+  # Webサービスの実行サービスアカウント(環境分離、2026-10-21)。既定値は本番が現在使っている
+  # Cloud Runのデフォルトコンピュートサービスアカウント(明示するだけで本番の設定は変わらない)。
+  # dev2のビルドトリガーでだけ、dashboard-devだけに権限を持つ専用アカウントを指定する。
+  _RUNTIME_SERVICE_ACCOUNT: 807402889038-compute@developer.gserviceaccount.com
 
 steps:
   # 依存関係インストール（以降のstepはワークスペース共有のためnode_modulesを再利用）
@@ -81,7 +89,8 @@ steps:
       - "${_SERVICE_NAME}"
       - --source=dashboard
       - --region=${_REGION}
-      - --set-env-vars=SALES_DATA_SOURCE=${_SALES_DATA_SOURCE},SALESFORCE_LOGIN_URL=https://tcd-company.my.salesforce.com,SALESFORCE_USERNAME=sf-dashboard-integration@tcd.jp,IAP_EXPECTED_AUDIENCE=${_IAP_EXPECTED_AUDIENCE},FREEE_TOKEN_DOC_ID=${_SERVICE_NAME}
+      - --set-env-vars=SALES_DATA_SOURCE=${_SALES_DATA_SOURCE},SALESFORCE_LOGIN_URL=https://tcd-company.my.salesforce.com,SALESFORCE_USERNAME=sf-dashboard-integration@tcd.jp,IAP_EXPECTED_AUDIENCE=${_IAP_EXPECTED_AUDIENCE},FREEE_TOKEN_DOC_ID=${_SERVICE_NAME},FIRESTORE_DATABASE_ID=${_FIRESTORE_DATABASE_ID}
+      - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
       - --set-secrets=SALESFORCE_CONSUMER_KEY=salesforce-consumer-key:latest,SALESFORCE_PRIVATE_KEY=salesforce-jwt-private-key:latest,FREEE_CLIENT_ID=freee-client-id:latest,FREEE_CLIENT_SECRET=freee-client-secret:latest
       - --quiet
 
@@ -148,7 +157,7 @@ steps:
           --region="$region" \
           --command=/cnb/lifecycle/launcher \
           --args=--,node,dist/jobs/scheduledFinanceRefresh.js \
-          --set-env-vars=FREEE_TOKEN_DOC_ID=${_SERVICE_NAME} \
+          --set-env-vars=FREEE_TOKEN_DOC_ID=${_SERVICE_NAME},FIRESTORE_DATABASE_ID=${_FIRESTORE_DATABASE_ID} \
           --set-secrets=FREEE_CLIENT_ID=freee-client-id:latest,FREEE_CLIENT_SECRET=freee-client-secret:latest \
           --task-timeout=540s \
           --max-retries=1 \

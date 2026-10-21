@@ -34,7 +34,7 @@ const fetchSpy = vi.fn(async () => {
 
 /** Cloud Run Jobsのタスクとして起動されたときの環境変数(K_SERVICEは設定されない) */
 function asCloudRunJobTask(jobName: string | undefined) {
-  for (const k of ["K_SERVICE", "K_REVISION", "K_CONFIGURATION", "CLOUD_RUN_JOB", "CLOUD_RUN_EXECUTION", "ALLOW_PRODUCTION_DATA_WRITES"]) delete process.env[k];
+  for (const k of ["K_SERVICE", "K_REVISION", "K_CONFIGURATION", "CLOUD_RUN_JOB", "CLOUD_RUN_EXECUTION", "ALLOW_PRODUCTION_DATA_WRITES", "FIRESTORE_DATABASE_ID"]) delete process.env[k];
   if (jobName !== undefined) {
     process.env.CLOUD_RUN_JOB = jobName;
     process.env.CLOUD_RUN_EXECUTION = `${jobName}-abcde`;
@@ -66,7 +66,7 @@ describe("定時更新Job: 実行環境の判定(Cloud Run Jobsの環境変数�
     const run = vi.fn(async () => ({ fiscalYear: 2026, month: 10, connected: true, refreshedPastMonths: [9], refreshedPreviousTerm: null }));
     expect(await runFinanceRefreshJob({ run, ...out })).toBe(0);
     expect(run).toHaveBeenCalledTimes(1);
-    expect(out.logs[0]).toBe("[scheduledFinanceRefresh] 実行環境: job=tcd-dashboard-prod-finance-refresh / 本番データへの書き込み: 許可");
+    expect(out.logs[0]).toBe("[scheduledFinanceRefresh] 実行環境: job=tcd-dashboard-prod-finance-refresh / 書き込み先DB: dashboard / 書き込み: 許可");
   });
 
   it.each([
@@ -78,9 +78,18 @@ describe("定時更新Job: 実行環境の判定(Cloud Run Jobsの環境変数�
     const out = capture();
     // 本物の更新処理を渡しても、判定で止まって呼ばれないこと
     expect(await runFinanceRefreshJob(out)).toBe(1);
-    expect(out.errors).toEqual([`[scheduledFinanceRefresh] 実行環境: ${where} / 本番データへの書き込み: 不可のため、更新を行いません`]);
+    expect(out.errors).toEqual([`[scheduledFinanceRefresh] 実行環境: ${where} / 書き込み先DB: dashboard / 書き込み: 不可のため、更新を行いません`]);
     expect(out.logs).toEqual([]);
     expect(touched).not.toHaveBeenCalled();
+  });
+
+  it("lets the dev2 job run when it is pointed at the dev database (environment separation)", async () => {
+    asCloudRunJobTask("tcd-dashboard-dev2-finance-refresh");
+    process.env.FIRESTORE_DATABASE_ID = "dashboard-dev";
+    const out = capture();
+    const run = vi.fn(async () => ({ fiscalYear: 2026, month: 10, connected: true, refreshedPastMonths: [], refreshedPreviousTerm: null }));
+    expect(await runFinanceRefreshJob({ run, ...out })).toBe(0);
+    expect(out.logs[0]).toBe("[scheduledFinanceRefresh] 実行環境: job=tcd-dashboard-dev2-finance-refresh / 書き込み先DB: dashboard-dev / 書き込み: 許可");
   });
 
   it("does not let a stray K_SERVICE of dev2 or the local override unlock a job run", async () => {

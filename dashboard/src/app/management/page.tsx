@@ -396,7 +396,7 @@ export default async function ManagementPage() {
             {accountingReports && <AccountingReportsSection view={accountingReports} />}
             {accountingReportsError && (
               <p className="text-center text-sm text-[var(--text-muted)]">
-                経理月次報告・資金繰り予定の取得に失敗しました。
+                資金繰り見通しの取得に失敗しました。
               </p>
             )}
 

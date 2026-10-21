@@ -267,14 +267,6 @@ export function checkCashPlan(v: CashPlanValues): ConsistencyCheck[] {
   ];
 }
 
-/** freee比較値(月次P/Lスナップショットに保存した、その月末時点の累計) */
-export interface FreeeCumulative {
-  revenueCumulative: number | null;
-  ordinaryProfitCumulative: number | null;
-  /** freeeから取得した日時(月次P/Lスナップショットの取得日時) */
-  fetchedAt: string;
-}
-
 /**
  * 差額 = freeeの値 − 経理の値(ユーザー確定、2026-10-21。freeeを主表示にしたため向きを統一)。
  * どちらかが無ければnull(0とみなさない)

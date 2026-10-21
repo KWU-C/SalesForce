@@ -24,6 +24,18 @@ export interface MonthlyCashFlow {
   cashChange: number | null;
 
   /**
+   * 月末現預金の種類別内訳(cashAccountKindClassificationで分類した、trial_bsのclosing_balance合算)。
+   * 経理の資金繰り予定との比較にだけ使う(ユーザー確定、2026-10-21)。freeeの呼び出しは増えない。
+   * この項目の追加前に保存されたスナップショットには無い(undefined、0円とみなさない)。既存の定時更新・
+   * 「更新」ボタンで再計算・保存されたときに入るため、算出バージョンは上げない
+   * (月次資金収支の値・表示は変わらないので取り直しを強制しない)。
+   * 現金・預金の科目行が1つも無い月はcashClosingと同じくnull。
+   */
+  checkingSavingsClosing?: number | null;
+  timeDepositClosing?: number | null;
+  cashOnHandClosing?: number | null;
+
+  /**
    * 外部入金合計(キャッシュイン合計、自社口座間の資金移動を除く)。入金側v3(2026-09-19)以降は
    * inflow.total(仕訳帳の相手科目による5区分の合計)。v2以前のスナップショットは
    * 銀行明細ベースの値で、inflowを持たない

@@ -198,6 +198,28 @@ describe("computeMonthlyCashFlow: 入出金v3(仕訳帳)", () => {
     expect(r.cashChange).toBeNull();
   });
 
+  it("splits month-end cash into checking/savings, time deposits and cash on hand (null, not 0, without cash leaves)", async () => {
+    setupCommonMocks([
+      cashLeaf("当座預金_銀行A/本店 1", 0, 1_000),
+      cashLeaf("普通預金_銀行B/支店 2", 0, 2_000),
+      cashLeaf("定期預金_銀行A/本店 3", 0, 300),
+      cashLeaf("定期預金_銀行C積立", 0, 40),
+      cashLeaf("現金", 0, 5),
+    ]);
+    const r = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: [] });
+    expect(r).toMatchObject({ checkingSavingsClosing: 3_000, timeDepositClosing: 340, cashOnHandClosing: 5, cashClosing: 3_345 });
+
+    setupCommonMocks([]);
+    const empty = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: [] });
+    expect(empty).toMatchObject({ checkingSavingsClosing: null, timeDepositClosing: null, cashOnHandClosing: null });
+  });
+
+  it("leaves accounts matching no rule out of every kind, so the kinds no longer add up to cashClosing", async () => {
+    setupCommonMocks([cashLeaf("普通預金_銀行B", 0, 2_000), cashLeaf("外貨預金_銀行D", 0, 70)]);
+    const r = await computeMonthlyCashFlow(1, 2025, 8, { journalGroups: [] });
+    expect(r).toMatchObject({ checkingSavingsClosing: 2_000, timeDepositClosing: 0, cashOnHandClosing: 0, cashClosing: 2_070 });
+  });
+
   it("is provisional while 未分類 remains or evidence-backed adjustments apply, and final when clean", async () => {
     setupCommonMocks();
     const clean = [group("2026-08-02", [cash("普通預金A", 10)], [line("売掛金", 10)])];

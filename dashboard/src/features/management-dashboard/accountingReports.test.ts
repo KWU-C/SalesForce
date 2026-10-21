@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  actualKindsDifference,
   changesOnlyNote,
   checkCashPlan,
+  compareCashPlan,
   difference,
+  monthEndBoundary,
+  resolveCashPlanActual,
   parseReportValues,
   sortByTargetMonthDesc,
   targetMonthLabel,
@@ -97,11 +101,12 @@ describe("helpers", () => {
     expect(targetMonthLabel("2027-01")).toBe("50期1月");
   });
 
-  it("returns null difference when either side is missing", () => {
+  it("returns freee minus accounting, or null when either side is missing", () => {
     expect(difference(100, 70)).toBe(30);
+    expect(difference(70, 100)).toBe(-30);
     expect(difference(100, null)).toBeNull();
     expect(difference(null, 70)).toBeNull();
-    expect(difference(100, undefined)).toBeNull();
+    expect(difference(undefined, 70)).toBeNull();
   });
 
   it("sorts newest target month first", () => {
@@ -120,5 +125,61 @@ describe("changesOnlyNote", () => {
     expect(changesOnlyNote(base, { ...base, ordinaryProfitCumulative: -2, note: "確認事項" })).toBe(false);
     expect(changesOnlyNote(base, { ...base, differenceExplanation: "説明" })).toBe(false);
     expect(changesOnlyNote({ ...base, basisDate: null }, base)).toBe(true);
+  });
+});
+
+describe("cash plan vs freee month-end actual", () => {
+  const snapshot = (overrides: Record<string, unknown> = {}) => ({
+    cashClosing: 1_005,
+    checkingSavingsClosing: 650,
+    timeDepositClosing: 350,
+    cashOnHandClosing: 5,
+    fetchedAt: new Date("2026-11-01T09:00:00Z"),
+    ...overrides,
+  });
+
+  it("treats the month as ended from the 1st of the next month, 0:00 JST", () => {
+    expect(monthEndBoundary("2026-10").toISOString()).toBe("2026-10-31T15:00:00.000Z");
+    expect(monthEndBoundary("2026-12").toISOString()).toBe("2026-12-31T15:00:00.000Z");
+  });
+
+  it("is before month end until the boundary", () => {
+    expect(resolveCashPlanActual("2026-10", snapshot(), new Date("2026-10-31T14:59:59Z"))).toEqual({ status: "beforeMonthEnd" });
+  });
+
+  it("is not fetched when the snapshot is missing, fetched before month end, or lacks the new fields (never 0)", () => {
+    const now = new Date("2026-11-02T00:00:00Z");
+    expect(resolveCashPlanActual("2026-10", null, now)).toEqual({ status: "notFetched" });
+    expect(resolveCashPlanActual("2026-10", snapshot({ fetchedAt: new Date("2026-10-31T09:00:00Z") }), now)).toEqual({
+      status: "notFetched",
+    });
+    expect(resolveCashPlanActual("2026-10", snapshot({ timeDepositClosing: undefined }), now)).toEqual({ status: "notFetched" });
+    expect(resolveCashPlanActual("2026-10", snapshot({ cashClosing: null }), now)).toEqual({ status: "notFetched" });
+  });
+
+  it("compares checking/savings, time deposits and their total as freee minus accounting, leaving cash on hand out", () => {
+    const actual = resolveCashPlanActual("2026-10", snapshot(), new Date("2026-11-02T00:00:00Z"));
+    expect(actual).toMatchObject({ status: "fetched", fetchedAt: "2026-11-01T09:00:00.000Z" });
+    expect(compareCashPlan(cashPlan(), actual)).toEqual([
+      { label: "当座・普通預金", planned: 600, actual: 650, difference: 50 },
+      { label: "定期預金", planned: 300, actual: 350, difference: 50 },
+      { label: "預金合計（担保控除前）", planned: 900, actual: 1_000, difference: 100 },
+    ]);
+    if (actual.status === "fetched") expect(actualKindsDifference(actual)).toBe(0);
+  });
+
+  it("has no actual or difference before the data is there, and no planned total when an item is missing", () => {
+    const rows = compareCashPlan(cashPlan({ timeDepositTotal: null }), { status: "notFetched" });
+    expect(rows.map((r) => [r.planned, r.actual, r.difference])).toEqual([
+      [600, null, null],
+      [null, null, null],
+      [null, null, null],
+    ]);
+  });
+
+  it("reports the gap between cashClosing and the kinds", () => {
+    const actual = resolveCashPlanActual("2026-10", snapshot({ cashClosing: 1_075 }), new Date("2026-11-02T00:00:00Z"));
+    if (actual.status !== "fetched") throw new Error("expected fetched");
+    expect(actualKindsDifference(actual)).toBe(70);
   });
 });

@@ -4,6 +4,8 @@ import { getJournalsCsv } from "@/services/freee/freeeJournalsClient";
 import { OPERATING_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
 import { isCashWalletable } from "@/config/cashAccountBoundary";
+import { classifyCashAccount } from "@/config/cashAccountKindClassification";
+import type { CashAccountKind } from "@/config/cashAccountKindClassification";
 import { EXTERNAL_CASH_FLOW_CALCULATION_VERSION } from "./externalCashFlow";
 import type { ExternalCashFlowStatus } from "./externalCashFlow";
 import { computeJournalCashFlow } from "./journalCashFlow";
@@ -89,6 +91,14 @@ export async function computeMonthlyCashFlow(
   );
   const cashOpening = cashLeaves.length > 0 ? cashLeaves.reduce((s, b) => s + b.opening_balance, 0) : null;
   const cashClosing = cashLeaves.length > 0 ? cashLeaves.reduce((s, b) => s + b.closing_balance, 0) : null;
+  // 種類別の月末残高。freeeは残高・動きゼロの科目行を省略するため、行が無い種類は0円になる
+  // (科目行が1つも無い月はcashClosingと同じくnull)
+  const closingOfKind = (kind: CashAccountKind): number | null =>
+    cashLeaves.length > 0
+      ? cashLeaves
+          .filter((b) => classifyCashAccount(b.account_item_name ?? "") === kind)
+          .reduce((s, b) => s + b.closing_balance, 0)
+      : null;
 
   // 49期固有の証拠付き補完・除外を適用した、または未分類が残る期間は暫定
   const status: ExternalCashFlowStatus =
@@ -103,6 +113,9 @@ export async function computeMonthlyCashFlow(
     cashOpening,
     cashClosing,
     cashChange: cashOpening !== null && cashClosing !== null ? cashClosing - cashOpening : null,
+    checkingSavingsClosing: closingOfKind("checkingSavings"),
+    timeDepositClosing: closingOfKind("timeDeposit"),
+    cashOnHandClosing: closingOfKind("cashOnHand"),
     externalIncome: inflow.total,
     externalExpenseTotal: outflow.total,
     inflow,

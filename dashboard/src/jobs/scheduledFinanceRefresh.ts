@@ -2,6 +2,9 @@ import { refreshCurrentMonthSnapshots } from "../features/management-dashboard/r
 import { refreshPastCashFlows } from "../features/management-dashboard/refreshPastCashFlows";
 import { getCurrentFiscalPeriod, freeeFiscalYearForTerm } from "../config/fiscalPeriods";
 import { describeRuntimeEnvironment } from "../services/firestore/productionDataWriteGuard";
+import { saveFinanceRefreshRun } from "../repositories/financeRefreshRunRepository";
+import { jstDate } from "../utils/jstDate";
+import type { FinanceRefreshRun } from "../repositories/financeRefreshRunRepository";
 
 /**
  * Cloud Run Jobのエントリポイント本体。Cloud Schedulerが毎日18:00(Asia/Tokyo)に
@@ -48,9 +51,12 @@ export async function runScheduledFinanceRefresh(): Promise<{
 
 export interface FinanceRefreshJobDeps {
   run?: typeof runScheduledFinanceRefresh;
+  recordRun?: (run: FinanceRefreshRun) => Promise<void>;
+  now?: () => Date;
   log?: (message: string) => void;
   error?: (message: string) => void;
 }
+
 
 /**
  * Jobの本体。終了コード(0=成功、1=失敗・中止)を返し、プロセスは終了しない(テストできるようにするため)。
@@ -71,25 +77,45 @@ export async function runFinanceRefreshJob(deps: FinanceRefreshJobDeps = {}): Pr
     return 1;
   }
   log(`[scheduledFinanceRefresh] 実行環境: ${where} / 書き込み: 許可`);
+  const now = deps.now ?? (() => new Date());
+  const startedAt = now();
+  let status: FinanceRefreshRun["status"] = "failed";
+  let detail: string | null = null;
+  let code = 1;
   try {
     const { fiscalYear, month, connected, refreshedPastMonths, refreshedPreviousTerm } = await run();
     if (!connected) {
+      detail = "freee未接続";
       error(`[scheduledFinanceRefresh] freee未接続のため${fiscalYear}期${month}月分を更新できませんでした`);
-      return 1;
+    } else {
+      log(
+        `[scheduledFinanceRefresh] ${fiscalYear}年度${month}月分の当月スナップショットと、過去月の資金収支` +
+          `(${refreshedPastMonths.length > 0 ? refreshedPastMonths.map((m) => `${m}月`).join(",") : "なし"}` +
+          `${refreshedPreviousTerm !== null ? `、${refreshedPreviousTerm}期の12か月・通期` : ""})を更新しました`
+      );
+      status = "succeeded";
+      code = 0;
     }
-    log(
-      `[scheduledFinanceRefresh] ${fiscalYear}年度${month}月分の当月スナップショットと、過去月の資金収支` +
-        `(${refreshedPastMonths.length > 0 ? refreshedPastMonths.map((m) => `${m}月`).join(",") : "なし"}` +
-        `${refreshedPreviousTerm !== null ? `、${refreshedPreviousTerm}期の12か月・通期` : ""})を更新しました`
-    );
-    return 0;
   } catch (e) {
     // ここで出すのは自前でthrowしているエラーメッセージのみ(freee_api_error等の
     // 固定文言、トークン等の機微情報は含まない。既存のpage.tsx/refresh routeと同じ方針)
-    const detail = e instanceof Error ? e.message : String(e);
+    detail = e instanceof Error ? e.message : String(e);
     error(`[scheduledFinanceRefresh] 更新に失敗しました: ${detail}`);
-    return 1;
   }
+  // 処理全体の成否を記録する(資金繰り予測のJobが確かめる)。記録に失敗しても更新の結果(終了コード)は変えない
+  try {
+    await (deps.recordRun ?? saveFinanceRefreshRun)({
+      date: jstDate(startedAt),
+      executionName: process.env.CLOUD_RUN_EXECUTION ?? "local",
+      status,
+      detail,
+      startedAt: startedAt.toISOString(),
+      finishedAt: now().toISOString(),
+    });
+  } catch (e) {
+    error(`[scheduledFinanceRefresh] 実行結果の記録に失敗しました: ${e instanceof Error ? e.name : "unknown"}`);
+  }
+  return code;
 }
 
 async function main(): Promise<void> {

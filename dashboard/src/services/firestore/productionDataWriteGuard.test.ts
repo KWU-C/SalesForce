@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ProductionDataWriteBlockedError,
   assertProductionDataWritable,
+  canWriteFreeeTokenDocument,
   canWriteProductionData,
   describeRuntimeEnvironment,
 } from "./productionDataWriteGuard";
@@ -80,5 +81,21 @@ describe("接続先データベースによる判定(環境分離)", () => {
     expect(canWriteProductionData(onDb("dashboard", "tcd-dashboard-prod"))).toBe(true);
     // 未指定は本番のデータベースとして扱う
     expect(canWriteProductionData(env("tcd-dashboard-dev2"))).toBe(false);
+  });
+});
+
+describe("資金繰り予測Job", () => {
+  const job = (name: string, databaseId = "dashboard") => ({ service: undefined, job: name, localOverride: undefined, databaseId });
+  it("allows the forecast jobs only against their own database", () => {
+    expect(canWriteProductionData(job("tcd-dashboard-prod-cash-forecast"))).toBe(true);
+    expect(canWriteProductionData(job("tcd-dashboard-prod-cash-forecast", "dashboard-dev"))).toBe(false);
+    expect(canWriteProductionData(job("tcd-dashboard-dev2-cash-forecast", "dashboard-dev"))).toBe(true);
+    expect(canWriteProductionData(job("tcd-dashboard-dev2-cash-forecast"))).toBe(false);
+  });
+
+  it("maps a forecast job to its service's freee token only", () => {
+    expect(canWriteFreeeTokenDocument("tcd-dashboard-prod", job("tcd-dashboard-prod-cash-forecast"))).toBe(true);
+    expect(canWriteFreeeTokenDocument("tcd-dashboard-dev2", job("tcd-dashboard-prod-cash-forecast"))).toBe(false);
+    expect(canWriteFreeeTokenDocument("tcd-dashboard-dev2", job("tcd-dashboard-dev2-cash-forecast", "dashboard-dev"))).toBe(true);
   });
 });

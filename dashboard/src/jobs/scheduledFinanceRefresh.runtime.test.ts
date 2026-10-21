@@ -111,3 +111,37 @@ describe("定時更新Job: 実行環境の判定(Cloud Run Jobsの環境変数�
     expect(failed.errors[0]).toBe("[scheduledFinanceRefresh] 更新に失敗しました: freee_api_error");
   });
 });
+
+describe("定時更新Job: 処理全体の成否の記録(資金繰り予測Jobが確かめる)", () => {
+  const ok = async () => ({ fiscalYear: 2026, month: 10, connected: true, refreshedPastMonths: [9], refreshedPreviousTerm: null });
+  const now = () => new Date("2026-10-21T09:02:00Z");
+
+  it("records succeeded with the Japanese date when every step succeeded", async () => {
+    asCloudRunJobTask("tcd-dashboard-prod-finance-refresh");
+    const recordRun = vi.fn(async () => {});
+    expect(await runFinanceRefreshJob({ run: ok, recordRun, now, ...capture() })).toBe(0);
+    expect(recordRun).toHaveBeenCalledWith(expect.objectContaining({ date: "2026-10-21", status: "succeeded", detail: null, executionName: "tcd-dashboard-prod-finance-refresh-abcde" }));
+  });
+
+  it("records failed when a step throws or freee is not connected", async () => {
+    asCloudRunJobTask("tcd-dashboard-prod-finance-refresh");
+    const recordRun = vi.fn(async (_run: { status: string; detail: string | null }) => {});
+    await runFinanceRefreshJob({ run: async () => { throw new Error("freee_api_error"); }, recordRun, now, ...capture() });
+    await runFinanceRefreshJob({ run: async () => ({ fiscalYear: 2026, month: 10, connected: false, refreshedPastMonths: [], refreshedPreviousTerm: null }), recordRun, now, ...capture() });
+    expect(recordRun.mock.calls.map((c) => [c[0].status, c[0].detail])).toEqual([["failed", "freee_api_error"], ["failed", "freee未接続"]]);
+  });
+
+  it("keeps the refresh result (exit code) even if recording fails", async () => {
+    asCloudRunJobTask("tcd-dashboard-prod-finance-refresh");
+    const out = capture();
+    expect(await runFinanceRefreshJob({ run: ok, recordRun: async () => { throw new Error("x"); }, now, ...out })).toBe(0);
+    expect(out.errors).toEqual(["[scheduledFinanceRefresh] 実行結果の記録に失敗しました: Error"]);
+  });
+
+  it("does not record anything when the environment is not allowed", async () => {
+    asCloudRunJobTask("tcd-dashboard-dev2-finance-refresh");
+    const recordRun = vi.fn(async () => {});
+    expect(await runFinanceRefreshJob({ run: ok, recordRun, now, ...capture() })).toBe(1);
+    expect(recordRun).not.toHaveBeenCalled();
+  });
+});

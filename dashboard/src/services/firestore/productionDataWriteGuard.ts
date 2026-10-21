@@ -27,6 +27,9 @@ export const PRODUCTION_JOB_NAME = "tcd-dashboard-prod-finance-refresh";
 export const DEV_SERVICE_NAME = "tcd-dashboard-dev2";
 export const DEV_JOB_NAME = "tcd-dashboard-dev2-finance-refresh";
 export const DEV_DATABASE_ID = "dashboard-dev";
+/** 資金繰り予測のJob(段階3。GCP上の作成は別途承認) */
+export const PRODUCTION_FORECAST_JOB_NAME = "tcd-dashboard-prod-cash-forecast";
+export const DEV_FORECAST_JOB_NAME = "tcd-dashboard-dev2-cash-forecast";
 
 export interface RuntimeEnvironment {
   /** Cloud Runサービス名(K_SERVICE) */
@@ -57,6 +60,8 @@ export const ALLOWED_WRITE_TARGETS: Readonly<Record<string, string>> = {
   [`job:${PRODUCTION_JOB_NAME}`]: PRODUCTION_DATABASE_ID,
   [`service:${DEV_SERVICE_NAME}`]: DEV_DATABASE_ID,
   [`job:${DEV_JOB_NAME}`]: DEV_DATABASE_ID,
+  [`job:${PRODUCTION_FORECAST_JOB_NAME}`]: PRODUCTION_DATABASE_ID,
+  [`job:${DEV_FORECAST_JOB_NAME}`]: DEV_DATABASE_ID,
 };
 
 /** 実行環境と接続先データベースの組み合わせが、書き込みを許可されたものか */
@@ -80,18 +85,23 @@ export function assertProductionDataWritable(collection: string, env: RuntimeEnv
   if (!canWriteProductionData(env)) throw new ProductionDataWriteBlockedError(collection);
 }
 
-/** 定時更新Jobの名前は「サービス名-finance-refresh」(cloudbuild.yamlのjobs deploy) */
-const JOB_SUFFIX = "-finance-refresh";
+/** Jobの名前は「サービス名-finance-refresh」(定時更新)・「サービス名-cash-forecast」(資金繰り予測) */
+const JOB_SUFFIXES = ["-finance-refresh", "-cash-forecast"];
+
+function serviceOfJob(job: string): string | null {
+  const suffix = JOB_SUFFIXES.find((s) => job.endsWith(s));
+  return suffix ? job.slice(0, -suffix.length) : null;
+}
 
 /**
  * freeeトークンのドキュメントに書けるか。実行環境自身のドキュメントだけ許可する
- * (サービスはK_SERVICE、JobはCLOUD_RUN_JOBから「-finance-refresh」を除いた名前と一致すること)。
+ * (サービスはK_SERVICE、JobはCLOUD_RUN_JOBから「-finance-refresh」「-cash-forecast」を除いた名前と一致すること)。
  * 接続先データベースとの組み合わせも、他の書き込みと同じ条件で確かめる。
  * ローカルは ALLOW_PRODUCTION_DATA_WRITES=true のときだけ。
  */
 export function canWriteFreeeTokenDocument(docId: string, env: RuntimeEnvironment = currentEnvironment()): boolean {
   if (env.service !== undefined) return env.service === docId && canWriteProductionData(env);
-  if (env.job !== undefined) return env.job.endsWith(JOB_SUFFIX) && env.job.slice(0, -JOB_SUFFIX.length) === docId && canWriteProductionData(env);
+  if (env.job !== undefined) return serviceOfJob(env.job) === docId && canWriteProductionData(env);
   return env.localOverride === "true";
 }
 

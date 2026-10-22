@@ -184,20 +184,149 @@ function DealsTable({ deals }: { deals: FocusDeal[] }) {
 
 /**
  * 一覧の列(ユーザー指示、2026-10-19)。keyの無い列(達成率バー)は並び替えなし。
- * 担当以外は内容幅(w-px)に詰め、表の余りは担当列が受け持つ(クライアント列を全角12文字幅に保つため)
+ * 表の余りは担当列が受け持つ(クライアント列は全角12文字幅に固定)。注力・掘り起こしを別の表にしても
+ * 上下で列がそろうよう、担当・クライアント以外は幅を決めている(2026-10-22)
  */
-const COLUMNS: { key: SortKey | null; label: string; numeric: boolean }[] = [
-  { key: "category", label: "区分", numeric: false },
+const COLUMNS: { key: SortKey | null; label: string; numeric: boolean; width?: string }[] = [
+  { key: "category", label: "区分", numeric: false, width: "100px" },
   { key: "name", label: "クライアント", numeric: false },
   { key: "owner", label: "担当", numeric: false },
-  { key: "targetGrossProfit", label: "目標粗利", numeric: true },
-  { key: "completedGrossProfitFullYear", label: "完了粗利", numeric: true },
-  { key: "grossProfitRateFullYear", label: "達成率", numeric: true },
-  { key: null, label: "", numeric: false },
-  { key: "dealCount", label: "案件数", numeric: true },
+  { key: "targetGrossProfit", label: "目標粗利", numeric: true, width: "104px" },
+  { key: "completedGrossProfitFullYear", label: "完了粗利", numeric: true, width: "104px" },
+  { key: "grossProfitRateFullYear", label: "達成率", numeric: true, width: "84px" },
+  { key: null, label: "", numeric: false, width: "104px" },
+  { key: "dealCount", label: "案件数", numeric: true, width: "180px" },
 ];
 /** メモ行が担当〜案件数の下に入るため、区分・クライアントの2列は2行にまたがる */
 const MEMO_COL_SPAN = COLUMNS.length - 2;
+
+/** 区分グループ(注力→掘り起こし→その他)ごとに分ける。空のグループは返さない */
+function groupRows(rows: FocusClientRow[]): FocusClientRow[][] {
+  const groups = new Map<number, FocusClientRow[]>();
+  for (const row of rows) {
+    const g = categoryGroup(row.master.category);
+    groups.set(g, [...(groups.get(g) ?? []), row]);
+  }
+  return [...groups.entries()].sort(([a], [b]) => a - b).map(([, g]) => g);
+}
+
+interface FocusClientTableProps {
+  rows: FocusClientRow[];
+  term: number;
+  expanded: string | null;
+  onToggle: (accountId: string) => void;
+  onSaved: (saved: FocusClientMaster) => void;
+}
+
+/** 区分1つ分の一覧表。並び替えは表ごとに持つ(ユーザー指示、2026-10-22) */
+function FocusClientTable({ rows, term, expanded, onToggle, onSaved: handleSaved }: FocusClientTableProps) {
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "targetGrossProfit", desc: true });
+  const sortedRows = [...rows].sort((a, b) => compareRows(a, b, sort.key, sort.desc));
+
+  function handleSort(key: SortKey) {
+    setSort((prev) => (prev.key === key ? { key, desc: !prev.desc } : { key, desc: COLUMNS.find((c) => c.key === key)!.numeric }));
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-[var(--gridline)] bg-[var(--surface-sunken)] text-xs font-medium whitespace-nowrap text-[var(--text-muted)]">
+            {COLUMNS.map((col, i) => (
+              <th
+                key={col.key ?? `col-${i}`}
+                style={col.width ? { width: col.width } : undefined}
+                className={`px-3 py-2 ${col.numeric ? "text-right" : "text-left"} ${col.width || col.key === "owner" ? "" : "w-px"}`}
+              >
+                {col.key && (
+                  <button type="button" onClick={() => handleSort(col.key!)} className="hover:text-[var(--text-primary)]">
+                    {col.label}
+                    {sort.key === col.key && (sort.desc ? " ▼" : " ▲")}
+                  </button>
+                )}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sortedRows.map((row) => {
+            const isOpen = expanded === row.master.accountId;
+            const rowBg = isOpen ? "bg-[var(--surface-reference)]" : "";
+            return (
+              <Fragment key={row.master.accountId}>
+                <tr className={`tabular-nums ${rowBg} border-t border-[var(--gridline)]`}>
+                  <td rowSpan={2} className="px-3 py-2 align-top whitespace-nowrap text-[var(--text-secondary)]">
+                    {row.master.category || DASH}
+                  </td>
+                  <td rowSpan={2} className="px-3 py-2 align-top">
+                    {/* 全角12文字が改行なしで入る幅(ユーザー指示、2026-10-19) */}
+                    <button
+                      type="button"
+                      onClick={() => onToggle(row.master.accountId)}
+                      aria-expanded={isOpen}
+                      className="block w-[12em] text-left font-medium text-[var(--series-1)] hover:underline"
+                    >
+                      {row.master.name}
+                    </button>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.master.owner || DASH}</td>
+                  <td className="px-3 py-2 text-right">{targetText(row.target.grossProfit)}</td>
+                  <td className="px-3 py-2 text-right">{formatThousandYen(row.completedGrossProfitFullYear)}</td>
+                  <td className={`px-3 py-2 text-right font-medium ${rateClassName(row.grossProfitRateFullYear)}`}>
+                    {rateText(row.grossProfitRateFullYear)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <RateBar rate={row.grossProfitRateFullYear} />
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {row.deals.length > 0 ? (
+                      <>
+                        {row.deals.length}件
+                        <span className="block text-xs text-[var(--text-muted)]">
+                          進行中{row.openCount}・受注{row.deals.length - row.openCount - row.lostCount}・失注{row.lostCount}
+                        </span>
+                      </>
+                    ) : (
+                      DASH
+                    )}
+                  </td>
+                </tr>
+                <tr className={rowBg}>
+                  <td colSpan={MEMO_COL_SPAN} className="px-3 pb-2">
+                    <FocusClientMemoEditor key={row.master.accountId} master={row.master} onSaved={handleSaved} />
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="border-t border-[var(--gridline)] bg-[var(--surface-reference)]">
+                    <td colSpan={COLUMNS.length} className="px-3 py-4">
+                      <div className="flex flex-col gap-4">
+                        <FocusClientEditor
+                          key={row.master.accountId}
+                          master={row.master}
+                          term={term}
+                          onSaved={handleSaved}
+                        />
+                        <div className="flex flex-col gap-1">
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                            第{term}期の案件（{row.deals.length}件、単位: 千円）
+                          </h3>
+                          <p className="text-xs text-[var(--text-muted)]">
+                            受注日・請求日・売上予定日のいずれかが当期内の案件（日付が未入力なら当期内に作成された案件）。完了・受注の実績は確度Aかつ受注以降のフェーズのみ集計しています。
+                          </p>
+                          <DealsTable deals={row.deals} />
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 interface FocusClientsViewProps {
   masters: FocusClientMaster[];
@@ -229,7 +358,6 @@ export function FocusClientsView({
 }: FocusClientsViewProps) {
   const [masters, setMasters] = useState(initialMasters);
   const [selectedCr, setSelectedCr] = useState<CrId>("ALL");
-  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "targetGrossProfit", desc: true });
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const result = useMemo(
@@ -239,8 +367,7 @@ export function FocusClientsView({
 
   const unassignedCount = result.rows.filter((row) => !ownerCrs[row.master.owner]).length;
   const visibleRows = result.rows
-    .filter((row) => selectedCr === "ALL" || ownerCrs[row.master.owner] === selectedCr)
-    .sort((a, b) => compareRows(a, b, sort.key, sort.desc));
+    .filter((row) => selectedCr === "ALL" || ownerCrs[row.master.owner] === selectedCr);
   const visibleSummary =
     selectedCr !== "ALL"
       ? computeFocusClients({
@@ -251,10 +378,6 @@ export function FocusClientsView({
           deals,
         }).summary
       : result.summary;
-
-  function handleSort(key: SortKey) {
-    setSort((prev) => (prev.key === key ? { key, desc: !prev.desc } : { key, desc: COLUMNS.find((c) => c.key === key)!.numeric }));
-  }
 
   function handleSaved(saved: FocusClientMaster) {
     setMasters((prev) => prev.map((m) => (m.accountId === saved.accountId ? saved : m)));
@@ -290,125 +413,28 @@ export function FocusClientsView({
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base font-semibold text-[var(--text-primary)]">注力クライアント一覧</h2>
           <span className="text-xs text-[var(--text-muted)]">
-            単位: 千円／完了粗利は通年（当期の請求予定を含む）／達成率 = 完了粗利 ÷ 目標粗利／案件数は詳細に出る当期の案件の件数（内訳: 進行中＝提案・見積、受注＝受注以降、失注）／目標未入力は「―」／列名クリックで並び替え（注力・掘り起こしの区分内）、クライアント名クリックで詳細
+            単位: 千円／完了粗利は通年（当期の請求予定を含む）／達成率 = 完了粗利 ÷ 目標粗利／案件数は詳細に出る当期の案件の件数（内訳: 進行中＝提案・見積、受注＝受注以降、失注）／目標未入力は「―」／列名クリックで並び替え（表ごと）、クライアント名クリックで詳細
           </span>
         </div>
-        {/* 注力と掘り起こしを上下別の箱に見せるため、外枠はdivではなく各行の上下左右の線で描く(ユーザー指示、2026-10-22) */}
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border border-[var(--gridline)] bg-[var(--surface-sunken)] text-xs font-medium whitespace-nowrap text-[var(--text-muted)]">
-                {COLUMNS.map((col, i) => (
-                  <th
-                    key={col.key ?? `col-${i}`}
-                    className={`px-3 py-2 ${col.numeric ? "text-right" : "text-left"} ${col.key === "owner" ? "" : "w-px"}`}
-                  >
-                    {col.key && (
-                      <button type="button" onClick={() => handleSort(col.key!)} className="hover:text-[var(--text-primary)]">
-                        {col.label}
-                        {sort.key === col.key && (sort.desc ? " ▼" : " ▲")}
-                      </button>
-                    )}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.map((row, i) => {
-                const isOpen = expanded === row.master.accountId;
-                // 注力→掘り起こしの切り替わりだけ、1px線・画面背景色30px・1px線で上下の箱に分ける(ユーザー指示、2026-10-22)
-                const prev = visibleRows[i - 1];
-                const isGroupBoundary =
-                  prev !== undefined &&
-                  categoryGroup(prev.master.category) === 0 &&
-                  categoryGroup(row.master.category) === 1;
-                const rowBg = isOpen ? "bg-[var(--surface-reference)]" : "bg-[var(--surface-1)]";
-                const isLast = i === visibleRows.length - 1;
-                return (
-                  <Fragment key={row.master.accountId}>
-                    {isGroupBoundary && (
-                      <tr aria-hidden className="border-y border-[var(--gridline)]">
-                        <td colSpan={COLUMNS.length} className="h-[30px] bg-[var(--background)] p-0" />
-                      </tr>
-                    )}
-                    <tr className={`tabular-nums ${rowBg} border-x border-t border-[var(--gridline)]`}>
-                      <td rowSpan={2} className="px-3 py-2 align-top whitespace-nowrap text-[var(--text-secondary)]">
-                        {row.master.category || DASH}
-                      </td>
-                      <td rowSpan={2} className="px-3 py-2 align-top">
-                        {/* 全角12文字が改行なしで入る幅(ユーザー指示、2026-10-19) */}
-                        <button
-                          type="button"
-                          onClick={() => setExpanded(isOpen ? null : row.master.accountId)}
-                          aria-expanded={isOpen}
-                          className="block w-[12em] text-left font-medium text-[var(--series-1)] hover:underline"
-                        >
-                          {row.master.name}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.master.owner || DASH}</td>
-                      <td className="px-3 py-2 text-right">{targetText(row.target.grossProfit)}</td>
-                      <td className="px-3 py-2 text-right">{formatThousandYen(row.completedGrossProfitFullYear)}</td>
-                      <td className={`px-3 py-2 text-right font-medium ${rateClassName(row.grossProfitRateFullYear)}`}>
-                        {rateText(row.grossProfitRateFullYear)}
-                      </td>
-                      <td className="px-3 py-2">
-                        <RateBar rate={row.grossProfitRateFullYear} />
-                      </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        {row.deals.length > 0 ? (
-                          <>
-                            {row.deals.length}件
-                            <span className="block text-xs text-[var(--text-muted)]">
-                              進行中{row.openCount}・受注{row.deals.length - row.openCount - row.lostCount}・失注{row.lostCount}
-                            </span>
-                          </>
-                        ) : (
-                          DASH
-                        )}
-                      </td>
-                    </tr>
-                    <tr className={`${rowBg} border-x border-[var(--gridline)] ${isLast && !isOpen ? "border-b" : ""}`}>
-                      <td colSpan={MEMO_COL_SPAN} className="px-3 pb-2">
-                        <FocusClientMemoEditor key={row.master.accountId} master={row.master} onSaved={handleSaved} />
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr
-                        className={`border-x border-t border-[var(--gridline)] bg-[var(--surface-reference)] ${isLast ? "border-b" : ""}`}
-                      >
-                        <td colSpan={COLUMNS.length} className="px-3 py-4">
-                          <div className="flex flex-col gap-4">
-                            <FocusClientEditor
-                              key={row.master.accountId}
-                              master={row.master}
-                              term={term}
-                              onSaved={handleSaved}
-                            />
-                            <div className="flex flex-col gap-1">
-                              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                                第{term}期の案件（{row.deals.length}件、単位: 千円）
-                              </h3>
-                              <p className="text-xs text-[var(--text-muted)]">
-                                受注日・請求日・売上予定日のいずれかが当期内の案件（日付が未入力なら当期内に作成された案件）。完了・受注の実績は確度Aかつ受注以降のフェーズのみ集計しています。
-                              </p>
-                              <DealsTable deals={row.deals} />
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-          {visibleRows.length === 0 && (
-            <p className="border-x border-b border-[var(--gridline)] bg-[var(--surface-1)] py-4 text-center text-sm text-[var(--text-muted)]">
-              該当するクライアントはありません。
-            </p>
-          )}
-        </div>
+        {/* 注力と掘り起こしは別の表にし、間を30px空ける。並び替えは表ごと(ユーザー指示、2026-10-22) */}
+        {visibleRows.length === 0 ? (
+          <p className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] py-4 text-center text-sm text-[var(--text-muted)]">
+            該当するクライアントはありません。
+          </p>
+        ) : (
+          <div className="flex flex-col gap-[30px]">
+            {groupRows(visibleRows).map((rows) => (
+              <FocusClientTable
+                key={categoryGroup(rows[0].master.category)}
+                rows={rows}
+                term={term}
+                expanded={expanded}
+                onToggle={(accountId) => setExpanded((prev) => (prev === accountId ? null : accountId))}
+                onSaved={handleSaved}
+              />
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

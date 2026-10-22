@@ -293,10 +293,11 @@ export function FocusClientsView({
             単位: 千円／完了粗利は通年（当期の請求予定を含む）／達成率 = 完了粗利 ÷ 目標粗利／案件数は詳細に出る当期の案件の件数（内訳: 進行中＝提案・見積、受注＝受注以降、失注）／目標未入力は「―」／列名クリックで並び替え（注力・掘り起こしの区分内）、クライアント名クリックで詳細
           </span>
         </div>
-        <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
+        {/* 注力と掘り起こしを上下別の箱に見せるため、外枠はdivではなく各行の上下左右の線で描く(ユーザー指示、2026-10-22) */}
+        <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b border-[var(--gridline)] bg-[var(--surface-sunken)] text-xs font-medium whitespace-nowrap text-[var(--text-muted)]">
+              <tr className="border border-[var(--gridline)] bg-[var(--surface-sunken)] text-xs font-medium whitespace-nowrap text-[var(--text-muted)]">
                 {COLUMNS.map((col, i) => (
                   <th
                     key={col.key ?? `col-${i}`}
@@ -315,20 +316,22 @@ export function FocusClientsView({
             <tbody>
               {visibleRows.map((row, i) => {
                 const isOpen = expanded === row.master.accountId;
-                // 境界線を太くするのは注力→掘り起こしの切り替わりだけ(ユーザー指示、2026-10-19)
+                // 注力→掘り起こしの切り替わりだけ、1px線・画面背景色30px・1px線で上下の箱に分ける(ユーザー指示、2026-10-22)
                 const prev = visibleRows[i - 1];
                 const isGroupBoundary =
                   prev !== undefined &&
                   categoryGroup(prev.master.category) === 0 &&
                   categoryGroup(row.master.category) === 1;
-                const rowBg = isOpen ? "bg-[var(--surface-reference)]" : "";
+                const rowBg = isOpen ? "bg-[var(--surface-reference)]" : "bg-[var(--surface-1)]";
+                const isLast = i === visibleRows.length - 1;
                 return (
                   <Fragment key={row.master.accountId}>
-                    <tr
-                      className={`tabular-nums ${rowBg} ${
-                        isGroupBoundary ? "border-t-[3px] border-[var(--baseline)]" : "border-t border-[var(--gridline)]"
-                      }`}
-                    >
+                    {isGroupBoundary && (
+                      <tr aria-hidden className="border-y border-[var(--gridline)]">
+                        <td colSpan={COLUMNS.length} className="h-[30px] bg-[var(--background)] p-0" />
+                      </tr>
+                    )}
+                    <tr className={`tabular-nums ${rowBg} border-x border-t border-[var(--gridline)]`}>
                       <td rowSpan={2} className="px-3 py-2 align-top whitespace-nowrap text-[var(--text-secondary)]">
                         {row.master.category || DASH}
                       </td>
@@ -365,13 +368,15 @@ export function FocusClientsView({
                         )}
                       </td>
                     </tr>
-                    <tr className={rowBg}>
+                    <tr className={`${rowBg} border-x border-[var(--gridline)] ${isLast && !isOpen ? "border-b" : ""}`}>
                       <td colSpan={MEMO_COL_SPAN} className="px-3 pb-2">
                         <FocusClientMemoEditor key={row.master.accountId} master={row.master} onSaved={handleSaved} />
                       </td>
                     </tr>
                     {isOpen && (
-                      <tr className="border-t border-[var(--gridline)] bg-[var(--surface-reference)]">
+                      <tr
+                        className={`border-x border-t border-[var(--gridline)] bg-[var(--surface-reference)] ${isLast ? "border-b" : ""}`}
+                      >
                         <td colSpan={COLUMNS.length} className="px-3 py-4">
                           <div className="flex flex-col gap-4">
                             <FocusClientEditor
@@ -399,7 +404,9 @@ export function FocusClientsView({
             </tbody>
           </table>
           {visibleRows.length === 0 && (
-            <p className="py-4 text-center text-sm text-[var(--text-muted)]">該当するクライアントはありません。</p>
+            <p className="border-x border-b border-[var(--gridline)] bg-[var(--surface-1)] py-4 text-center text-sm text-[var(--text-muted)]">
+              該当するクライアントはありません。
+            </p>
           )}
         </div>
       </section>

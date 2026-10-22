@@ -3,12 +3,12 @@ import { isPreReleaseEnabled, isPreReleasePath } from "@/config/deployEnvironmen
 
 /**
  * 並びは営業進捗→勤怠→経営(ユーザー確定、2026-09-29)。/resourceのラベルは「勤怠」。
- * クライアント別目標は営業進捗の右(ユーザー確定、2026-10-14)。注力クライアントはクライアント別目標の右(2026-10-15)
+ * 注力クライアントは営業進捗の右(本番公開時にユーザー確定、2026-10-22)。クライアント別目標はその右(devのみ)
  */
 const NAV_ITEMS = [
   { href: "/", label: "営業進捗" },
-  { href: "/client-targets", label: "クライアント別目標" },
   { href: "/focus-clients", label: "注力クライアント" },
+  { href: "/client-targets", label: "クライアント別目標" },
   { href: "/resource", label: "勤怠" },
   { href: "/management", label: "経営" },
 ] as const;
@@ -29,7 +29,7 @@ interface DashboardNavProps {
  * (layout/page.tsx)も別途アクセス制御している(fail-closed)。
  */
 export function DashboardNav({ active, showManagementTab, showResourceTab }: DashboardNavProps) {
-  // 本番未公開のタブ(クライアント別目標・注力クライアント)はdev・ローカルでだけ出す(deployEnvironment.ts)
+  // 本番未公開のタブ(クライアント別目標)はdev・ローカルでだけ出す(deployEnvironment.ts)
   const preReleaseEnabled = isPreReleaseEnabled();
   const items = NAV_ITEMS.filter((item) => {
     if (!preReleaseEnabled && isPreReleasePath(item.href)) return false;

@@ -46,8 +46,7 @@ describe("isPreReleaseEnabled", () => {
 describe("isPreReleasePath", () => {
   it("matches the unreleased pages and their API, including sub-paths", () => {
     expect(isPreReleasePath("/client-targets")).toBe(true);
-    expect(isPreReleasePath("/focus-clients")).toBe(true);
-    expect(isPreReleasePath("/api/focus-clients/0015i00000AbCdEAAZ")).toBe(true);
+    expect(isPreReleasePath("/client-targets/sub")).toBe(true);
   });
 
   it("does not match released pages or look-alike paths", () => {
@@ -55,5 +54,7 @@ describe("isPreReleasePath", () => {
     expect(isPreReleasePath("/management")).toBe(false);
     expect(isPreReleasePath("/api/accounting-reports/cash-plan/2026-10")).toBe(false);
     expect(isPreReleasePath("/client-targets-old")).toBe(false);
+    expect(isPreReleasePath("/focus-clients")).toBe(false);
+    expect(isPreReleasePath("/api/focus-clients/0015i00000AbCdEAAZ")).toBe(false);
   });
 });

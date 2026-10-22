@@ -326,7 +326,7 @@ export function FocusClientsView({
                   <Fragment key={row.master.accountId}>
                     <tr
                       className={`tabular-nums ${rowBg} ${
-                        isGroupBoundary ? "border-t-[3px] border-[var(--text-muted)]" : "border-t border-[var(--gridline)]"
+                        isGroupBoundary ? "border-t-[3px] border-[var(--baseline)]" : "border-t border-[var(--gridline)]"
                       }`}
                     >
                       <td rowSpan={2} className="px-3 py-2 align-top whitespace-nowrap text-[var(--text-secondary)]">

@@ -15,6 +15,7 @@ vi.mock("./financialSummary", async (importOriginal) => {
 });
 
 const { getOrFetchFinancialSummary } = await import("./financialSummaryService");
+const { FINANCIAL_SUMMARY_CALCULATION_VERSION } = await import("./financialSummary");
 
 function makeFinancialSummary(overrides: Partial<FinancialSummary> = {}): FinancialSummary {
   return {
@@ -37,7 +38,13 @@ afterEach(() => {
 
 describe("getOrFetchFinancialSummary", () => {
   it("returns the cached snapshot without calling freee when one exists", async () => {
-    const cached = { fiscalYear: 2025, month: 8, ...makeFinancialSummary(), fetchedAt: new Date("2026-09-14T00:00:00Z") };
+    const cached = {
+      fiscalYear: 2025,
+      month: 8,
+      ...makeFinancialSummary(),
+      fetchedAt: new Date("2026-09-14T00:00:00Z"),
+      calculationVersion: FINANCIAL_SUMMARY_CALCULATION_VERSION,
+    };
     getFinancialSummarySnapshotMock.mockResolvedValue(cached);
 
     const result = await getOrFetchFinancialSummary(2025, 8);
@@ -52,11 +59,23 @@ describe("getOrFetchFinancialSummary", () => {
 
     const result = await getOrFetchFinancialSummary(2025, 8);
 
-    expect(getFinancialSummaryMock).toHaveBeenCalledWith(2025);
+    expect(getFinancialSummaryMock).toHaveBeenCalledWith(2025, 8);
     expect(saveFinancialSummarySnapshotMock).toHaveBeenCalledWith(
-      expect.objectContaining({ fiscalYear: 2025, month: 8, revenue: 999 })
+      expect.objectContaining({ fiscalYear: 2025, month: 8, revenue: 999, calculationVersion: FINANCIAL_SUMMARY_CALCULATION_VERSION })
     );
     expect(result?.revenue).toBe(999);
+  });
+
+  it("treats a snapshot saved with the old (whole-term) calculation as missing and replaces only that month", async () => {
+    const old = { fiscalYear: 2026, month: 10, ...makeFinancialSummary({ revenue: 1 }), fetchedAt: new Date("2026-10-22T09:00:00Z") };
+    getFinancialSummarySnapshotMock.mockResolvedValue(old);
+    getFinancialSummaryMock.mockResolvedValue(makeFinancialSummary({ revenue: 2 }));
+
+    const result = await getOrFetchFinancialSummary(2026, 10);
+
+    expect(getFinancialSummaryMock).toHaveBeenCalledWith(2026, 10);
+    expect(saveFinancialSummarySnapshotMock).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ revenue: 2, calculationVersion: FINANCIAL_SUMMARY_CALCULATION_VERSION });
   });
 
   it("returns null when freee is not connected, never fabricating a snapshot", async () => {

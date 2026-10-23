@@ -114,15 +114,28 @@ describe("getFinancialSummary", () => {
     getFreeeCompanyIdMock.mockResolvedValue(11314786);
     getTrialPlMock.mockResolvedValue({ company_id: 11314786, fiscal_year: 2026, balances: [] });
 
-    await getFinancialSummary(2026);
+    await getFinancialSummary(2026, 10);
 
-    expect(getTrialPlMock).toHaveBeenCalledWith(11314786, { fiscalYear: 2026 });
+    expect(getTrialPlMock).toHaveBeenCalledWith(11314786, expect.objectContaining({ fiscalYear: 2026 }));
+  });
+
+  it("limits the range to the term start (September) through the target month, so future-dated entries are excluded (2026-10-23)", async () => {
+    getFreeeCompanyIdMock.mockResolvedValue(11314786);
+    getTrialPlMock.mockResolvedValue({ company_id: 11314786, fiscal_year: 2026, balances: [] });
+
+    await getFinancialSummary(2026, 10);
+    await getFinancialSummary(2026, 3);
+    await getFinancialSummary(2026, 9);
+
+    expect(getTrialPlMock).toHaveBeenNthCalledWith(1, 11314786, { fiscalYear: 2026, startMonth: 9, endMonth: 10 });
+    expect(getTrialPlMock).toHaveBeenNthCalledWith(2, 11314786, { fiscalYear: 2026, startMonth: 9, endMonth: 3 });
+    expect(getTrialPlMock).toHaveBeenNthCalledWith(3, 11314786, { fiscalYear: 2026, startMonth: 9, endMonth: 9 });
   });
 
   it("returns null without calling getTrialPl when freee is not connected", async () => {
     getFreeeCompanyIdMock.mockResolvedValue(null);
 
-    const result = await getFinancialSummary(2026);
+    const result = await getFinancialSummary(2026, 10);
 
     expect(result).toBeNull();
     expect(getTrialPlMock).not.toHaveBeenCalled();

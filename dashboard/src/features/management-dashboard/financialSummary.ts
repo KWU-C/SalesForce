@@ -1,6 +1,7 @@
 import type { FreeeTrialBalanceResponse, FreeeTrialBalanceRow } from "@/services/freee/freeeAccountingClient";
 import { getTrialPl } from "@/services/freee/freeeAccountingClient";
 import { getFreeeCompanyId } from "@/repositories/freeeAuthRepository";
+import { FISCAL_MONTH_ORDER } from "@/config/fiscalPeriods";
 
 /**
  * 当期累計の経営サマリー(画面下部の補助セクション用)。月次ダッシュボードが主役に
@@ -17,12 +18,23 @@ export interface FinancialSummary {
   ordinaryProfit: number | null;
 }
 
-/** Firestore(financialSummarySnapshots)へ保存するスナップショットの形。当期累計のため
- * fiscalYear/monthは「どの時点でfreeeから取得したか」のキー(常に当月)に過ぎない */
+/**
+ * 当期累計の算出方法のバージョン。保存済みスナップショットのcalculationVersionがこれと異なる場合、
+ * 読み出し側は「未取得」として扱う(古い定義の値を表示しない。一括の書き換えはしない)。
+ * - 1(項目なし): trial_plを事業期(fiscal_year)だけで取得。期の全体(翌8月まで)を集計するため、
+ *   先の日付で登録済みの仕訳(前払費用の+更新、借入の返済予定の利息など)まで含んでいた
+ * - 2: 期首(9月)〜対象月末で取得する(ユーザー確定、2026-10-23)
+ */
+export const FINANCIAL_SUMMARY_CALCULATION_VERSION = 2;
+
+/** Firestore(financialSummarySnapshots)へ保存するスナップショットの形。fiscalYear/monthは
+ * 累計の対象(期首〜monthの月末)を表す */
 export interface FinancialSummarySnapshot extends FinancialSummary {
   fiscalYear: number;
   month: number;
   fetchedAt: Date;
+  /** 項目追加前(バージョン1)の保存分には無い */
+  calculationVersion?: number;
 }
 
 // trial_plの小計行は total_line: true で、account_category_nameがラベルになる
@@ -76,10 +88,11 @@ export function extractPlSummary(trialPl: FreeeTrialBalanceResponse): FinancialS
  * 「当期累計」ラベルと矛盾した金額(前期の通期累計)が表示されるバグがあった
  * (2026-09-18発見)。
  */
-export async function getFinancialSummary(fiscalYear: number): Promise<FinancialSummary | null> {
+export async function getFinancialSummary(fiscalYear: number, endMonth: number): Promise<FinancialSummary | null> {
   const companyId = await getFreeeCompanyId();
   if (companyId === null) return null;
 
-  const trialPl = await getTrialPl(companyId, { fiscalYear });
+  // 期首(9月)〜対象月末に限る。月を指定しないと期の全体(翌8月まで)が集計され、先の日付の仕訳が入る
+  const trialPl = await getTrialPl(companyId, { fiscalYear, startMonth: FISCAL_MONTH_ORDER[0], endMonth });
   return extractPlSummary(trialPl);
 }

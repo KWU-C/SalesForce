@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { isPreReleaseEnabled, isPreReleasePath } from "@/config/deployEnvironment";
+import { isDevDeployment, isPreReleaseEnabled, isPreReleasePath } from "@/config/deployEnvironment";
 
 /**
  * 並びは営業進捗→勤怠→経営(ユーザー確定、2026-09-29)。/resourceのラベルは「勤怠」。
@@ -31,6 +31,8 @@ interface DashboardNavProps {
 export function DashboardNav({ active, showManagementTab, showResourceTab }: DashboardNavProps) {
   // 本番未公開のタブ(クライアント別目標)はdev・ローカルでだけ出す(deployEnvironment.ts)
   const preReleaseEnabled = isPreReleaseEnabled();
+  // dev環境は本番と見分けやすいよう、帯を濃紺(#000099)にして右端に「DEV」を出す(ユーザー確定、2026-10-23)
+  const dev = isDevDeployment();
   const items = NAV_ITEMS.filter((item) => {
     if (!preReleaseEnabled && isPreReleasePath(item.href)) return false;
     if (item.href === "/management") return showManagementTab;
@@ -38,22 +40,31 @@ export function DashboardNav({ active, showManagementTab, showResourceTab }: Das
     return true;
   });
   return (
-    <nav className="border-b border-[var(--border-hairline)] bg-[var(--surface-sunken)]">
-      <div className="mx-auto flex max-w-6xl gap-1 px-4 sm:px-6">
+    <nav
+      className={
+        dev ? "border-b border-[#000099] bg-[#000099]" : "border-b border-[var(--border-hairline)] bg-[var(--surface-sunken)]"
+      }
+    >
+      <div className="mx-auto flex max-w-6xl items-center gap-1 px-4 sm:px-6">
         {items.map((item) => (
           <Link
             key={item.href}
             href={item.href}
             aria-current={active === item.href ? "page" : undefined}
             className={`px-3 py-2 text-sm font-medium ${
-              active === item.href
-                ? "border-b-2 border-[var(--series-1)] text-[var(--text-primary)]"
-                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              dev
+                ? active === item.href
+                  ? "border-b-2 border-white text-white"
+                  : "text-white/70 hover:text-white"
+                : active === item.href
+                  ? "border-b-2 border-[var(--series-1)] text-[var(--text-primary)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             }`}
           >
             {item.label}
           </Link>
         ))}
+        {dev && <span className="ml-auto text-sm font-bold text-white">DEV</span>}
       </div>
     </nav>
   );

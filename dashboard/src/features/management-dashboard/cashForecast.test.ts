@@ -160,7 +160,9 @@ describe("二重計上の防止", () => {
       )
     );
     expect(lineOf(r.months[0], "loans")).toMatchObject({ scheduled: { amount: 165 }, estimated: { amount: 110 }, adopted: 275, rule: "scheduled+supplement" });
-    expect(r.warnings.find((w) => w.code === "loan_supplemented")).toBeTruthy();
+    // 画面に出す件数は借入先の実数(1・2・3)、延べ件数は 当月2先＋翌月以降5か月×3先
+    expect(r.warnings.find((w) => w.code === "loan_supplemented")).toMatchObject({ count: 3, occurrences: 17 });
+    expect(r.warnings.find((w) => w.code === "loan_supplemented")!.message).toContain("(3先)");
   });
 
   it("adds the company-wide repayment floor only for the shortfall (irregular lenders get no per-lender median)", () => {
@@ -183,7 +185,7 @@ describe("二重計上の防止", () => {
           baseDate: "2026-10-15",
           currentMonthToDate: actual({ otherOperating: 70, labor: 300, inflowOperating: 400 }),
           deals: [deal({ account: "通信費", amount: 50 }), deal({ type: "income", account: "売上高", amount: 500 })],
-          payroll: { "salary-2026-10": { kind: "salary", month: "2026-10", netTotal: 300, payDate: "2026-10-25", statementCount: 3, fixedCount: 0 } },
+          payroll: { "salary-2026-10": { kind: "salary", month: "2026-10", netTotal: 300, payDate: "2026-10-25", statementCount: 3, fixedCount: 3 } },
         }),
         S
       )
@@ -284,5 +286,72 @@ describe("給与の支払確認(当月)", () => {
     const paid = deal({ account: "給料手当", amount: 320, issueDate: "2026-10-20", status: "settled", dueAmount: 0, payments: [{ date: "2026-10-20", amount: 320, walletableType: "bank_account", walletableId: 1 }] });
     const r = ok(buildCashForecast(inputs({ ...base, deals: [paid] }), S));
     expect(r.warnings.find((w) => w.code === "payroll_payment_unconfirmed")).toBeUndefined();
+  });
+});
+
+describe("給与明細の採用(作成途中の判定)", () => {
+  type Payroll = ForecastInputs["payroll"];
+  const salary = (month: string, statementCount: number, netTotal: number, fixedCount: number): Payroll => ({
+    [`salary-${month}`]: { kind: "salary", month, netTotal, payDate: `${month}-25`, statementCount, fixedCount },
+  });
+  /** 2026-03〜10は全件確定の51件(差引支給額5100) */
+  const fixedThroughOctober = (): Payroll => {
+    let out: Payroll = {};
+    for (const m of ["2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"]) out = { ...out, ...salary(m, 51, 5100, 51) };
+    return out;
+  };
+  const run = (payroll: Payroll) => ok(buildCashForecast(inputs({ payroll }), S));
+
+  it("estimates November from the latest fixed statement when only 25 of the usual 51 unfixed statements exist", () => {
+    const r = run({ ...fixedThroughOctober(), ...salary("2026-11", 25, 2500, 0) });
+    const oct = lineOf(r.months[0], "labor");
+    const nov = lineOf(r.months[1], "labor");
+    expect(oct).toMatchObject({ rule: "scheduled", scheduled: { count: 51 } });
+    expect(nov).toMatchObject({ rule: "estimated", scheduled: null, estimated: { basisMonths: ["2026-10"] } });
+    // 作成途中の明細(2500)ではなく、10月の確定済み明細(5100)×実績比率
+    expect(nov.adopted).toBeCloseTo(oct.adopted!);
+    const w = r.warnings.find((x) => x.code === "payroll_incomplete")!;
+    expect(w.count).toBe(1);
+    expect(w.message).toContain("2026-11");
+    expect(w.message).toContain("件数25/51件");
+  });
+
+  it("does not adopt unfixed statements on the count alone (90% of the count but far less in amount)", () => {
+    const r = run({ ...fixedThroughOctober(), ...salary("2026-11", 50, 3000, 0) });
+    expect(lineOf(r.months[1], "labor").rule).toBe("estimated");
+  });
+
+  it("adopts unfixed statements close in both count and amount, but only as provisional (not fixed)", () => {
+    const r = run({ ...fixedThroughOctober(), ...salary("2026-11", 51, 5200, 0) });
+    expect(lineOf(r.months[1], "labor")).toMatchObject({ rule: "scheduled", scheduled: { count: 51, provisional: true } });
+    expect(r.warnings.find((x) => x.code === "payroll_unfixed_adopted")).toMatchObject({ count: 1 });
+    expect(r.warnings.find((x) => x.code === "payroll_incomplete")).toBeUndefined();
+  });
+
+  it("prefers freee's fixed state when every statement of the month is fixed, even with fewer statements", () => {
+    const r = run({ ...fixedThroughOctober(), ...salary("2026-11", 25, 2500, 25) });
+    const nov = lineOf(r.months[1], "labor");
+    expect(nov).toMatchObject({ rule: "scheduled", scheduled: { count: 25 } });
+    expect(nov.scheduled!.provisional).toBeUndefined();
+  });
+
+  it("treats an unfixed month as incomplete when there is no fixed month to compare with", () => {
+    const r = run({ ...salary("2026-10", 51, 5100, 0) });
+    expect(lineOf(r.months[0], "labor")).toMatchObject({ rule: "none", adopted: null });
+    expect(r.months[0].unreflected.map((u) => u.key)).toContain("labor");
+  });
+
+  it("estimates later months only from fixed statements and ignores unfixed ones for the labor ratio", () => {
+    const r = run({ ...fixedThroughOctober(), ...salary("2026-11", 25, 2500, 0) });
+    expect(lineOf(r.months[2], "labor").estimated!.basisMonths).toEqual(["2026-10"]);
+  });
+
+  it("leaves an unfixed bonus statement unreflected instead of adopting a partial amount", () => {
+    const payroll = { ...fixedThroughOctober(), "bonus-2026-12": { kind: "bonus" as const, month: "2026-12", netTotal: 400, payDate: "2026-12-10", statementCount: 20, fixedCount: 0 } };
+    const r = run(payroll);
+    const dec = r.months.find((m) => m.month === "2026-12")!;
+    expect(lineOf(dec, "bonus")).toMatchObject({ adopted: null, rule: "none" });
+    expect(dec.unreflected.find((u) => u.key === "bonus")!.reason).toContain("未確定");
+    expect(dec.closingBasis).toBe("excludesUnreflected");
   });
 });

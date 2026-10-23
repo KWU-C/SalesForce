@@ -33,6 +33,13 @@ export interface CashForecastSettings {
   loanAggregateFloor: boolean;
   /** 銀行同期の遅れを警告する日数 */
   syncDelayWarningDays: number;
+  /**
+   * 未確定(freeeの確定フラグが全件立っていない)給与明細を予定として採用する条件。直近の全件確定の月と
+   * 比べ、件数がminCountRatio以上、かつ差引支給額の合計がamountRatioの範囲内のときだけ「未確定のまま
+   * 採用」する(確定扱いにはしない)。満たさなければ作成途中とみなし、確定済みの明細からの推計にする。
+   * いずれも暫定値(ユーザー確定、2026-10-23)
+   */
+  payrollUnfixedAdoption: { minCountRatio: number; amountRatio: { min: number; max: number } };
   /** 給与・賞与の銀行出金を探す期間(支給日の何日前から) */
   payrollPaymentWindowDays: number;
   /** 帳簿未登録の銀行明細を予定取引と照合するときの日付の許容差(日) */
@@ -57,6 +64,7 @@ export const CASH_FORECAST_SETTINGS: CashForecastSettings = {
   loanScheduleCoverage: 0.9,
   loanAggregateFloor: true,
   syncDelayWarningDays: 7,
+  payrollUnfixedAdoption: { minCountRatio: 0.9, amountRatio: { min: 0.9, max: 1.1 } },
   payrollPaymentWindowDays: 10,
   unbookedMatchDays: 10,
   operatingIncomeAccounts: ["売上高", "売掛金"],

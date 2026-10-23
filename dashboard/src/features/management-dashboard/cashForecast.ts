@@ -100,6 +100,8 @@ export interface ScheduledPart {
   amount: number;
   count: number;
   source: "deals" | "salary_statements" | "bonus_statements" | "liability";
+  /** 未確定の給与明細を、件数・金額が直近の確定済みの月と近いため採用した(確定扱いではない) */
+  provisional?: boolean;
 }
 
 export interface EstimatedPart {
@@ -174,6 +176,8 @@ export type ForecastWarningCode =
   | "growth_unavailable"
   | "insufficient_history"
   | "payroll_payment_unconfirmed"
+  | "payroll_unfixed_adopted"
+  | "payroll_incomplete"
   | "overdue_receivables"
   | "labor_ratio_unavailable"
   | "to_date_unavailable";
@@ -183,7 +187,10 @@ export interface ForecastWarning {
   message: string;
   /** 金額を伴う警告の合計額(件数だけの警告はnull) */
   amount: number | null;
+  /** 画面に出す件数(借入の補完なら借入先の実数) */
   count: number | null;
+  /** 内部集計用の延べ件数(借入の補完なら 月×借入先 ＋ 会社全体の下限で補った月)。画面には出さない */
+  occurrences?: number;
 }
 
 export type CashForecastResult =
@@ -455,6 +462,34 @@ function taxBase(inputs: ForecastInputs, baseMonth: YearMonth, settings: CashFor
   };
 }
 
+/** freeeの確定フラグが、その月の明細の全件に立っているか */
+function isFixed(p: PayrollMonth): boolean {
+  return p.statementCount > 0 && p.fixedCount === p.statementCount;
+}
+
+type SalaryJudgement = { status: "fixed" | "provisional" | "incomplete"; reason: string };
+
+/**
+ * 給与明細をその月の予定として採用できるか(ユーザー確定、2026-10-23)。
+ * - 全件確定: 採用する(freeeの確定状態を優先)
+ * - 未確定: 直近の全件確定の月と件数・差引支給額の合計を比べ、件数が基準以上かつ金額が範囲内のときだけ
+ *   「未確定のまま」採用する。件数だけでは採用しない
+ * - それ以外(比べる月が無い場合を含む): 作成途中とみなし採用しない
+ */
+function judgeSalary(inputs: ForecastInputs, p: PayrollMonth, settings: CashForecastSettings): SalaryJudgement {
+  if (isFixed(p)) return { status: "fixed", reason: "全件確定" };
+  const ref = latestSalaryStatement(inputs, addMonths(p.month, -1));
+  if (!ref) return { status: "incomplete", reason: "未確定で、比べられる確定済みの月がありません" };
+  const { minCountRatio, amountRatio } = settings.payrollUnfixedAdoption;
+  const countRatio = p.statementCount / ref.statementCount;
+  const amount = ref.netTotal > 0 ? p.netTotal / ref.netTotal : null;
+  const basis = `件数${p.statementCount}/${ref.statementCount}件・金額比${amount === null ? "—" : amount.toFixed(2)}(比較: ${ref.month})`;
+  if (countRatio >= minCountRatio && amount !== null && amount >= amountRatio.min && amount <= amountRatio.max) {
+    return { status: "provisional", reason: `未確定。${basis}` };
+  }
+  return { status: "incomplete", reason: `未確定で作成途中とみなしました。${basis}` };
+}
+
 /** 給与の実績比率(人件費の実績 ÷ 給与明細の差引支給額、賞与月を除く直近3か月の中央値) */
 function laborRatio(inputs: ForecastInputs, baseMonth: YearMonth, settings: CashForecastSettings): number | null {
   const ratios: number[] = [];
@@ -463,16 +498,16 @@ function laborRatio(inputs: ForecastInputs, baseMonth: YearMonth, settings: Cash
     if (settings.bonusMonths.includes(Number(month.slice(5)))) continue;
     const a = inputs.actuals[month];
     const p = inputs.payroll[`salary-${month}`];
-    if (a && p && p.netTotal > 0) ratios.push(a.labor / p.netTotal);
+    if (a && p && isFixed(p) && p.netTotal > 0) ratios.push(a.labor / p.netTotal);
   }
   return ratios.length === 3 ? median(ratios) : null;
 }
 
-/** 基準日に既にあった、最も新しい給与明細(その月以前) */
+/** 基準日に既にあった、最も新しい全件確定の給与明細(その月以前) */
 function latestSalaryStatement(inputs: ForecastInputs, uptoMonth: YearMonth): PayrollMonth | null {
   for (let k = 0; k <= 12; k++) {
     const p = inputs.payroll[`salary-${addMonths(uptoMonth, -k)}`];
-    if (p) return p;
+    if (p && isFixed(p)) return p;
   }
   return null;
 }
@@ -553,7 +588,11 @@ export function buildCashForecast(inputs: ForecastInputs, settings: CashForecast
   let opening = opening0;
   let unreflectedSoFar = false;
   let variance = 0;
-  let loanSupplemented = 0;
+  const loanLenders = new Set<string>();
+  let loanOccurrences = 0;
+  let loanFloorMonths = 0;
+  const salaryProvisional: string[] = [];
+  const salaryIncomplete: string[] = [];
   const td0 = inputs.actuals[addMonths(baseMonth, -1)]?.timeDepositClosing ?? null;
   const cash0 = inputs.actuals[addMonths(baseMonth, -1)]?.cashOnHandClosing ?? null;
   const tdMonthly = timeDepositMonthlyTransfer(inputs, baseMonth, w);
@@ -590,13 +629,27 @@ export function buildCashForecast(inputs: ForecastInputs, settings: CashForecast
       lines.push(line("inflowOther", "in", { scheduled: sched, adopted: sched?.amount ?? 0, rule: "scheduled" }));
     }
 
-    // 給与: 当月・以降とも、その月の給与明細があればそれ、無ければ基準日にあった最新の明細。実績比率をかける
+    // 給与: 当月・以降とも、その月の給与明細を採用できればそれ、できなければ基準日にあった最新の確定済みの
+    // 明細からの推計。実績比率をかける。作成途中の明細は予定にしない
     {
-      const own = inputs.payroll[`salary-${month}`] ?? null;
+      const statement = inputs.payroll[`salary-${month}`] ?? null;
+      const judged = statement ? judgeSalary(inputs, statement, settings) : null;
+      const own = judged && judged.status !== "incomplete" ? statement : null;
+      if (judged?.status === "provisional") salaryProvisional.push(`${month}(${judged.reason})`);
+      if (judged?.status === "incomplete") salaryIncomplete.push(`${month}(${judged.reason})`);
       const latest = latestSalaryStatement(inputs, h === 0 ? month : baseMonth);
       const r = ratio ?? 1;
-      const scheduled = own ? { amount: own.netTotal * r, count: own.statementCount, source: "salary_statements" as const } : null;
-      const estimated = !own && latest ? { amount: latest.netTotal * r, method: `直近の給与明細(${latest.month})×実績比率${r.toFixed(3)}`, basisMonths: [latest.month] } : null;
+      const scheduled = own
+        ? { amount: own.netTotal * r, count: own.statementCount, source: "salary_statements" as const, ...(judged?.status === "provisional" ? { provisional: true } : {}) }
+        : null;
+      const estimated =
+        !own && latest
+          ? {
+              amount: latest.netTotal * r,
+              method: `直近の確定済みの給与明細(${latest.month})×実績比率${r.toFixed(3)}${judged?.status === "incomplete" ? `(${month}の明細は作成途中のため不採用)` : ""}`,
+              basisMonths: [latest.month],
+            }
+          : null;
       const adopted = scheduled?.amount ?? estimated?.amount ?? null;
       const l = line("labor", "out", {
         scheduled,
@@ -610,8 +663,12 @@ export function buildCashForecast(inputs: ForecastInputs, settings: CashForecast
     }
     // 賞与: 賞与明細があれば予定。支給月で明細が無ければ未反映(0円にしない)
     {
+      // 未確定の賞与明細は比べる月が無いため採用せず、未反映にする
       const bonus = inputs.payroll[`bonus-${month}`] ?? null;
-      if (bonus) {
+      if (bonus && !isFixed(bonus)) {
+        lines.push(line("bonus", "out", { adopted: null, rule: "none" }));
+        unreflected.push({ key: "bonus", label: LABELS.bonus, reason: "賞与明細が未確定(作成途中の可能性)のため、支給額を反映していません" });
+      } else if (bonus) {
         lines.push(line("bonus", "out", { scheduled: { amount: bonus.netTotal, count: bonus.statementCount, source: "bonus_statements" }, adopted: bonus.netTotal, rule: "scheduled" }));
       } else if (settings.bonusMonths.includes(calMonth)) {
         lines.push(line("bonus", "out", { adopted: null, rule: "none" }));
@@ -668,6 +725,7 @@ export function buildCashForecast(inputs: ForecastInputs, settings: CashForecast
         if (typical > 0 && registered < typical * settings.loanScheduleCoverage) {
           supplement += typical - registered;
           supplementedLenders += 1;
+          loanLenders.add(lender);
         }
       }
       // 会社全体の直近の返済実績(中央値)を下限にする。予定＋借入先別の補完がそれに届かない分だけ足す
@@ -680,7 +738,8 @@ export function buildCashForecast(inputs: ForecastInputs, settings: CashForecast
           supplement += floorAdded;
         }
       }
-      loanSupplemented += supplementedLenders + (floorAdded > 0 ? 1 : 0);
+      loanOccurrences += supplementedLenders + (floorAdded > 0 ? 1 : 0);
+      if (floorAdded > 0) loanFloorMonths += 1;
       const count = [...sched.keys()].length;
       const l = line("loans", "out", {
         scheduled: count > 0 ? { amount: scheduledTotal, count, source: "deals" } : null,
@@ -732,7 +791,31 @@ export function buildCashForecast(inputs: ForecastInputs, settings: CashForecast
 
   const unreflectedCount = months.reduce((s, m) => s + m.unreflected.length, 0);
   if (unreflectedCount > 0) warnings.push({ code: "unreflected", message: "金額を反映できていない支出があります。該当月以降の月末残高は、未反映支出を含まない参考値です", amount: null, count: unreflectedCount });
-  if (loanSupplemented > 0) warnings.push({ code: "loan_supplemented", message: "返済予定が未登録・一部登録の借入先があり、直近の返済実績で補完しています(推計)", amount: null, count: loanSupplemented });
+  if (loanOccurrences > 0) {
+    warnings.push({
+      code: "loan_supplemented",
+      message: `返済予定が未登録・一部登録の借入先(${loanLenders.size}先)があり、直近の返済実績で補完しています(推計)${loanFloorMonths > 0 ? `。会社全体の返済実績の下限で補った月もあります(${loanFloorMonths}か月)` : ""}`,
+      amount: null,
+      count: loanLenders.size,
+      occurrences: loanOccurrences,
+    });
+  }
+  if (salaryIncomplete.length > 0) {
+    warnings.push({
+      code: "payroll_incomplete",
+      message: `作成途中とみなした給与明細は使わず、確定済みの明細からの推計にしています: ${salaryIncomplete.join(" / ")}`,
+      amount: null,
+      count: salaryIncomplete.length,
+    });
+  }
+  if (salaryProvisional.length > 0) {
+    warnings.push({
+      code: "payroll_unfixed_adopted",
+      message: `未確定の給与明細を、件数・金額が直近の確定済みの月と近いため予定として使っています(確定扱いではありません): ${salaryProvisional.join(" / ")}`,
+      amount: null,
+      count: salaryProvisional.length,
+    });
+  }
   if (unbooked.unmatched.count > 0) {
     warnings.push({
       code: "unbooked_unmatched",

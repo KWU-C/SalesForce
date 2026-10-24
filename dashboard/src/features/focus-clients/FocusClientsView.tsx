@@ -110,7 +110,7 @@ function compareRows(a: FocusClientRow, b: FocusClientRow, key: SortKey, desc: b
   return desc ? -cmp : cmp;
 }
 
-/** 達成率バー(幅80px)。100%以上は満タン、100%未満は達成率の文字と同じ色 */
+/** 達成率バー(幅80px)。100%以上は満タン。塗りの色はrateBarFillColor(80%以上 青・50%以上 オレンジ・50%未満 赤) */
 function RateBar({ rate }: { rate: number | null }) {
   if (rate === null) return null;
   return (

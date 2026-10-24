@@ -31,6 +31,11 @@ function rateClassName(rate: number | null): string {
   return rate < 100 ? "text-[var(--status-serious)]" : "text-[var(--text-primary)]";
 }
 
+/** 一覧の達成率の文字は、バーがオレンジ(50%以上80%未満)のときだけバーと同じオレンジにする(ユーザー指示、2026-10-24) */
+function rowRateTextStyle(rate: number | null): { color: string } | undefined {
+  return rate !== null && rate >= 50 && rate < 80 ? { color: rateBarFillColor(rate) } : undefined;
+}
+
 /** 目標が未入力・0円のときは「―」(ユーザー指定) */
 function targetText(amount: number | null): string {
   return amount ? formatThousandYen(amount) : DASH;
@@ -273,7 +278,10 @@ function FocusClientTable({ rows, term, expanded, onToggle, onSaved: handleSaved
                   <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.master.owner || DASH}</td>
                   <td className="px-3 py-2 text-right">{targetText(row.target.grossProfit)}</td>
                   <td className="px-3 py-2 text-right">{formatThousandYen(row.completedGrossProfitFullYear)}</td>
-                  <td className={`px-3 py-2 text-right font-medium ${rateClassName(row.grossProfitRateFullYear)}`}>
+                  <td
+                    className={`px-3 py-2 text-right font-medium ${rateClassName(row.grossProfitRateFullYear)}`}
+                    style={rowRateTextStyle(row.grossProfitRateFullYear)}
+                  >
                     {rateText(row.grossProfitRateFullYear)}
                   </td>
                   <td className="px-3 py-2">

@@ -7,6 +7,6 @@ export const RATE_BAR_TRACK_COLOR = "var(--gridline)";
 
 export function rateBarFillColor(rate: number): string {
   if (rate >= 80) return "#458ee7";
-  if (rate >= 50) return "#d07d1b";
+  if (rate >= 50) return "#e29104";
   return "#dc5b5b";
 }

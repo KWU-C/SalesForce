@@ -1,4 +1,5 @@
 import { formatPercent, formatYen } from "@/utils/format";
+import { RATE_BAR_TRACK_COLOR, rateBarFillColor } from "./rateBarColors";
 
 interface StatCardProps {
   title: string;
@@ -6,7 +7,7 @@ interface StatCardProps {
   grossProfit: number | null;
   targetGrossProfit: number;
   achievementRate: number | null;
-  /** 指定時、売上の下に罫線を引き、CRごとの粗利達成率をバーだけで横一列に並べる(全社タブの当月受注用) */
+  /** 指定時、売上の下に罫線を引き、CRごとの粗利達成率をバー・CR名・%で横一列に並べる(全社タブの当月受注・完了用) */
   crRates?: { label: string; rate: number | null }[];
 }
 
@@ -48,7 +49,7 @@ export function StatCard({
         <p className="text-xs text-[var(--text-muted)]">売上</p>
       </div>
       {crRates && (
-        <div className="mt-3 flex items-center gap-3 border-t border-[var(--gridline)] pt-3">
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t lg:grid-cols-4 border-[var(--gridline)] pt-3">
           {crRates.map(({ label, rate }) => (
             <CrRateBar key={label} label={label} rate={rate} />
           ))}
@@ -59,25 +60,28 @@ export function StatCard({
 }
 
 /**
- * 注力クライアントの達成率バーの小型版(ユーザー指示、2026-10-24)。数値は出さずバーだけ。
- * 100%以上は満タン、100%未満はグレーの枠(100%)に達成分を達成率の文字と同じ色で塗る。
- * 目標が無く達成率を出せないCRはグレーの枠だけ(ホバーで「目標なし」)。
+ * 注力クライアントの達成率バーの小型版(ユーザー指示、2026-10-24)。バーの右にCR名と%を小さい文字で出す。
+ * 100%以上は満タン、100%未満はグレーの枠(100%)に達成分を塗る。%の文字色は粗利達成率と同じ(100%未満は赤)。
+ * 目標が無く達成率を出せないCRはグレーの枠だけで、%は「—」。
  */
 function CrRateBar({ label, rate }: { label: string; rate: number | null }) {
-  const text = `${label} 粗利達成率 ${rate === null ? "—(目標なし)" : formatPercent(rate)}`;
   return (
-    <div
-      className="h-1.5 w-14 overflow-hidden rounded-sm bg-[var(--surface-sunken)]"
-      role="img"
-      aria-label={text}
-      title={text}
-    >
-      {rate !== null && (
-        <div
-          className="h-full"
-          style={{ width: `${Math.min(Math.max(rate, 0), 100)}%`, backgroundColor: statusColor(rate) ?? "var(--series-1)" }}
-        />
-      )}
+    <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+      <div className="h-1.5 min-w-6 flex-1 overflow-hidden rounded-sm" style={{ backgroundColor: RATE_BAR_TRACK_COLOR }} aria-hidden>
+        {rate !== null && (
+          <div
+            className="h-full"
+            style={{ width: `${Math.min(Math.max(rate, 0), 100)}%`, backgroundColor: rateBarFillColor(rate) }}
+          />
+        )}
+      </div>
+      <span className="text-xs text-[var(--text-muted)]">{label}</span>
+      <span
+        className="text-xs text-[var(--text-secondary)]"
+        style={rate === null ? undefined : { color: statusColor(rate) }}
+      >
+        {rate === null ? "—" : formatPercent(rate)}
+      </span>
     </div>
   );
 }

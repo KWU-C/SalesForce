@@ -102,15 +102,16 @@ export function DashboardClient({
   // 当月単月の受注・完了（全タブ共通、ユーザー確定2026-09-14）。累計ではなくその月単体の実績
   const currentMonthOrder = current.order.find((m) => m.month === currentMonth) ?? null;
   const currentMonthCompleted = current.completed.find((m) => m.month === currentMonth) ?? null;
-  // 全社タブの当月受注カードに並べるCR別の粗利達成率(ユーザー指示、2026-10-24)。CRはその期の一覧順
-  const currentMonthOrderCrRates = crList
-    .filter((cr) => cr.id !== "ALL")
-    .map((cr) => ({
-      label: cr.label,
-      rate:
-        progressByCr.find((p) => p.crId === cr.id)?.order.find((m) => m.month === currentMonth)?.achievementRate ??
-        null,
-    }));
+  // 全社タブの当月受注・完了カードに並べるCR別の粗利達成率(ユーザー指示、2026-10-24)。CRはその期の一覧順
+  const crRatesFor = (kind: "order" | "completed") =>
+    crList
+      .filter((cr) => cr.id !== "ALL")
+      .map((cr) => ({
+        label: cr.label,
+        rate:
+          progressByCr.find((p) => p.crId === cr.id)?.[kind].find((m) => m.month === currentMonth)?.achievementRate ??
+          null,
+      }));
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6">
@@ -123,7 +124,7 @@ export function DashboardClient({
           grossProfit={currentMonthOrder?.grossProfit ?? null}
           targetGrossProfit={currentMonthOrder?.targetGrossProfit ?? 0}
           achievementRate={currentMonthOrder?.achievementRate ?? null}
-          crRates={effectiveCr === "ALL" ? currentMonthOrderCrRates : undefined}
+          crRates={effectiveCr === "ALL" ? crRatesFor("order") : undefined}
         />
         <StatCard
           title={`${currentMonth}月の完了`}
@@ -131,6 +132,7 @@ export function DashboardClient({
           grossProfit={currentMonthCompleted?.grossProfit ?? null}
           targetGrossProfit={currentMonthCompleted?.targetGrossProfit ?? 0}
           achievementRate={currentMonthCompleted?.achievementRate ?? null}
+          crRates={effectiveCr === "ALL" ? crRatesFor("completed") : undefined}
         />
       </div>
 

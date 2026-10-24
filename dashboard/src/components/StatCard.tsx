@@ -62,7 +62,7 @@ export function StatCard({
 /**
  * 注力クライアントの達成率バーの小型版(ユーザー指示、2026-10-24)。「CR名・バー・%」の順に並べ、文字は小さく(10px)する。
  * CRごとの間隔は24px、CR名・バー・%の間は3px(ユーザー指示、2026-10-24)。
- * 100%以上は満タン、100%未満はグレーの枠(100%)に達成分を塗る(色はrateBarFillColor)。%の文字色は粗利達成率と同じ(100%未満は赤)。
+ * 100%以上は満タン、100%未満はグレーの枠(100%)に達成分を塗る(色はrateBarFillColor)。%の文字は80%以上(青いバー)ならグレー、80%未満は赤(ユーザー指示、2026-10-24)。
  * 目標が無く達成率を出せないCRはグレーの枠だけで、%は「—」。
  */
 function CrRateBar({ label, rate }: { label: string; rate: number | null }) {
@@ -79,7 +79,7 @@ function CrRateBar({ label, rate }: { label: string; rate: number | null }) {
       </div>
       <span
         className="text-[10px] text-[var(--text-secondary)]"
-        style={rate === null ? undefined : { color: statusColor(rate) }}
+        style={rate === null || rate >= 80 ? undefined : { color: statusColor(rate) }}
       >
         {rate === null ? "—" : formatPercent(rate)}
       </span>

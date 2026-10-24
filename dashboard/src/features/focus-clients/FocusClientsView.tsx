@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { CrTabs } from "@/components/CrTabs";
+import { RATE_BAR_TRACK_COLOR, rateBarFillColor } from "@/components/rateBarColors";
 import type { CrId } from "@/domain/types";
 import { fiscalTermDateRange } from "@/config/fiscalPeriods";
 import { formatPercent, formatThousandYen, formatYen } from "@/utils/format";
@@ -113,10 +114,10 @@ function compareRows(a: FocusClientRow, b: FocusClientRow, key: SortKey, desc: b
 function RateBar({ rate }: { rate: number | null }) {
   if (rate === null) return null;
   return (
-    <div className="h-2 w-20 overflow-hidden rounded-sm bg-[var(--surface-sunken)]" aria-hidden>
+    <div className="h-2 w-20 overflow-hidden rounded-sm" style={{ backgroundColor: RATE_BAR_TRACK_COLOR }} aria-hidden>
       <div
-        className={`h-full ${rate < 100 ? "bg-[var(--status-serious)]" : "bg-[var(--series-1)]"}`}
-        style={{ width: `${Math.min(Math.max(rate, 0), 100)}%` }}
+        className="h-full"
+        style={{ width: `${Math.min(Math.max(rate, 0), 100)}%`, backgroundColor: rateBarFillColor(rate) }}
       />
     </div>
   );

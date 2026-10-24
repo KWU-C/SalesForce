@@ -49,7 +49,7 @@ export function StatCard({
         <p className="text-xs text-[var(--text-muted)]">売上</p>
       </div>
       {crRates && (
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t lg:grid-cols-4 border-[var(--gridline)] pt-3">
+        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 border-t lg:grid-cols-4 border-[var(--gridline)] pt-3">
           {crRates.map(({ label, rate }) => (
             <CrRateBar key={label} label={label} rate={rate} />
           ))}
@@ -60,13 +60,14 @@ export function StatCard({
 }
 
 /**
- * 注力クライアントの達成率バーの小型版(ユーザー指示、2026-10-24)。バーの右にCR名と%を小さい文字で出す。
+ * 注力クライアントの達成率バーの小型版(ユーザー指示、2026-10-24)。バーの右にCR名と%を小さい文字(10px)で出す。
+ * CRごとの間隔は24px、バー・CR名・%の間は3px(ユーザー指示、2026-10-24)。
  * 100%以上は満タン、100%未満はグレーの枠(100%)に達成分を塗る。%の文字色は粗利達成率と同じ(100%未満は赤)。
  * 目標が無く達成率を出せないCRはグレーの枠だけで、%は「—」。
  */
 function CrRateBar({ label, rate }: { label: string; rate: number | null }) {
   return (
-    <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+    <div className="flex min-w-0 items-center gap-[3px] whitespace-nowrap">
       <div className="h-1.5 min-w-6 flex-1 overflow-hidden rounded-sm" style={{ backgroundColor: RATE_BAR_TRACK_COLOR }} aria-hidden>
         {rate !== null && (
           <div
@@ -75,9 +76,9 @@ function CrRateBar({ label, rate }: { label: string; rate: number | null }) {
           />
         )}
       </div>
-      <span className="text-xs text-[var(--text-muted)]">{label}</span>
+      <span className="text-[10px] text-[var(--text-muted)]">{label}</span>
       <span
-        className="text-xs text-[var(--text-secondary)]"
+        className="text-[10px] text-[var(--text-secondary)]"
         style={rate === null ? undefined : { color: statusColor(rate) }}
       >
         {rate === null ? "—" : formatPercent(rate)}

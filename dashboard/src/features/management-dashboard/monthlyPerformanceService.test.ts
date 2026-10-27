@@ -17,7 +17,7 @@ vi.mock("./monthlyPerformance", async (importOriginal) => {
 });
 
 const { MONTHLY_PERFORMANCE_CALCULATION_VERSION } = await import("./monthlyPerformance");
-const { getOrFetchTermPerformance, refreshTermPerformance } = await import("./monthlyPerformanceService");
+const { getOrFetchTermPerformance, getStoredTermPerformance, refreshTermPerformance } = await import("./monthlyPerformanceService");
 
 function perf(month: number): MonthlyPerformance {
   return { revenue: month * 100 } as MonthlyPerformance;
@@ -57,6 +57,18 @@ describe("refreshTermPerformance", () => {
   });
 });
 
+describe("getStoredTermPerformance", () => {
+  it("Firestoreだけを読み、未保存・旧バージョンの月はnull(freeeは呼ばない)", async () => {
+    getSnapshotMock.mockImplementation(async (_fy: number, m: number) =>
+      m === 9 ? cached(9) : m === 10 ? cached(10, 0) : null
+    );
+    const result = await getStoredTermPerformance(2025, 11);
+    expect(result.map((r) => r?.month ?? null)).toEqual([9, null, null]);
+    expect(getFreeeCompanyIdMock).not.toHaveBeenCalled();
+    expect(fetchMonthlyPerformanceMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("getOrFetchTermPerformance", () => {
   it("全月が保存済み(現行バージョン)ならfreeeを呼ばない", async () => {
     getSnapshotMock.mockImplementation(async (_fy: number, m: number) => cached(m));
@@ -65,11 +77,21 @@ describe("getOrFetchTermPerformance", () => {
     expect(fetchMonthlyPerformanceMock).not.toHaveBeenCalled();
   });
 
-  it("1か月でも未取得・旧バージョンなら全月を取り直す", async () => {
+  it("未保存・旧バージョンの月だけを取得して保存し、保存済みの月は取り直さない", async () => {
     getFreeeCompanyIdMock.mockResolvedValue(1);
     fetchMonthlyPerformanceMock.mockImplementation(async (_c: number, _fy: number, m: number) => perf(m));
-    getSnapshotMock.mockImplementation(async (_fy: number, m: number) => (m === 9 ? cached(9, 0) : cached(m)));
-    await getOrFetchTermPerformance(2025, 10);
-    expect(fetchMonthlyPerformanceMock.mock.calls.map((c) => c[2])).toEqual([9, 10]);
+    getSnapshotMock.mockImplementation(async (_fy: number, m: number) =>
+      m === 9 ? cached(9, 0) : m === 11 ? null : cached(m)
+    );
+    const result = await getOrFetchTermPerformance(2025, 12);
+    expect(fetchMonthlyPerformanceMock.mock.calls.map((c) => c[2])).toEqual([9, 11]);
+    expect(saveSnapshotMock.mock.calls.map((c) => (c[0] as MonthlyPerformanceSnapshot).month)).toEqual([9, 11]);
+    expect(result?.map((r) => r?.month)).toEqual([9, 10, 11, 12]);
+  });
+
+  it("未保存の月があってfreee未接続ならnull", async () => {
+    getSnapshotMock.mockResolvedValue(null);
+    getFreeeCompanyIdMock.mockResolvedValue(null);
+    expect(await getOrFetchTermPerformance(2025, 9)).toBeNull();
   });
 });

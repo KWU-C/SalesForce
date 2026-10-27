@@ -391,8 +391,7 @@ export default async function ManagementPage() {
 
                 {/* ⑤ 詳細(入出金ベース) */}
                 <p className="text-xs text-[var(--text-muted)]">
-                  ※ 以下の月次資金収支・支出構成は入出金ベース（現金の動き）です。上の業績・採算は発生主義の損益ベースのため、
-                  金額は一致しません。
+                  {"※ 以下の月次資金収支・支出構成は入出金ベース（現金の動き）です。上の業績・採算は発生主義の損益ベースのため、金額は一致しません。"}
                 </p>
                 {cashFlowError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">

@@ -80,7 +80,7 @@ export function PerformanceSummaryCards({ months, currentMonth }: { months: Perf
     previousOperatingProfit === null
       ? "前年同期: データ未設定"
       : `前年同期 ${signedYen(previousOperatingProfit)}${
-          previousOperatingRate === null ? "" : `（${signedRate(previousOperatingRate)}）`
+          previousOperatingRate === null ? "" : `（営業利益率 ${signedRate(previousOperatingRate)}）`
         }`,
   ];
 
@@ -97,8 +97,8 @@ export function PerformanceSummaryCards({ months, currentMonth }: { months: Perf
       </p>
       {noWipMonths.length > 0 && (
         <p className="text-xs text-[var(--status-serious)]">
-          ※ {noWipMonths.map((m) => `${m}月`).join("・")}はfreeeで仕掛品振替が未検出です。その月の売上総利益・営業利益は
-          月次の仕掛品振替が入ると大きく変わることがあります。
+          ※ {noWipMonths.map((m) => `${m}月`).join("・")}
+          {"はfreeeで仕掛品振替が未検出です。その月の売上総利益・営業利益は、月次の仕掛品振替が入ると大きく変わることがあります。"}
         </p>
       )}
     </div>

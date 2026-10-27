@@ -85,8 +85,7 @@ export function CostStructureSection({ months }: { months: PerformanceMonth[] })
         <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4 text-xs text-[var(--text-secondary)]">
           <p className="mb-1 font-medium text-[var(--text-muted)]">建物関連費用の範囲（当期累計の内訳）</p>
           <p className="mb-2 text-[var(--text-muted)]">
-            {BUILDING_CANDIDATE_ACCOUNTS.join("・")}のうち、品目が「{BUILDING_ITEM_PREFIX}」のものだけ。
-            [製]賃借料のリース料（複合機・PC等）や修繕費の設備保全費は含めない。
+            {`${BUILDING_CANDIDATE_ACCOUNTS.join("・")}のうち、品目が「${BUILDING_ITEM_PREFIX}」のものだけ。[製]賃借料のリース料（複合機・PC等）や修繕費の設備保全費は含めない。`}
           </p>
           {buildingItems.length === 0 ? (
             <p className="text-[var(--text-muted)]">該当なし</p>
@@ -122,8 +121,7 @@ export function CostStructureSection({ months }: { months: PerformanceMonth[] })
         </div>
       </div>
       <p className="text-xs text-[var(--text-muted)]">
-        ※ 建物関連費用とマザー関連支出は芦屋オフィスの地代が両方に入るため、合算しないでください。
-        費用は発生額（製造原価の分は仕掛品へ振り替わる前の額）。資産計上した建物・設備は含めない。
+        {"※ 建物関連費用とマザー関連支出は芦屋オフィスの地代（マザー所有）が両方に入るため、合算しないでください。費用は発生額（製造原価の分は仕掛品へ振り替わる前の額）。資産計上した建物・設備は含めない。"}
       </p>
     </div>
   );

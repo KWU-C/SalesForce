@@ -118,13 +118,12 @@ export function MonthlyPerformanceSection({
       <PerformanceTable months={months.map((m) => m.month)} rows={rows} />
       <div className="flex flex-col gap-0.5 text-xs text-[var(--text-muted)]">
         <p>
-          ※ 売上総利益 = 売上高 − 売上原価（仕掛品の期首・期末調整を含む）。営業利益 = 売上総利益 − 販管費。
-          前年同期比は金額の増減率、比率はポイント差。
+          {"※ 売上総利益 = 売上高 − 売上原価（仕掛品の期首・期末調整を含む）。営業利益 = 売上総利益 − 販管費。前年同期比は金額の増減率、比率はポイント差。"}
         </p>
         {noWipMonths.length > 0 && (
           <p>
-            ※ {noWipMonths.map((m) => `${m}月`).join("・")}は仕掛品振替が未検出のため、単月の売上総利益・粗利益率が大きく
-            振れることがあります。累計の粗利益率を中心にご確認ください。
+            ※ {noWipMonths.map((m) => `${m}月`).join("・")}
+            {"は仕掛品振替が未検出のため、単月の売上総利益・粗利益率が大きく振れることがあります。累計の粗利益率を中心にご確認ください。"}
           </p>
         )}
         {fetchedAt && <p>freeeから取得: {formatDateTime(fetchedAt)}</p>}

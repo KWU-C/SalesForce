@@ -1,4 +1,5 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
+import { assertProductionDataWritable } from "@/services/firestore/productionDataWriteGuard";
 import type { MonthlyPerformanceSnapshot } from "@/features/management-dashboard/monthlyPerformance";
 
 // 月次業績・採算(当期と前期の各月)。経理月次報告との比較に使うmonthlyPlSnapshotsとは別コレクションで、
@@ -34,6 +35,7 @@ function createFirestoreStore(): MonthlyPerformanceStore {
       return toSnapshot(doc.data() as StoredFields);
     },
     async save(snapshot) {
+      assertProductionDataWritable(COLLECTION);
       // mergeせず丸ごと置き換える(古い算出バージョンのフィールドを残さない)
       await getFirestoreClient().collection(COLLECTION).doc(docId(snapshot.fiscalYear, snapshot.month)).set(snapshot);
     },

@@ -16,6 +16,20 @@ export interface FreeeTrialBalanceRow {
   credit_amount: number;
   closing_balance: number;
   composition_ratio: number;
+  /** breakdown_display_type=partner で取得した場合の取引先別内訳(未選択はid=0・name=「未選択」) */
+  partners?: FreeeTrialBalanceBreakdown[];
+  /** breakdown_display_type=item で取得した場合の品目別内訳(未選択はid=0・name=「未選択」) */
+  items?: FreeeTrialBalanceBreakdown[];
+}
+
+/** 試算表の科目行の内訳(取引先別・品目別)。内訳の合計は科目の金額と一致する(49期で確認済み、2026-10-27) */
+export interface FreeeTrialBalanceBreakdown {
+  id: number;
+  name: string;
+  opening_balance: number;
+  debit_amount: number;
+  credit_amount: number;
+  closing_balance: number;
 }
 
 export interface FreeeTrialBalanceResponse {
@@ -61,6 +75,45 @@ export async function getTrialPl(
     end_month: filters.endMonth,
   });
   return data.trial_pl;
+}
+
+/** 試算表の内訳の種類。取引先別(partner)・品目別(item) */
+export type FreeeTrialBreakdown = "partner" | "item";
+
+/**
+ * 損益計算書を内訳付きで取得する。月指定で取得してもclosing_balanceは期首からの累計で返る
+ * (getTrialPlと同じ)。内訳(partners/items)の各行も同じ形式
+ */
+export async function getTrialPlWithBreakdown(
+  companyId: number,
+  filters: { fiscalYear: number; startMonth: number; endMonth: number; breakdown: FreeeTrialBreakdown }
+): Promise<FreeeTrialBalanceResponse> {
+  const data = await freeeGet<{ trial_pl: FreeeTrialBalanceResponse }>("/api/1/reports/trial_pl", {
+    company_id: companyId,
+    fiscal_year: filters.fiscalYear,
+    start_month: filters.startMonth,
+    end_month: filters.endMonth,
+    breakdown_display_type: filters.breakdown,
+  });
+  return data.trial_pl;
+}
+
+/**
+ * 製造原価報告書(労務費・製造経費・仕掛品)を内訳付きで取得する。期間の扱いは損益計算書と同じ。
+ * 損益計算書の「当期製品製造原価」はこの「製造原価」と一致する
+ */
+export async function getTrialCrWithBreakdown(
+  companyId: number,
+  filters: { fiscalYear: number; startMonth: number; endMonth: number; breakdown: FreeeTrialBreakdown }
+): Promise<FreeeTrialBalanceResponse> {
+  const data = await freeeGet<{ trial_cr: FreeeTrialBalanceResponse }>("/api/1/reports/trial_cr", {
+    company_id: companyId,
+    fiscal_year: filters.fiscalYear,
+    start_month: filters.startMonth,
+    end_month: filters.endMonth,
+    breakdown_display_type: filters.breakdown,
+  });
+  return data.trial_cr;
 }
 
 /** 貸借対照表(試算表)。同上、省略時は現在の会計年度の期末時点(現時点)の残高 */

@@ -151,7 +151,8 @@ export function PerformanceTable({ months, rows }: { months: number[]; rows: Per
                   ))}
                   {rateCell(row.cumulative, { sub, shaded: true })}
                   {rateCell(row.previousCumulative, { sub: true })}
-                  <Cell sub={sub} negative={diff !== null && diff < 0}>
+                  {/* 前年同期比は色を付けない(費用の比率は下がる方が良いため、マイナス=赤は誤解を招く) */}
+                  <Cell sub={sub}>
                     {diff === null ? "—" : formatPointDiff(diff)}
                   </Cell>
                 </tr>

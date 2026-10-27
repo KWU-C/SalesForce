@@ -5,9 +5,7 @@ import { getOrFetchFinancialSummary } from "./financialSummaryService";
 import { getOrFetchTermMonthlyPl } from "./monthlyPlService";
 import { reconcileMonthlyPlWithSummary } from "./monthlyPl";
 import type { MonthlyPlReconciliation } from "./monthlyPl";
-import { FULL_TERM_LAST_MONTH, refreshTermPerformance } from "./monthlyPerformanceService";
-import { PREVIOUS_TERM_REFRESH_WINDOW_MONTHS } from "./refreshPastCashFlows";
-import { fiscalMonthIndex } from "@/config/fiscalPeriods";
+import { FULL_TERM_LAST_MONTH, getOrFetchTermPerformance, refreshTermPerformance } from "./monthlyPerformanceService";
 
 export interface RefreshSnapshotsResult {
   /** false の場合、いずれかのスナップショットがfreee未接続(null)だったことを示す。
@@ -24,16 +22,14 @@ export interface RefreshSnapshotsResult {
 }
 
 /**
- * 月次業績・採算を取り直す。当期は期首〜当月、期首から PREVIOUS_TERM_REFRESH_WINDOW_MONTHS か月の間は
- * 前期の12か月も取り直す(前期末の決算整理が翌期の9〜11月に入るため。refreshPastCashFlowsと同じ期間)。
+ * 月次業績・採算を更新する。当期は期首〜当月をすべて取り直す。前期(確定済み)は未保存の月がある時だけ取得し、
+ * 保存済みの月は取り直さない(ユーザー確定、2026-10-27)。
  * 失敗はthrowせずfalseを返す(金額は出さず、失敗した事実だけをログに出す)。
  */
 async function refreshPerformance(fiscalYear: number, month: number): Promise<boolean> {
   try {
     if ((await refreshTermPerformance(fiscalYear, month)) === null) return false;
-    if (fiscalMonthIndex(month) <= PREVIOUS_TERM_REFRESH_WINDOW_MONTHS) {
-      if ((await refreshTermPerformance(fiscalYear - 1, FULL_TERM_LAST_MONTH)) === null) return false;
-    }
+    if ((await getOrFetchTermPerformance(fiscalYear - 1, FULL_TERM_LAST_MONTH)) === null) return false;
     return true;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -53,7 +49,7 @@ async function refreshPerformance(fiscalYear: number, month: number): Promise<bo
  * 取得後、月次P/L合計が当期累計サマリー(上部カード)の売上高・営業利益と一致するか検算し、
  * 一致しなければ差を警告ログに出す(数値は補正しない)。
  *
- * 続けて月次業績・採算(当期、期首3か月は前期も)を取り直す(refreshPerformance)。freeeの呼び出しが
+ * 続けて月次業績・採算(当期。前期は未保存の月だけ)を更新する(refreshPerformance)。freeeの呼び出しが
  * 重ならないよう、他のスナップショットの取得が終わってから順に行う。
  *
  * Web手動更新ルート(`/api/freee/monthly-finance/refresh`)とCloud Run Job

@@ -6,6 +6,7 @@ const getOrFetchFundReserveCoreMock = vi.fn();
 const getOrFetchFinancialSummaryMock = vi.fn();
 const getOrFetchTermMonthlyPlMock = vi.fn();
 const refreshTermPerformanceMock = vi.fn();
+const getOrFetchTermPerformanceMock = vi.fn();
 
 vi.mock("./monthlyCashFlowService", () => ({ getOrFetchMonthlyCashFlow: getOrFetchMonthlyCashFlowMock }));
 vi.mock("./loanStatusService", () => ({ getOrFetchLoanStatus: getOrFetchLoanStatusMock }));
@@ -15,8 +16,8 @@ vi.mock("./monthlyPlService", () => ({ getOrFetchTermMonthlyPl: getOrFetchTermMo
 vi.mock("./monthlyPerformanceService", () => ({
   FULL_TERM_LAST_MONTH: 8,
   refreshTermPerformance: refreshTermPerformanceMock,
+  getOrFetchTermPerformance: getOrFetchTermPerformanceMock,
 }));
-vi.mock("./refreshPastCashFlows", () => ({ PREVIOUS_TERM_REFRESH_WINDOW_MONTHS: 3 }));
 
 const { refreshCurrentMonthSnapshots } = await import("./refreshCurrentMonthSnapshots");
 
@@ -31,6 +32,7 @@ function mockAllSucceed() {
     { fiscalYear: 2025, month: 10, revenue: 400, operatingProfit: 100, operatingCost: 300 },
   ]);
   refreshTermPerformanceMock.mockResolvedValue([]);
+  getOrFetchTermPerformanceMock.mockResolvedValue([]);
 }
 
 afterEach(() => {
@@ -41,6 +43,7 @@ afterEach(() => {
   getOrFetchFinancialSummaryMock.mockReset();
   getOrFetchTermMonthlyPlMock.mockReset();
   refreshTermPerformanceMock.mockReset();
+  getOrFetchTermPerformanceMock.mockReset();
 });
 
 describe("refreshCurrentMonthSnapshots", () => {
@@ -143,23 +146,22 @@ describe("refreshCurrentMonthSnapshots", () => {
     await expect(refreshCurrentMonthSnapshots(2025, 8)).rejects.toThrow("freee_api_error");
   });
 
-  it("月次業績・採算は当期を取り直し、期首3か月(9〜11月)の間だけ前期12か月も取り直す", async () => {
+  it("月次業績・採算は当期を全月取り直し、前期は未保存の月だけ取得する(期首3か月でも保存済みの前期は取り直さない)", async () => {
     mockAllSucceed();
-    await refreshCurrentMonthSnapshots(2026, 11, { includeFinancialSummary: true });
-    expect(refreshTermPerformanceMock.mock.calls).toEqual([
-      [2026, 11],
-      [2025, 8],
-    ]);
-
-    refreshTermPerformanceMock.mockClear();
-    await refreshCurrentMonthSnapshots(2026, 12, { includeFinancialSummary: true });
-    expect(refreshTermPerformanceMock.mock.calls).toEqual([[2026, 12]]);
+    for (const month of [9, 11, 12]) {
+      refreshTermPerformanceMock.mockClear();
+      getOrFetchTermPerformanceMock.mockClear();
+      await refreshCurrentMonthSnapshots(2026, month, { includeFinancialSummary: true });
+      expect(refreshTermPerformanceMock.mock.calls).toEqual([[2026, month]]);
+      expect(getOrFetchTermPerformanceMock.mock.calls).toEqual([[2025, 8]]);
+    }
   });
 
   it("月次業績・採算を取り直さないのはincludeFinancialSummary=falseの時", async () => {
     mockAllSucceed();
     await refreshCurrentMonthSnapshots(2026, 10);
     expect(refreshTermPerformanceMock).not.toHaveBeenCalled();
+    expect(getOrFetchTermPerformanceMock).not.toHaveBeenCalled();
   });
 
   it("月次業績・採算の取得に失敗しても、他の更新結果は変えずperformanceRefreshed=falseを返す", async () => {

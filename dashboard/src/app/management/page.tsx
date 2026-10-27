@@ -22,6 +22,7 @@ import { getOrFetchTermMonthlyPl, termMonthsThrough } from "@/features/managemen
 import {
   FULL_TERM_LAST_MONTH,
   getOrFetchTermPerformance,
+  getStoredTermPerformance,
 } from "@/features/management-dashboard/monthlyPerformanceService";
 import type { MonthlyPerformanceSnapshot } from "@/features/management-dashboard/monthlyPerformance";
 import type { PerformanceMonth } from "@/features/management-dashboard/performanceView";
@@ -224,13 +225,12 @@ export default async function ManagementPage() {
         console.error("[management page] freeeからの資金の備え取得に失敗しました");
         fundReserveError = true;
       }
-      // 月次業績・採算(②③と経営サマリー、ユーザー確定 2026-10-27)。当期は期首〜当月、前期は12か月。
-      // 通常はFirestoreのみを読み、未取得の月がある時だけfreeeから取得する(前期は初回のみ)
+      // 月次業績・採算(②③と経営サマリー、ユーザー確定 2026-10-27)。当期は期首〜当月で、保存済みの月は
+      // Firestoreのみを読み、未保存の月(月替わり直後の新しい月)だけfreeeから取得する。前期はFirestoreだけを読み、
+      // 画面表示ではfreeeを呼ばない(未保存の月は定時更新・「更新」ボタンが取得する。それまでは前年同期を未取得と表示)
       try {
-        currentPerformance = await getOrFetchTermPerformance(currentFiscalYear, currentMonth, { forceRefresh: false });
-        previousPerformance = await getOrFetchTermPerformance(currentFiscalYear - 1, FULL_TERM_LAST_MONTH, {
-          forceRefresh: false,
-        });
+        currentPerformance = await getOrFetchTermPerformance(currentFiscalYear, currentMonth);
+        previousPerformance = await getStoredTermPerformance(currentFiscalYear - 1, FULL_TERM_LAST_MONTH);
       } catch {
         console.error("[management page] 月次業績・採算の取得に失敗しました");
         performanceError = true;

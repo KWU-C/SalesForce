@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { FreeeConnectForm } from "@/features/management-dashboard/FreeeConnectForm";
-import { FinancialSummaryCards } from "@/features/management-dashboard/FinancialSummaryCards";
-import type { FinancialSummarySnapshot } from "@/features/management-dashboard/financialSummary";
 import { MonthlyCashFlowScrollTable } from "@/features/management-dashboard/MonthlyCashFlowScrollTable";
 import type { MonthColumn } from "@/features/management-dashboard/MonthlyCashFlowScrollTable";
 import { getOrFetchMonthlyCashFlow } from "@/features/management-dashboard/monthlyCashFlowService";
@@ -20,9 +18,19 @@ import type { ManagementReserveSettings } from "@/features/management-dashboard/
 import { listManagementReserveSettings } from "@/repositories/managementReserveSettingsRepository";
 import type { FundReserve } from "@/features/management-dashboard/fundReserve";
 import { getOrFetchFundReserveCore } from "@/features/management-dashboard/fundReserveService";
-import { getOrFetchFinancialSummary } from "@/features/management-dashboard/financialSummaryService";
 import { getOrFetchTermMonthlyPl, termMonthsThrough } from "@/features/management-dashboard/monthlyPlService";
-import type { MonthlyPlPoint } from "@/features/management-dashboard/businessBalanceRows";
+import {
+  FULL_TERM_LAST_MONTH,
+  getOrFetchTermPerformance,
+} from "@/features/management-dashboard/monthlyPerformanceService";
+import type { MonthlyPerformanceSnapshot } from "@/features/management-dashboard/monthlyPerformance";
+import type { PerformanceMonth } from "@/features/management-dashboard/performanceView";
+import { PerformanceSummaryCards } from "@/features/management-dashboard/PerformanceSummaryCards";
+import {
+  MonthlyPerformanceSection,
+  latestFetchedAt,
+} from "@/features/management-dashboard/MonthlyPerformanceSection";
+import { CostStructureSection } from "@/features/management-dashboard/CostStructureSection";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ExpenseCompositionSection } from "@/features/management-dashboard/ExpenseCompositionSection";
 import { RefreshMonthButton } from "@/features/management-dashboard/RefreshMonthButton";
@@ -104,9 +112,9 @@ export default async function ManagementPage() {
 
   let connectionStatus: Awaited<ReturnType<typeof getFreeeConnectionStatus>> | null = null;
   let authorizeUrl: string | null = null;
-  let financialSummary: FinancialSummarySnapshot | null = null;
-  let financialSummaryError = false;
-  let monthlyPl: MonthlyPlPoint[] = [];
+  let currentPerformance: (MonthlyPerformanceSnapshot | null)[] | null = null;
+  let previousPerformance: (MonthlyPerformanceSnapshot | null)[] | null = null;
+  let performanceError = false;
   let cashFlowByMonth: (MonthlyCashFlow | null)[] = [];
   let cashFlowError = false;
   let loanStatus: LoanStatusSnapshot | null = null;
@@ -216,27 +224,23 @@ export default async function ManagementPage() {
         console.error("[management page] freeeからの資金の備え取得に失敗しました");
         fundReserveError = true;
       }
+      // 月次業績・採算(②③と経営サマリー、ユーザー確定 2026-10-27)。当期は期首〜当月、前期は12か月。
+      // 通常はFirestoreのみを読み、未取得の月がある時だけfreeeから取得する(前期は初回のみ)
       try {
-        financialSummary = await getOrFetchFinancialSummary(currentFiscalYear, currentMonth, { forceRefresh: false });
+        currentPerformance = await getOrFetchTermPerformance(currentFiscalYear, currentMonth, { forceRefresh: false });
+        previousPerformance = await getOrFetchTermPerformance(currentFiscalYear - 1, FULL_TERM_LAST_MONTH, {
+          forceRefresh: false,
+        });
       } catch {
-        console.error("[management page] freeeからの当期累計サマリー取得に失敗しました");
-        financialSummaryError = true;
+        console.error("[management page] 月次業績・採算の取得に失敗しました");
+        performanceError = true;
       }
-      // 事業収支の推移グラフ用。期首(9月)〜当月の月次P/L(monthlyPlSnapshots)を読む。当期累計の
-      // financialSummarySnapshotsの差分は使わない(ユーザー確定、2026-10-08)。通常はFirestoreのみを
-      // 読み、当月分が未取得の時だけfreeeから取得する
+      // 月次P/L(monthlyPlSnapshots)は経理月次報告・資金繰り見通しのfreee比較に使う。画面のグラフは
+      // 月次業績の推移へ置き換えたが、当月分の遅延取得は従来どおり行う
       try {
-        const snapshots = await getOrFetchTermMonthlyPl(currentFiscalYear, currentMonth, { forceRefresh: false });
-        if (snapshots !== null) {
-          monthlyPl = termMonthsThrough(currentMonth).map((month, i) => ({
-            month,
-            revenue: snapshots[i]?.revenue ?? null,
-            operatingProfit: snapshots[i]?.operatingProfit ?? null,
-            operatingCost: snapshots[i]?.operatingCost ?? null,
-          }));
-        }
+        await getOrFetchTermMonthlyPl(currentFiscalYear, currentMonth, { forceRefresh: false });
       } catch {
-        console.error("[management page] 月次P/L(事業収支の推移)の取得に失敗しました");
+        console.error("[management page] 月次P/Lの取得に失敗しました");
       }
       // 期をまたぐ境目だけ通期合計(termCashFlowSnapshots)を取得する。一度計算されたら
       // Firestoreキャッシュを無条件で返す(forceRefreshは持たない、ユーザー確定、
@@ -307,6 +311,16 @@ export default async function ManagementPage() {
   // 同じ操作(定時ジョブ/「更新」ボタン)でまとめて更新されるため、代表として
   // 月次資金収支のfetchedAtを使う。
   const dataUpdatedAt = currentCashFlow?.fetchedAt ?? null;
+  // 当期の各月と前年同月を並べる(前期は同じ期の月の位置で対応させる)
+  const performanceMonths: PerformanceMonth[] | null =
+    currentPerformance && previousPerformance
+      ? termMonthsThrough(currentMonth).map((month, i) => ({
+          month,
+          current: currentPerformance?.[i] ?? null,
+          previous: previousPerformance?.[i] ?? null,
+        }))
+      : null;
+  const performanceFetchedAt = latestFetchedAt((currentPerformance ?? []).map((p) => p?.fetchedAt ?? null));
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
@@ -337,6 +351,19 @@ export default async function ManagementPage() {
 
             {connectionStatus?.connected ? (
               <>
+                {/* ①〜③ 業績(発生主義の損益、freeeの試算表)。ユーザー確定 2026-10-27 */}
+                {performanceMonths && (
+                  <>
+                    <PerformanceSummaryCards months={performanceMonths} currentMonth={currentMonth} />
+                    <MonthlyPerformanceSection months={performanceMonths} fetchedAt={performanceFetchedAt} />
+                    <CostStructureSection months={performanceMonths} />
+                  </>
+                )}
+                {performanceError && (
+                  <p className="text-center text-sm text-[var(--text-muted)]">月次業績・採算の取得に失敗しました。</p>
+                )}
+
+                {/* ④ 財務・資金(従来の計算・取得のまま、並びだけ移動) */}
                 <ManagementSummary
                   term={currentTerm}
                   month={currentMonth}
@@ -344,23 +371,6 @@ export default async function ManagementPage() {
                   loanStatus={loanStatus}
                   previousMonthCashClosing={previousCashFlow?.cashClosing ?? null}
                 />
-
-                {currentCashFlow && (
-                  <ExpenseCompositionSection
-                    expenseByCategory={currentCashFlow.expenseByCategory}
-                    unclassified={currentCashFlow.outflow?.unclassified}
-                    externalExpenseTotal={currentCashFlow.externalExpenseTotal}
-                  />
-                )}
-
-                {cashFlowError && (
-                  <p className="text-center text-sm text-[var(--text-muted)]">
-                    freeeからのデータ取得に失敗しました（権限不足の場合、freeeアプリの権限設定を
-                    変更した後は再接続が必要です。下記から再度お試しください）。
-                  </p>
-                )}
-
-                <MonthlyCashFlowScrollTable columns={cashFlowColumns} />
 
                 {loanStatusError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">借入状況の取得に失敗しました。</p>
@@ -372,17 +382,33 @@ export default async function ManagementPage() {
                 )}
                 {fundReserve && <FundReserveSection fundReserve={fundReserve} />}
 
-                {financialSummary && (
-                  <FinancialSummaryCards
-                    summary={financialSummary}
-                    term={currentTerm}
-                    monthlyPl={monthlyPl}
-                  />
-                )}
-                {financialSummaryError && (
+                {accountingReports && <AccountingReportsSection view={accountingReports} />}
+                {accountingReportsError && (
                   <p className="text-center text-sm text-[var(--text-muted)]">
-                    当期累計データの取得に失敗しました。
+                    資金繰り見通しの取得に失敗しました。
                   </p>
+                )}
+
+                {/* ⑤ 詳細(入出金ベース) */}
+                <p className="text-xs text-[var(--text-muted)]">
+                  ※ 以下の月次資金収支・支出構成は入出金ベース（現金の動き）です。上の業績・採算は発生主義の損益ベースのため、
+                  金額は一致しません。
+                </p>
+                {cashFlowError && (
+                  <p className="text-center text-sm text-[var(--text-muted)]">
+                    freeeからのデータ取得に失敗しました（権限不足の場合、freeeアプリの権限設定を
+                    変更した後は再接続が必要です。下記から再度お試しください）。
+                  </p>
+                )}
+
+                <MonthlyCashFlowScrollTable columns={cashFlowColumns} />
+
+                {currentCashFlow && (
+                  <ExpenseCompositionSection
+                    expenseByCategory={currentCashFlow.expenseByCategory}
+                    unclassified={currentCashFlow.outflow?.unclassified}
+                    externalExpenseTotal={currentCashFlow.externalExpenseTotal}
+                  />
                 )}
               </>
             ) : authorizeUrl ? (
@@ -393,8 +419,9 @@ export default async function ManagementPage() {
               </p>
             )}
 
-            {accountingReports && <AccountingReportsSection view={accountingReports} />}
-            {accountingReportsError && (
+            {/* freee未接続でも資金繰り見通し(経理資料の記録)は表示する。接続済みの場合は④の中に出す */}
+            {!connectionStatus?.connected && accountingReports && <AccountingReportsSection view={accountingReports} />}
+            {!connectionStatus?.connected && accountingReportsError && (
               <p className="text-center text-sm text-[var(--text-muted)]">
                 資金繰り見通しの取得に失敗しました。
               </p>

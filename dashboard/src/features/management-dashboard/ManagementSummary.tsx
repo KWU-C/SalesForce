@@ -58,7 +58,8 @@ function SummaryBox({ title, children }: { title: string; children: React.ReactN
 }
 
 /**
- * 経営サマリー。下の詳細セクション(月次資金収支・借入状況)のダイジェストを
+ * 財務・資金のサマリー(2026-10-27の改定で「経営サマリー」から改称し、業績の下へ移動。中身は従来どおりで、
+ * 借入状況に実質借入残高を追加)。下の詳細セクション(月次資金収支・借入状況)のダイジェストを
  * 手元資金・今月の資金収支・借入状況の3ボックスに三等分して表示する
  * (ユーザー確定、2026-09-16)。各ボックスは
  * 「タイトル→項目名+大きい文字の数字→hr→小さい文字で補足情報」の構造に揃える
@@ -79,11 +80,16 @@ export function ManagementSummary({
   previousMonthCashClosing,
 }: ManagementSummaryProps) {
   const calendarYear = calendarYearForTermMonth(term, month);
+  // 実質借入残高 = 借入残高 − 月末現預金(上の2つと同じ値から求める。資金の備えの「ネットキャッシュ」の符号違い)。
+  // 現預金の方が多い場合はマイナスで表示する
+  const loanTotal = loanStatus?.totalCurrent ?? null;
+  const cashClosing = cashFlow?.cashClosing ?? null;
+  const netDebt = loanTotal === null || cashClosing === null ? null : loanTotal - cashClosing;
 
   return (
     <div className="flex flex-col gap-2">
       <SectionBanner>
-        経営サマリー　{calendarYear}年{month}月
+        財務・資金　{calendarYear}年{month}月
       </SectionBanner>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -105,6 +111,7 @@ export function ManagementSummary({
           <BigRow label="借入残高" value={loanStatus?.totalCurrent ?? null} />
           <div className="mt-3 border-t border-[var(--gridline)] pt-2">
             <Row label="今期借入純増減" value={loanStatus?.netChange ?? null} signed bold />
+            <Row label="実質借入残高（借入−現預金）" value={netDebt} />
           </div>
         </SummaryBox>
       </div>

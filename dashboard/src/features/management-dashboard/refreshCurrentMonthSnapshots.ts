@@ -5,6 +5,9 @@ import { getOrFetchFinancialSummary } from "./financialSummaryService";
 import { getOrFetchTermMonthlyPl } from "./monthlyPlService";
 import { reconcileMonthlyPlWithSummary } from "./monthlyPl";
 import type { MonthlyPlReconciliation } from "./monthlyPl";
+import { FULL_TERM_LAST_MONTH, refreshTermPerformance } from "./monthlyPerformanceService";
+import { PREVIOUS_TERM_REFRESH_WINDOW_MONTHS } from "./refreshPastCashFlows";
+import { fiscalMonthIndex } from "@/config/fiscalPeriods";
 
 export interface RefreshSnapshotsResult {
   /** false の場合、いずれかのスナップショットがfreee未接続(null)だったことを示す。
@@ -13,6 +16,30 @@ export interface RefreshSnapshotsResult {
   connected: boolean;
   /** includeFinancialSummary=trueの時だけ入る。月次P/L合計と当期累計サマリーの検算結果 */
   monthlyPlReconciliation?: MonthlyPlReconciliation;
+  /**
+   * includeFinancialSummary=trueの時だけ入る。月次業績・採算(monthlyPerformanceSnapshots)を取り直せたか。
+   * 失敗しても他のスナップショットの更新結果は変えない(既存の更新処理を止めない、ユーザー確定 2026-10-27)
+   */
+  performanceRefreshed?: boolean;
+}
+
+/**
+ * 月次業績・採算を取り直す。当期は期首〜当月、期首から PREVIOUS_TERM_REFRESH_WINDOW_MONTHS か月の間は
+ * 前期の12か月も取り直す(前期末の決算整理が翌期の9〜11月に入るため。refreshPastCashFlowsと同じ期間)。
+ * 失敗はthrowせずfalseを返す(金額は出さず、失敗した事実だけをログに出す)。
+ */
+async function refreshPerformance(fiscalYear: number, month: number): Promise<boolean> {
+  try {
+    if ((await refreshTermPerformance(fiscalYear, month)) === null) return false;
+    if (fiscalMonthIndex(month) <= PREVIOUS_TERM_REFRESH_WINDOW_MONTHS) {
+      if ((await refreshTermPerformance(fiscalYear - 1, FULL_TERM_LAST_MONTH)) === null) return false;
+    }
+    return true;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error(`[refreshCurrentMonthSnapshots] 月次業績・採算の更新に失敗しました: ${detail}`);
+    return false;
+  }
 }
 
 /**
@@ -25,6 +52,9 @@ export interface RefreshSnapshotsResult {
  * 全月)も取り直す。過去月も後日仕訳が追加・修正されるため固定しない(ユーザー確定、2026-10-08)。
  * 取得後、月次P/L合計が当期累計サマリー(上部カード)の売上高・営業利益と一致するか検算し、
  * 一致しなければ差を警告ログに出す(数値は補正しない)。
+ *
+ * 続けて月次業績・採算(当期、期首3か月は前期も)を取り直す(refreshPerformance)。freeeの呼び出しが
+ * 重ならないよう、他のスナップショットの取得が終わってから順に行う。
  *
  * Web手動更新ルート(`/api/freee/monthly-finance/refresh`)とCloud Run Job
  * (`src/jobs/scheduledFinanceRefresh.ts`)の両方から同じ実装を使う共通ヘルパー
@@ -56,6 +86,8 @@ export async function refreshCurrentMonthSnapshots(
 
   if (!financialSummary || !monthlyPl) return { connected };
 
+  const performanceRefreshed = await refreshPerformance(fiscalYear, month);
+
   // forceRefresh時は全月が取得済み(null要素なし)。型の上でだけnullを除く
   const monthlyPlReconciliation = reconcileMonthlyPlWithSummary(
     monthlyPl.filter((m) => m !== null),
@@ -68,5 +100,5 @@ export async function refreshCurrentMonthSnapshots(
         `(売上高の差=${monthlyPlReconciliation.revenueDiff}, 営業利益の差=${monthlyPlReconciliation.operatingProfitDiff})`
     );
   }
-  return { connected, monthlyPlReconciliation };
+  return { connected, monthlyPlReconciliation, performanceRefreshed };
 }

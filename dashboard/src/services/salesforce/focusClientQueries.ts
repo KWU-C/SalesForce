@@ -2,11 +2,8 @@
  * 注力クライアント管理タブ(/focus-clients)用のSOQL組み立て。
  *
  * 会社の突合キーはclientAccountId__c(クライアント名kuraiantomei__cのAccount IDを返す数式項目、
- * 2026-10-15新設)。連携ユーザーはAccountを読めないため、Account参照項目そのもの
- * (kuraiantomei__c)はAPIから見えない。clientAccountId__cは数式項目のためGROUP BYできず、
- * 明細のまま取得してアプリ側で集計する。
+ * 2026-10-15新設)。clientAccountId__cは数式項目のためGROUP BYできず、明細のまま取得してアプリ側で集計する。
  */
-import { CONCRETE_CR_IDS } from "@/domain/types";
 
 /** SalesforceのId(15/18桁英数字)以外はSOQLに埋め込まない */
 const SALESFORCE_ID_PATTERN = /^[a-zA-Z0-9]{15,18}$/;
@@ -43,10 +40,20 @@ export function buildFocusClientDealsQuery(
       AND (${conditions.join(" OR ")})`;
 }
 
+/** 注力クライアントの対象区分(Account.target__c)。Salesforceのリストビュー「注力及び振興クライアント」と同じ条件 */
+export const FOCUS_TARGET_CATEGORIES = ["注力", "掘り起こし"] as const;
+
 /**
- * 社内担当の所属CR(Userの部署)。CRタブの振り分けは社内担当が所属するCRで行う(ユーザー指示、2026-10-19)。
- * マスタの社内担当は文字列なので、User.Nameと名前で突き合わせる。
+ * 注力クライアントの一覧(Salesforce取引先が正、ユーザー確定 2026-10-30)。
+ * CRタブは社内担当(Tantosha__c)のユーザーの部署で振り分けるため、部署も参照で取る。
+ * accountIdを渡すと、その取引先が注力クライアントかどうかの確認に使える。
  */
-export function buildOwnerDepartmentsQuery(): string {
-  return `SELECT Name, Department FROM User WHERE Department IN (${CONCRETE_CR_IDS.map((id) => `'${id}'`).join(",")})`;
+export function buildFocusAccountsQuery(accountId?: string): string {
+  const categories = FOCUS_TARGET_CATEGORIES.map((c) => `'${c}'`).join(",");
+  if (accountId !== undefined && !isSalesforceId(accountId)) throw new Error("buildFocusAccountsQuery: 不正なAccount IDです");
+  const idCondition = accountId !== undefined ? ` AND Id = '${accountId}'` : "";
+  return `SELECT Id, Name, target__c, Tantosha__r.Name, Tantosha__r.Department, Thema__c,
+      mokuhyouuriage_eigyou__c, mokuhyouarari_eigyou__c
+    FROM Account
+    WHERE target__c IN (${categories})${idCondition}`;
 }

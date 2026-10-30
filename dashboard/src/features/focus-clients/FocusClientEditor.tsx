@@ -1,86 +1,57 @@
 "use client";
 
 import { useState } from "react";
-import { formatDateTime } from "@/utils/format";
-import type { FocusClientMaster } from "./focusClients";
+import { formatDateTime, formatYen } from "@/utils/format";
+import type { FocusClientMaster, FocusClientSavedFields } from "./focusClients";
 
-type TextField = "category" | "theme" | "owner" | "strategy" | "currentStatus" | "monthAction" | "nextAction";
+type TextField = "strategy" | "currentStatus" | "monthAction" | "nextAction";
 
 /** 表示順・ラベル。営業戦略は比較的固定、現在の状況以下は月次で更新する想定(ユーザー確定、2026-10-15) */
 const TEXT_FIELDS: { key: TextField; label: string; rows: number }[] = [
-  { key: "category", label: "注力区分", rows: 1 },
-  { key: "owner", label: "社内担当", rows: 1 },
-  { key: "theme", label: "注力テーマ", rows: 3 },
   { key: "strategy", label: "営業戦略", rows: 3 },
   { key: "currentStatus", label: "現在の状況", rows: 3 },
   { key: "monthAction", label: "今月のアクション", rows: 2 },
   { key: "nextAction", label: "次回アクション", rows: 2 },
 ];
 
-/** 目標入力欄は万円単位(表示・入力の桁を減らすため)。保存は円 */
-function toManInput(amount: number | null): string {
-  return amount === null ? "" : String(amount / 10000);
-}
-
-function parseManInput(text: string): number | null | "invalid" {
-  const trimmed = text.replace(/,/g, "").trim();
-  if (trimmed === "") return null;
-  const value = Number(trimmed);
-  if (!Number.isFinite(value) || value < 0) return "invalid";
-  return Math.round(value * 10000);
+function amountText(amount: number | null): string {
+  return amount === null ? "未入力" : formatYen(amount);
 }
 
 interface FocusClientEditorProps {
   master: FocusClientMaster;
   term: number;
-  onSaved: (master: FocusClientMaster) => void;
+  onSaved: (saved: FocusClientSavedFields) => void;
 }
 
 /**
- * 注力クライアントマスタ1社分の編集フォーム。保存はCloud Run上のAPIルート
+ * 注力クライアント1社分の詳細。区分・担当・テーマ・目標はSalesforce取引先の値を表示するだけで、
+ * 営業戦略・状況・アクションをここで編集する(ユーザー確定、2026-10-30)。保存はCloud Run上のAPIルート
  * (/api/focus-clients/[accountId])経由のみ(ブラウザからFirestoreへ直接アクセスしない)。
  */
 export function FocusClientEditor({ master, term, onSaved }: FocusClientEditorProps) {
   const target = master.targets[String(term)] ?? { sales: null, grossProfit: null };
   const [texts, setTexts] = useState<Record<TextField, string>>(() => ({
-    category: master.category,
-    theme: master.theme,
-    owner: master.owner,
     strategy: master.strategy,
     currentStatus: master.currentStatus,
     monthAction: master.monthAction,
     nextAction: master.nextAction,
   }));
-  const [salesText, setSalesText] = useState(toManInput(target.sales));
-  const [grossProfitText, setGrossProfitText] = useState(toManInput(target.grossProfit));
-  const [status, setStatus] = useState<"idle" | "saving" | "error" | "invalid" | "saved">("idle");
+  const [status, setStatus] = useState<"idle" | "saving" | "error" | "saved">("idle");
 
   const changedFields = TEXT_FIELDS.filter(({ key }) => texts[key] !== master[key]).map(({ key }) => key);
-  const sales = parseManInput(salesText);
-  const grossProfit = parseManInput(grossProfitText);
-  const targetChanged = sales !== target.sales || grossProfit !== target.grossProfit;
-  const isDirty = changedFields.length > 0 || targetChanged;
+  const isDirty = changedFields.length > 0;
 
   async function handleSave() {
-    if (sales === "invalid" || grossProfit === "invalid") {
-      setStatus("invalid");
-      return;
-    }
     setStatus("saving");
     try {
-      const body: Record<string, unknown> = {};
-      if (changedFields.length > 0) {
-        body.fields = Object.fromEntries(changedFields.map((key) => [key, texts[key]]));
-      }
-      if (targetChanged) body.target = { term, sales, grossProfit };
       const response = await fetch(`/api/focus-clients/${encodeURIComponent(master.accountId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ fields: Object.fromEntries(changedFields.map((key) => [key, texts[key]])) }),
       });
       if (!response.ok) throw new Error("save failed");
-      const saved = (await response.json()) as FocusClientMaster;
-      onSaved(saved);
+      onSaved((await response.json()) as FocusClientSavedFields);
       setStatus("saved");
     } catch {
       setStatus("error");
@@ -92,27 +63,22 @@ export function FocusClientEditor({ master, term, onSaved }: FocusClientEditorPr
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-          第{term}期 目標売上（万円）
-          <input
-            inputMode="decimal"
-            value={salesText}
-            onChange={(e) => setSalesText(e.target.value)}
-            placeholder="未入力"
-            className={`${inputClass} text-right tabular-nums`}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-          第{term}期 目標粗利（万円）
-          <input
-            inputMode="decimal"
-            value={grossProfitText}
-            onChange={(e) => setGrossProfitText(e.target.value)}
-            placeholder="未入力"
-            className={`${inputClass} text-right tabular-nums`}
-          />
-        </label>
+      <div className="flex flex-col gap-1">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr_auto_1fr]">
+          <dt className="text-xs text-[var(--text-secondary)]">注力区分</dt>
+          <dd className="text-[var(--text-primary)]">{master.category || "未入力"}</dd>
+          <dt className="text-xs text-[var(--text-secondary)]">社内担当</dt>
+          <dd className="text-[var(--text-primary)]">{master.owner || "未入力"}</dd>
+          <dt className="text-xs text-[var(--text-secondary)]">第{term}期 目標売上</dt>
+          <dd className="tabular-nums text-[var(--text-primary)]">{amountText(target.sales)}</dd>
+          <dt className="text-xs text-[var(--text-secondary)]">第{term}期 目標粗利</dt>
+          <dd className="tabular-nums text-[var(--text-primary)]">{amountText(target.grossProfit)}</dd>
+          <dt className="text-xs text-[var(--text-secondary)]">注力テーマ</dt>
+          <dd className="whitespace-pre-wrap text-[var(--text-primary)] sm:col-span-3">{master.theme || "未入力"}</dd>
+        </dl>
+        <p className="text-xs text-[var(--text-muted)]">
+          区分・担当・目標・テーマはSalesforceの取引先で編集してください（当期の目標は取引先の目標売上・目標粗利、過去の期はダッシュボードに保存していた目標です）。
+        </p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {TEXT_FIELDS.map(({ key, label, rows }) => (
@@ -135,11 +101,10 @@ export function FocusClientEditor({ master, term, onSaved }: FocusClientEditorPr
         <span>
           {master.updatedAt
             ? `最終更新: ${master.updatedBy ?? ""} ${formatDateTime(new Date(master.updatedAt))}`
-            : "初期データ（Salesforceの取引先から投入）"}
+            : "未編集"}
         </span>
         <div className="flex items-center gap-2">
           {status === "error" && <span className="text-[var(--status-serious)]">保存に失敗しました</span>}
-          {status === "invalid" && <span className="text-[var(--status-serious)]">目標は0以上の数値で入力してください</span>}
           {status === "saved" && !isDirty && <span>保存しました</span>}
           <button
             type="button"

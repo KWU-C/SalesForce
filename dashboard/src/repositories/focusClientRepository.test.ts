@@ -36,7 +36,11 @@ function saved(overrides: Partial<FocusClientDashboardFields> = {}): FocusClient
 
 describe("mergeFocusClients", () => {
   it("会社名・区分・担当・テーマ・CR・当期目標はSalesforce、メモ等はダッシュボード側の値を使う", () => {
-    const [merged] = mergeFocusClients([account()], new Map([["001000000000001AAA", saved()]]), 50);
+    const [merged] = mergeFocusClients(
+      [account()],
+      new Map([["001000000000001AAA", saved({ memoUpdatedAt: "2026-10-20T00:00:00.000Z" })]]),
+      50
+    );
     expect(merged).toMatchObject({
       accountId: "001000000000001AAA",
       name: "A社",
@@ -62,11 +66,26 @@ describe("mergeFocusClients", () => {
 
   it("ダッシュボード側に無い社は空の項目で出し、Salesforceに無い社は出さない", () => {
     const merged = mergeFocusClients(
-      [account({ Id: "001000000000002AAA", Name: "B社" })],
+      [account({ Id: "001000000000002AAA", Name: "B社", Thema__c: null })],
       new Map([["001000000000001AAA", saved()]]),
       50
     );
     expect(merged.map((m) => [m.accountId, m.memo])).toEqual([["001000000000002AAA", ""]]);
+  });
+
+  it("メモを一度も保存していない社はSalesforceのテーマをメモの初期値にする", () => {
+    const [unsaved] = mergeFocusClients([account()], new Map(), 50);
+    expect(unsaved.memo).toBe("テーマ");
+    const [neverSavedMemo] = mergeFocusClients([account()], new Map([["001000000000001AAA", saved({ memo: "" })]]), 50);
+    expect(neverSavedMemo.memo).toBe("テーマ");
+  });
+
+  it("ダッシュボードで保存したメモは、空にした場合も含めてその値を使う", () => {
+    const at = "2026-10-20T00:00:00.000Z";
+    const [edited] = mergeFocusClients([account()], new Map([["001000000000001AAA", saved({ memo: "編集後", memoUpdatedAt: at })]]), 50);
+    expect(edited.memo).toBe("編集後");
+    const [cleared] = mergeFocusClients([account()], new Map([["001000000000001AAA", saved({ memo: "", memoUpdatedAt: at })]]), 50);
+    expect(cleared.memo).toBe("");
   });
 
   it("担当なし・部署がCR1〜4でない社はCRなし", () => {
@@ -95,7 +114,7 @@ describe("getFocusClients", () => {
 
   it("取引先一覧とダッシュボード側の項目を合わせて返す", async () => {
     const result = await getFocusClients(50, 50, {
-      dashboardFields: async () => new Map([["001000000000001AAA", saved()]]),
+      dashboardFields: async () => new Map([["001000000000001AAA", saved({ memoUpdatedAt: "2026-10-20T00:00:00.000Z" })]]),
       client: clientReturning({}),
     });
     expect(result).toMatchObject({ ok: true, masters: [{ name: "A社", crId: "CR4", memo: "メモ" }], deals: [] });

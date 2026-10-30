@@ -71,6 +71,9 @@ export function mergeFocusClients(
         theme: account.Thema__c ?? "",
         owner: account.Tantosha__r?.Name ?? "",
         crId: isConcreteCrId(department) ? department : null,
+        // メモは一度もダッシュボードで保存していなければSalesforceの注力・振興テーマを初期値として出し、
+        // 保存後(空にした場合も)はダッシュボードの値を正とする(ユーザー指示 2026-10-30)
+        memo: saved.memoUpdatedAt ? saved.memo : (account.Thema__c ?? ""),
         targets: {
           ...saved.targets,
           [String(currentTerm)]: { sales: account.mokuhyouuriage_eigyou__c, grossProfit: account.mokuhyouarari_eigyou__c },

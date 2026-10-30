@@ -8,14 +8,14 @@ import { fiscalTermDateRange } from "@/config/fiscalPeriods";
 import { formatPercent, formatThousandYen, formatYen } from "@/utils/format";
 import { FocusClientEditor } from "./FocusClientEditor";
 import { FocusClientMemoEditor } from "./FocusClientMemoEditor";
-import { categoryGroup, computeFocusClients, dealStatus } from "./focusClients";
+import { applySavedFields, categoryGroup, computeFocusClients, dealStatus } from "./focusClients";
 import type {
   DealStatus,
   FocusClientMaster,
   FocusClientRow,
+  FocusClientSavedFields,
   FocusClientSummary,
   FocusDeal,
-  OwnerCrMap,
   ScopeTargets,
 } from "./focusClients";
 
@@ -221,7 +221,7 @@ interface FocusClientTableProps {
   term: number;
   expanded: string | null;
   onToggle: (accountId: string) => void;
-  onSaved: (saved: FocusClientMaster) => void;
+  onSaved: (saved: FocusClientSavedFields) => void;
 }
 
 /** 区分1つ分の一覧表。並び替えは表ごとに持つ(ユーザー指示、2026-10-22) */
@@ -342,8 +342,6 @@ interface FocusClientsViewProps {
   deals: FocusDeal[];
   term: number;
   currentMonth: number;
-  ownerCrs: OwnerCrMap;
-  ownerCrsFailed: boolean;
   crList: { id: CrId; label: string }[];
   scopeTargets: ScopeTargets;
 }
@@ -352,16 +350,14 @@ interface FocusClientsViewProps {
  * 注力クライアント管理タブ本体。CRタブ、全体サマリー、絞り込み・並び替えできる一覧、
  * 会社名クリックで開く詳細(マスタ編集+案件一覧)からなる(ユーザー確定、2026-10-15)。
  * 絞り込み・検索欄は廃止し、一覧は区分→クライアント→担当→粗利の列と行内メモにした(ユーザー指示、2026-10-19)。
- * CRタブは社内担当の所属CRで振り分ける(ユーザー指示、2026-10-19)。目標・実績は会社単位のままで、
- * 他CRの案件も含む。所属CRが分からない社は全社タブにだけ出る。
+ * CRタブは社内担当(Salesforce取引先の社内担当者)の部署で振り分ける(ユーザー指示、2026-10-19)。
+ * 目標・実績は会社単位のままで、他CRの案件も含む。部署がCR1〜4でない・担当なしの社は全社タブにだけ出る。
  */
 export function FocusClientsView({
   masters: initialMasters,
   deals,
   term,
   currentMonth,
-  ownerCrs,
-  ownerCrsFailed,
   crList,
   scopeTargets,
 }: FocusClientsViewProps) {
@@ -374,9 +370,8 @@ export function FocusClientsView({
     [term, currentMonth, masters, deals]
   );
 
-  const unassignedCount = result.rows.filter((row) => !ownerCrs[row.master.owner]).length;
-  const visibleRows = result.rows
-    .filter((row) => selectedCr === "ALL" || ownerCrs[row.master.owner] === selectedCr);
+  const unassignedCount = result.rows.filter((row) => row.master.crId === null).length;
+  const visibleRows = result.rows.filter((row) => selectedCr === "ALL" || row.master.crId === selectedCr);
   const visibleSummary =
     selectedCr !== "ALL"
       ? computeFocusClients({
@@ -388,14 +383,14 @@ export function FocusClientsView({
         }).summary
       : result.summary;
 
-  function handleSaved(saved: FocusClientMaster) {
-    setMasters((prev) => prev.map((m) => (m.accountId === saved.accountId ? saved : m)));
+  function handleSaved(saved: FocusClientSavedFields) {
+    setMasters((prev) => prev.map((m) => (m.accountId === saved.accountId ? applySavedFields(m, saved) : m)));
   }
 
   if (masters.length === 0) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-24 text-center text-sm text-[var(--text-muted)]">
-        注力クライアントマスタが未登録です。
+        Salesforceの取引先に、ターゲット区分が注力・掘り起こしの会社がありません。
       </div>
     );
   }
@@ -405,10 +400,8 @@ export function FocusClientsView({
       <div className="flex flex-col gap-1">
         <CrTabs crList={crList} selected={selectedCr} onSelect={setSelectedCr} />
         <p className="text-xs text-[var(--text-muted)]">
-          CRは担当の所属CR（Salesforceのユーザーの部署）で振り分けています。目標・実績は会社単位で、他CRの案件も含みます。
-          {ownerCrsFailed
-            ? "所属CRを取得できなかったため、CRタブには表示されません。"
-            : unassignedCount > 0 && `所属CRが分からない${unassignedCount}社は全社タブにだけ表示しています。`}
+          一覧・区分・担当・目標はSalesforceの取引先（ターゲット区分が注力・掘り起こし）を毎回読み込んでいます。CRは担当の所属CR（Salesforceのユーザーの部署）で振り分けています。目標・実績は会社単位で、他CRの案件も含みます。
+          {unassignedCount > 0 && `担当が未設定か、担当の部署がCR1〜4でない${unassignedCount}社は全社タブにだけ表示しています。`}
         </p>
       </div>
 

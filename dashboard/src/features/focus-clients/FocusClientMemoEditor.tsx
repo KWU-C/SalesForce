@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { formatDateTime } from "@/utils/format";
-import type { FocusClientMaster } from "./focusClients";
+import type { FocusClientMaster, FocusClientSavedFields } from "./focusClients";
 
 interface FocusClientMemoEditorProps {
   master: FocusClientMaster;
-  onSaved: (master: FocusClientMaster) => void;
+  onSaved: (saved: FocusClientSavedFields) => void;
 }
 
 /**
@@ -29,7 +29,7 @@ export function FocusClientMemoEditor({ master, onSaved }: FocusClientMemoEditor
         body: JSON.stringify({ fields: { memo: nextMemo } }),
       });
       if (!response.ok) throw new Error("save failed");
-      const saved = (await response.json()) as FocusClientMaster;
+      const saved = (await response.json()) as FocusClientSavedFields;
       setMemo(saved.memo);
       setStatus("idle");
       onSaved(saved);

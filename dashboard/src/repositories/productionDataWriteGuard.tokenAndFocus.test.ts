@@ -36,7 +36,7 @@ beforeEach(() => {
 describe("注力クライアントのマスタ", () => {
   it("is not written from dev2", async () => {
     process.env.K_SERVICE = "tcd-dashboard-dev2";
-    await expect(saveFocusClient({ accountId: "001000000000001AAA", updatedBy: "tester@example.com", fields: { memo: "x" } } as never)).rejects.toBeInstanceOf(
+    await expect(saveFocusClient({ accountId: "001000000000001AAA", updatedBy: "tester@example.com", fields: { memo: "x" } } as never, undefined, async () => true)).rejects.toBeInstanceOf(
       ProductionDataWriteBlockedError
     );
     expect(writes).not.toHaveBeenCalled();

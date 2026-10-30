@@ -1,10 +1,11 @@
 /**
  * 注力クライアント管理タブ(/focus-clients)の集計ロジック(純粋関数)。
  *
- * 役割分担(ユーザー確定、2026-10-15):
- * - 注力対象・目標・注力テーマ・営業戦略・現在の状況等 → ダッシュボード側マスタ(Firestore)
+ * 役割分担(ユーザー確定、2026-10-30。2026-10-15の「ダッシュボード側が正」から変更):
+ * - 一覧(Account.target__c=注力・掘り起こし)・会社名・区分・社内担当・テーマ・当期の目標 → Salesforce取引先(Account)
+ * - 営業戦略・現在の状況・アクション・メモ・過去の期の目標 → ダッシュボード側(Firestore、Salesforceに無い情報)
  * - 案件名・金額・粗利・フェーズ・失注理由 → Salesforce案件(Process__c)
- * 両者はAccount ID(Process__c.clientAccountId__c)で突合する。同名の別Accountがあるため
+ * 会社と案件はAccount ID(Process__c.clientAccountId__c)で突合する。同名の別Accountがあるため
  * 会社名(clientName__c)では突合しない。案件が1件も無い注力クライアントも必ず表示する。
  *
  * 実績の定義は営業進捗タブ・クライアント別目標タブと同じ:
@@ -21,16 +22,22 @@ export interface FocusClientTarget {
   grossProfit: number | null;
 }
 
-/** ダッシュボード側の注力クライアントマスタ1社分(Firestore focusClients、ドキュメントID=Account ID) */
+/**
+ * 注力クライアント1社分。Salesforce取引先の項目と、ダッシュボード側(Firestore focusClients、
+ * ドキュメントID=Account ID)の項目を合わせたもの
+ */
 export interface FocusClientMaster {
   accountId: string;
+  /** 会社名(Account.Name) */
   name: string;
-  /** 注力区分(初期値はAccount.target__c) */
+  /** 注力区分(Account.target__c) */
   category: string;
-  /** 注力テーマ */
+  /** 注力テーマ(Account.Thema__c) */
   theme: string;
-  /** 社内担当 */
+  /** 社内担当(Account.Tantosha__c のユーザー名) */
   owner: string;
+  /** 社内担当の所属CR(User.Department)。CR1〜4以外・担当なしはnull */
+  crId: ConcreteCrId | null;
   /** 営業戦略(比較的固定) */
   strategy: string;
   /** 現在の状況(随時更新) */
@@ -44,14 +51,34 @@ export interface FocusClientMaster {
   /** メモ専用の最終更新(他項目の保存では変わらない) */
   memoUpdatedBy: string | null;
   memoUpdatedAt: string | null;
-  /** 事業期番号(文字列)→目標 */
+  /** 事業期番号(文字列)→目標。当期はSalesforce取引先の目標、過去の期はダッシュボードに保存した目標 */
   targets: Record<string, FocusClientTarget>;
   updatedBy: string | null;
   updatedAt: string | null;
 }
 
-/** 社内担当(User.Name)→所属CR(User.Department) */
-export type OwnerCrMap = Record<string, ConcreteCrId>;
+/** ダッシュボード側(Firestore)で編集する項目。保存APIの応答から画面へ反映するのはこれらだけ */
+export const DASHBOARD_FIELDS = [
+  "strategy",
+  "currentStatus",
+  "monthAction",
+  "nextAction",
+  "memo",
+  "memoUpdatedBy",
+  "memoUpdatedAt",
+  "updatedBy",
+  "updatedAt",
+] as const satisfies readonly (keyof FocusClientMaster)[];
+
+/** 保存APIの応答のうち画面へ反映する部分 */
+export type FocusClientSavedFields = Pick<FocusClientMaster, "accountId" | (typeof DASHBOARD_FIELDS)[number]>;
+
+/** 保存結果のうちダッシュボード側の項目だけを反映する(会社名・担当・目標はSalesforceの値を保つ) */
+export function applySavedFields(current: FocusClientMaster, saved: FocusClientSavedFields): FocusClientMaster {
+  const next = { ...current };
+  for (const key of DASHBOARD_FIELDS) (next as Record<string, unknown>)[key] = saved[key];
+  return next;
+}
 
 /** 全社(ALL)・CR別の年間目標粗利(SalesTarget__c)。未設定はnull */
 export type ScopeTargets = Record<CrId, number | null>;

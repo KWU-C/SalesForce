@@ -49,9 +49,9 @@ describe("PUT /api/focus-clients/[accountId]", () => {
   it.each([
     ["unknown field", { fields: { name: "改名" } }],
     ["oversized text", { fields: { strategy: "x".repeat(2001) } }],
-    ["negative target", { target: { term: 50, sales: -1, grossProfit: null } }],
-    ["fractional target", { target: { term: 50, sales: 1.5, grossProfit: null } }],
-    ["missing term", { target: { sales: 1, grossProfit: 1 } }],
+    ["Salesforce-owned field", { fields: { theme: "x" } }],
+    ["owner", { fields: { owner: "x" } }],
+    ["target", { fields: { memo: "x" }, target: { term: 50, sales: 1, grossProfit: 1 } }],
     ["empty body", {}],
   ])("returns 400 for %s", async (_label, body) => {
     verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
@@ -63,23 +63,19 @@ describe("PUT /api/focus-clients/[accountId]", () => {
   it("saves with the verified email and returns the saved master", async () => {
     verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
     saveFocusClientMock.mockResolvedValue({ accountId: VALID_ID });
-    const response = await put(VALID_ID, {
-      fields: { currentStatus: "提案中" },
-      target: { term: 50, sales: 1000000, grossProfit: null },
-    });
+    const response = await put(VALID_ID, { fields: { currentStatus: "提案中" } });
     expect(response.status).toBe(200);
     expect(saveFocusClientMock).toHaveBeenCalledWith({
       accountId: VALID_ID,
       updatedBy: "kawauchi@tcd.jp",
       fields: { currentStatus: "提案中" },
-      target: { term: 50, sales: 1000000, grossProfit: null },
     });
   });
 
-  it("returns 404 when the account is not in the focus client master", async () => {
+  it("returns 404 when the account is not a focus client in Salesforce", async () => {
     verifyIapJwtMock.mockResolvedValue({ ok: true, email: "kawauchi@tcd.jp" });
     saveFocusClientMock.mockRejectedValue(new FocusClientNotFoundError());
-    const response = await put(VALID_ID, { fields: { theme: "x" } });
+    const response = await put(VALID_ID, { fields: { memo: "x" } });
     expect(response.status).toBe(404);
   });
 });

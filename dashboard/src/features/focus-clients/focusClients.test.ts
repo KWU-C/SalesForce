@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoryGroup, computeFocusClients, type FocusClientMaster, type FocusDeal } from "./focusClients";
+import { applySavedFields, categoryGroup, computeFocusClients, type FocusClientMaster, type FocusDeal } from "./focusClients";
 
 const TERM_RANGE = { start: "2026-09-01", end: "2027-08-31" };
 
@@ -10,6 +10,7 @@ function master(accountId: string, targets: FocusClientMaster["targets"] = {}): 
     category: "注力",
     theme: "",
     owner: "",
+    crId: null,
     strategy: "",
     currentStatus: "",
     monthAction: "",
@@ -163,5 +164,27 @@ describe("categoryGroup", () => {
       "",
       "その他",
     ]);
+  });
+});
+
+describe("applySavedFields", () => {
+  it("保存結果のうちダッシュボード側の項目だけを反映し、Salesforce側の項目・目標は保つ", () => {
+    const current = { ...master("A", { "50": { sales: 100, grossProfit: 50 } }), owner: "担当 一郎", crId: "CR4" as const };
+    const saved = {
+      ...master("A"),
+      memo: "新しいメモ",
+      memoUpdatedBy: "kawauchi@tcd.jp",
+      memoUpdatedAt: "2026-10-30T00:00:00.000Z",
+      updatedBy: "kawauchi@tcd.jp",
+      updatedAt: "2026-10-30T00:00:00.000Z",
+    };
+    expect(applySavedFields(current, saved)).toEqual({
+      ...current,
+      memo: "新しいメモ",
+      memoUpdatedBy: "kawauchi@tcd.jp",
+      memoUpdatedAt: "2026-10-30T00:00:00.000Z",
+      updatedBy: "kawauchi@tcd.jp",
+      updatedAt: "2026-10-30T00:00:00.000Z",
+    });
   });
 });

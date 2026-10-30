@@ -25,14 +25,15 @@ interface FocusClientsPageProps {
 }
 
 const FAILURE_MESSAGES = {
-  master: "注力クライアントマスタを取得できませんでした",
-  salesforce: "Salesforceから案件データを取得できませんでした",
+  master: "注力クライアントのメモ・営業戦略を取得できませんでした",
+  salesforce: "Salesforceから注力クライアント・案件のデータを取得できませんでした",
 } as const;
 
 /**
- * 注力クライアント管理タブ(/focus-clients)。ダッシュボード側の注力クライアントマスタ(Firestore)と
+ * 注力クライアント管理タブ(/focus-clients)。Salesforce取引先(一覧・会社名・担当・当期の目標)と
  * Salesforce案件(Process__c)をAccount IDで突合し、全注力クライアントの目標・実績・進捗・案件一覧を
- * 表示する。マスタ(目標・戦略・状況・アクション)はこの画面から編集する(ユーザー確定、2026-10-15)。
+ * 表示する。営業戦略・状況・アクション・メモはダッシュボード側(Firestore)で持ち、この画面から編集する
+ * (ユーザー確定、2026-10-30)。
  */
 export default async function FocusClientsPage({ searchParams }: FocusClientsPageProps) {
   const { term: actualTerm, currentMonth: actualCurrentMonth } = getCurrentFiscalPeriod();
@@ -51,7 +52,7 @@ export default async function FocusClientsPage({ searchParams }: FocusClientsPag
       ? FISCAL_MONTH_ORDER[0]
       : FISCAL_YEAR_END_MONTH;
 
-  const loaded = await getFocusClients(selectedTerm);
+  const loaded = await getFocusClients(selectedTerm, actualTerm);
   const fetchedAt = new Date();
 
   return (
@@ -78,8 +79,6 @@ export default async function FocusClientsPage({ searchParams }: FocusClientsPag
           <FocusClientsView
             masters={loaded.masters}
             deals={loaded.deals}
-            ownerCrs={loaded.ownerCrs}
-            ownerCrsFailed={loaded.ownerCrsFailed}
             scopeTargets={loaded.scopeTargets}
             crList={getCrListForTerm(selectedTerm)}
             term={selectedTerm}

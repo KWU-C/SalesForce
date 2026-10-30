@@ -1,10 +1,14 @@
 import type { FocusClientMaster, FocusClientTarget } from "@/features/focus-clients/focusClients";
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
+import { getSalesforceJwtConfig } from "@/config/salesforce";
+import { SalesforceClient } from "@/services/salesforce/salesforceClient";
+import { buildFocusAccountsQuery } from "@/services/salesforce/focusClientQueries";
 
 /**
- * 注力クライアントマスタ(ダッシュボード側が正本、ユーザー確定 2026-10-15)。
- * ドキュメントID = SalesforceのAccount ID(18桁)。初期データはAccount(ターゲット区分=注力・掘り起こし)から
- * 一度だけ投入し、以後はダッシュボードの画面から編集する(Salesforceへは書き戻さない)。
+ * 注力クライアントのダッシュボード側の項目(営業戦略・状況・アクション・メモ・過去の期の目標)。
+ * ドキュメントID = SalesforceのAccount ID(18桁)。一覧・会社名・区分・担当・テーマ・当期の目標は
+ * Salesforce取引先が正で(ユーザー確定 2026-10-30)、ドキュメント内のname・category・owner・theme・active
+ * (2026-10-15の初期投入時の値)は読まない。Salesforceへは書き戻さない。
  */
 const COLLECTION = "focusClients";
 
@@ -55,15 +59,14 @@ function toTargets(value: unknown): Record<string, FocusClientTarget> {
   return result;
 }
 
-export function toFocusClientMaster(id: string, data: Record<string, unknown>): FocusClientMaster {
+/** Firestoreで持つ項目。Salesforce側の項目(会社名・区分・担当・テーマ・CR)は含まない */
+export type FocusClientDashboardFields = Omit<FocusClientMaster, "name" | "category" | "theme" | "owner" | "crId">;
+
+export function toFocusClientDashboardFields(id: string, data: Record<string, unknown>): FocusClientDashboardFields {
   const updatedAt = data.updatedAt as FirestoreTimestampLike | undefined;
   const memoUpdatedAt = data.memoUpdatedAt as FirestoreTimestampLike | undefined;
   return {
     accountId: id,
-    name: str(data.name),
-    category: str(data.category),
-    theme: str(data.theme),
-    owner: str(data.owner),
     strategy: str(data.strategy),
     currentStatus: str(data.currentStatus),
     monthAction: str(data.monthAction),
@@ -77,22 +80,16 @@ export function toFocusClientMaster(id: string, data: Record<string, unknown>): 
   };
 }
 
-/** 有効な(active=falseでない)注力クライアントを全件取得する。並びは名称順 */
-export async function getFocusClientMasters(
+/** ダッシュボード側の項目を全件取得する(Account ID→項目)。Salesforceの一覧から外れた社のドキュメントも返る */
+export async function getFocusClientDashboardFields(
   store: FocusClientMasterStore = createFirestoreStore()
-): Promise<FocusClientMaster[]> {
+): Promise<Map<string, FocusClientDashboardFields>> {
   const docs = await store.getAll();
-  return docs
-    .filter((doc) => doc.data.active !== false)
-    .map((doc) => toFocusClientMaster(doc.id, doc.data))
-    .sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  return new Map(docs.map((doc) => [doc.id, toFocusClientDashboardFields(doc.id, doc.data)]));
 }
 
-/** 画面から編集できる項目。会社名・Account IDは変更させない(Salesforceとの突合キーのため) */
+/** 画面から編集できる項目。区分・担当・テーマ・目標はSalesforce取引先で編集する */
 export const EDITABLE_TEXT_FIELDS = [
-  "category",
-  "theme",
-  "owner",
   "strategy",
   "currentStatus",
   "monthAction",
@@ -106,22 +103,27 @@ export interface SaveFocusClientInput {
   accountId: string;
   updatedBy: string;
   fields: Partial<Record<EditableTextField, string>>;
-  /** 指定した期の目標だけを更新する(他の期の目標は残す) */
-  target?: { term: number; sales: number | null; grossProfit: number | null };
 }
 
 export class FocusClientNotFoundError extends Error {}
 
+/** Salesforceで注力・掘り起こしになっている取引先か */
+async function isFocusAccountInSalesforce(accountId: string): Promise<boolean> {
+  const client = new SalesforceClient(getSalesforceJwtConfig());
+  return (await client.query<{ Id: string }>(buildFocusAccountsQuery(accountId))).length > 0;
+}
+
 /**
- * マスタ1社分を更新する。新規作成はしない(注力対象の追加・除外は初期投入スクリプトで行う)。
+ * 1社分のダッシュボード側の項目を更新する。Salesforceで注力・掘り起こしになっている取引先だけが対象で、
+ * ドキュメントが無ければ作る(Salesforce側で後から追加された社)。
  * updatedByは呼び出し元(APIルート)がIAP検証済みJWTから取り出した値を渡す前提。
  */
 export async function saveFocusClient(
   input: SaveFocusClientInput,
-  store: FocusClientMasterStore = createFirestoreStore()
-): Promise<FocusClientMaster> {
-  const existing = await store.get(input.accountId);
-  if (!existing) throw new FocusClientNotFoundError();
+  store: FocusClientMasterStore = createFirestoreStore(),
+  isFocusAccount: (accountId: string) => Promise<boolean> = isFocusAccountInSalesforce
+): Promise<FocusClientDashboardFields> {
+  if (!(await isFocusAccount(input.accountId))) throw new FocusClientNotFoundError();
 
   const updatedAt = new Date();
   const data: Record<string, unknown> = { ...input.fields, updatedBy: input.updatedBy, updatedAt };
@@ -130,14 +132,9 @@ export async function saveFocusClient(
     data.memoUpdatedBy = input.updatedBy;
     data.memoUpdatedAt = updatedAt;
   }
-  if (input.target) {
-    data.targets = {
-      [String(input.target.term)]: { sales: input.target.sales, grossProfit: input.target.grossProfit },
-    };
-  }
   await store.save(input.accountId, data);
 
   const saved = await store.get(input.accountId);
   if (!saved) throw new Error("saveFocusClient: 保存直後のドキュメントが見つかりません");
-  return toFocusClientMaster(saved.id, saved.data);
+  return toFocusClientDashboardFields(saved.id, saved.data);
 }

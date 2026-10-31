@@ -3,7 +3,7 @@ import { isDevDeployment, isPreReleaseEnabled, isPreReleasePath } from "@/config
 
 /**
  * 並びは営業進捗→勤怠→経営(ユーザー確定、2026-09-29)。/resourceのラベルは「勤怠」。
- * 注力クライアントは営業進捗の右(本番公開時にユーザー確定、2026-10-22)。クライアント別目標はその右(devのみ)
+ * 注力クライアントは営業進捗の右(本番公開時にユーザー確定、2026-10-22)。クライアント別目標はその右(2026-10-31本番公開)
  */
 const NAV_ITEMS = [
   { href: "/", label: "営業進捗" },
@@ -29,7 +29,7 @@ interface DashboardNavProps {
  * (layout/page.tsx)も別途アクセス制御している(fail-closed)。
  */
 export function DashboardNav({ active, showManagementTab, showResourceTab }: DashboardNavProps) {
-  // 本番未公開のタブ(クライアント別目標)はdev・ローカルでだけ出す(deployEnvironment.ts)
+  // 本番未公開のタブ(PRE_RELEASE_PATHS)はdev・ローカルでだけ出す(deployEnvironment.ts)
   const preReleaseEnabled = isPreReleaseEnabled();
   // dev環境は本番と見分けやすいよう、帯を濃紺(#000099)にして右端に「DEV」を出す(ユーザー確定、2026-10-23)
   const dev = isDevDeployment();

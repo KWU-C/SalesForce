@@ -15,7 +15,7 @@ const MOVED_PATH = "/moved";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 本番未公開の機能(クライアント別目標・注力クライアント)は、dev・ローカル以外では届かないようにする。
+  // 本番未公開の機能(PRE_RELEASE_PATHS)は、dev・ローカル以外では届かないようにする。
   // ページは営業進捗へ戻し、APIは404(Salesforce・Firestoreに到達させない)
   if (!isPreReleaseEnabled() && isPreReleasePath(pathname)) {
     if (pathname.startsWith("/api/")) {

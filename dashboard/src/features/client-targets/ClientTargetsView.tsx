@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { CrTabs } from "@/components/CrTabs";
 import { RateGauge } from "@/components/RateGauge";
 import { FISCAL_MONTH_ORDER, FISCAL_YEAR_END_MONTH, fiscalYearToDateMonthsLabel } from "@/config/fiscalPeriods";
@@ -118,8 +118,11 @@ function SummarySection({ summary, periods }: { summary: ClientTargetSummary; pe
         const totalRate = rateOf(total, summary.annualTarget);
         const existingRate = rateOf(existingAmount, existingTarget);
         const newRate = rateOf(newAmount, newTarget);
+        // 年間目標・受注・完了の段の間に罫線を入れる(ユーザー指示、2026-10-31)
         return (
-          <div key={label} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Fragment key={label}>
+            <hr className="border-t border-[var(--border-hairline)]" />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Tile label={label} value={formatYen(total)} sub={<RateWithGauge prefix="年間達成率 " rate={totalRate} />} />
             <Tile
               label="内既存"
@@ -133,7 +136,8 @@ function SummarySection({ summary, periods }: { summary: ClientTargetSummary; pe
               valueClassName={rateClassName(newRate)}
               sub={<RateWithGauge prefix="達成率 " rate={newRate} />}
             />
-          </div>
+            </div>
+          </Fragment>
         );
       })}
       {summary.crTargetGap !== null && Math.abs(summary.crTargetGap) >= 1 && (

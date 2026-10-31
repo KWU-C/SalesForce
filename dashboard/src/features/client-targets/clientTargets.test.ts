@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   computeClientTargetProgress,
-  formatSalesRep,
   sortClientRows,
   type ClientAmountRow,
   type ClientProgressRow,
@@ -22,7 +21,7 @@ function baseInput(overrides: Partial<ClientTargetInput> = {}): ClientTargetInpu
     targets: [],
     completed: [],
     orders: [],
-    salesReps: [],
+    clientInCharge: [],
     crAnnualTargets: { CR1: null, CR2: null },
     ...overrides,
   };
@@ -173,30 +172,38 @@ describe("computeClientTargetProgress", () => {
     expect(row.monthOrderRate).toBe(25);
   });
 
-  it("assigns the sales rep with the largest gross profit per CR × client, not to unallocated targets", () => {
+  it("shows the client's in-charge per CR × client, not for unallocated targets", () => {
     const scopes = computeClientTargetProgress(
       baseInput({
-        targets: [...monthlyTargets("CR1", "顧客A", 100), ...monthlyTargets("CR1", null, 10), ...monthlyTargets("CR2", "顧客A", 100)],
-        salesReps: [
-          { crId: "CR1", clientName: "顧客A", salesRepName: "佐藤", grossProfit: 30 },
-          { crId: "CR1", clientName: "顧客A", salesRepName: "鈴木", grossProfit: 50 },
-          { crId: "CR1", clientName: "顧客A", salesRepName: "佐藤", grossProfit: 30 },
-          // 他CRの案件は数えない
-          { crId: "CR2", clientName: "顧客A", salesRepName: "高橋", grossProfit: 1 },
-          { crId: "CR1", clientName: null, salesRepName: "伊藤", grossProfit: 1 },
+        targets: [
+          ...monthlyTargets("CR1", "顧客A", 100),
+          ...monthlyTargets("CR1", "顧客B", 50),
+          ...monthlyTargets("CR1", null, 10),
+          ...monthlyTargets("CR2", "顧客A", 100),
+        ],
+        clientInCharge: [
+          { crId: "CR1", clientName: "顧客A", inChargeName: "佐藤" },
+          { crId: "CR1", clientName: "顧客B", inChargeName: null },
+          { crId: "CR2", clientName: "顧客A", inChargeName: "高橋" },
         ],
       })
     );
     const cr1 = scopes.find((s) => s.scopeId === "CR1")!;
 
-    expect(cr1.targetedClients[0].salesRep).toBe("佐藤 他1名");
-    expect(cr1.unallocatedTargets[0].salesRep).toBeNull();
-    expect(scopes.find((s) => s.scopeId === "CR2")!.targetedClients[0].salesRep).toBe("高橋");
+    expect(cr1.inChargeAvailable).toBe(true);
+    expect(cr1.targetedClients.map((r) => [r.clientName, r.inCharge])).toEqual([
+      ["顧客A", "佐藤"],
+      ["顧客B", null],
+    ]);
+    expect(cr1.unallocatedTargets[0].inCharge).toBeNull();
+    expect(scopes.find((s) => s.scopeId === "CR2")!.targetedClients[0].inCharge).toBe("高橋");
   });
 
-  it("formats sales reps deterministically and returns null without deals", () => {
-    expect(formatSalesRep(undefined)).toBeNull();
-    expect(formatSalesRep(new Map([["B", 10], ["A", 10]]))).toBe("A 他1名");
+  it("marks in-charge as unavailable when it could not be fetched", () => {
+    const scopes = computeClientTargetProgress(
+      baseInput({ targets: monthlyTargets("CR1", "顧客A", 100), clientInCharge: null })
+    );
+    expect(scopes.every((s) => !s.inChargeAvailable)).toBe(true);
   });
 
   it("builds a 12-month trend in fiscal order with cumulative values and future flags", () => {
@@ -239,7 +246,7 @@ describe("sortClientRows", () => {
     kind: "client",
     crId: "CR1",
     clientName: null,
-    salesRep: null,
+    inCharge: null,
     annualTarget: 0,
     completedToDate: 0,
     completedFullYear: 0,
@@ -253,9 +260,9 @@ describe("sortClientRows", () => {
     orderFullYear: 0,
   };
   const rows: ClientProgressRow[] = [
-    { ...base, crId: "CR2", clientName: "B社", salesRep: "佐藤", annualTarget: 100, annualRate: 50 },
-    { ...base, crId: "CR1", clientName: "A社", salesRep: null, annualTarget: 300, annualRate: null },
-    { ...base, crId: "CR3", clientName: "C社", salesRep: "伊藤", annualTarget: 200, annualRate: 120 },
+    { ...base, crId: "CR2", clientName: "B社", inCharge: "佐藤", annualTarget: 100, annualRate: 50 },
+    { ...base, crId: "CR1", clientName: "A社", inCharge: null, annualTarget: 300, annualRate: null },
+    { ...base, crId: "CR3", clientName: "C社", inCharge: "伊藤", annualTarget: 200, annualRate: 120 },
   ];
   const names = (sorted: ClientProgressRow[]) => sorted.map((r) => r.clientName);
 
@@ -267,7 +274,7 @@ describe("sortClientRows", () => {
   it("値が無い行は昇順・降順どちらでも末尾に置く", () => {
     expect(names(sortClientRows(rows, "annualRate", "desc"))).toEqual(["C社", "B社", "A社"]);
     expect(names(sortClientRows(rows, "annualRate", "asc"))).toEqual(["B社", "C社", "A社"]);
-    expect(names(sortClientRows(rows, "salesRep", "asc")).at(-1)).toBe("A社");
+    expect(names(sortClientRows(rows, "inCharge", "asc")).at(-1)).toBe("A社");
   });
 
   it("文字列列で並べ、同値は年間目標の降順にする", () => {

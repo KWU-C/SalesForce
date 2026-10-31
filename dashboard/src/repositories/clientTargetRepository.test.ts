@@ -5,9 +5,12 @@ import { getClientTargetProgress } from "./clientTargetRepository";
 function fakeClient(responses: Record<string, unknown[]>): SalesforceQueryClient {
   return {
     async query<T>(soql: string): Promise<T[]> {
+      if (soql.includes("Tantosha__r")) {
+        if (responses.inCharge === undefined) throw new Error("INVALID_FIELD");
+        return responses.inCharge as T[];
+      }
       if (soql.includes("FROM Profit__c")) return responses.targets as T[];
       if (soql.includes("FROM SalesTarget__c")) return responses.salesTarget as T[];
-      if (soql.includes("eigyoutantousha__r.Name")) return responses.salesReps as T[];
       if (soql.includes("seikyuubi__c >=")) return responses.completed as T[];
       return responses.orders as T[];
     },
@@ -27,9 +30,9 @@ describe("getClientTargetProgress", () => {
       completed: [{ bumonna__c: "CR1", clientName__c: "顧客A", seikyuubi__c: "2026-10-15", arari__c: 60 }],
       orders: [{ bumonna__c: "CR1", clientName__c: "顧客B", juchuubi__c: "2026-09-15", arari__c: 40 }],
       salesTarget: [{ CR1TargetGrossProfit__c: 300 }],
-      salesReps: [
-        { bumonna__c: "CR1", clientName__c: "顧客A", eigyoutantousha__r: { Name: "山田 太郎" }, arari__c: 10 },
-        { bumonna__c: "CR1", clientName__c: "顧客A", eigyoutantousha__r: null, arari__c: 999 },
+      inCharge: [
+        { bumon__c: "CR1", clientName__c: "顧客A", client__r: { Tantosha__r: { Name: "山田 太郎" } } },
+        { bumon__c: "CR1", clientName__c: "顧客C", client__r: { Tantosha__r: null } },
       ],
     });
 
@@ -39,8 +42,26 @@ describe("getClientTargetProgress", () => {
     expect(cr1.summary.annualTarget).toBe(100);
     expect(cr1.summary.monthRate).toBe(60);
     expect(cr1.summary.crTargetGap).toBe(200);
-    expect(cr1.targetedClients[0].salesRep).toBe("山田 太郎");
+    expect(cr1.targetedClients[0].inCharge).toBe("山田 太郎");
+    expect(cr1.inChargeAvailable).toBe(true);
     expect(cr1.untargetedClients.map((r) => [r.clientName, r.orderToDate])).toEqual([["顧客B", 40]]);
+  });
+
+  it("keeps the tab working when the in-charge query fails", async () => {
+    const warnLog = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = fakeClient({
+      targets: [{ bumon__c: "CR1", clientName__c: "顧客A", kobetsuuriagebi__c: "2026-10-01", mokuhyoarari__c: 100 }],
+      completed: [],
+      orders: [],
+      salesTarget: [],
+    });
+
+    const cr1 = (await getClientTargetProgress(50, ["CR1"], 10, client))!.find((s) => s.scopeId === "CR1")!;
+
+    expect(cr1.summary.annualTarget).toBe(100);
+    expect(cr1.inChargeAvailable).toBe(false);
+    expect(cr1.targetedClients[0].inCharge).toBeNull();
+    expect(warnLog).toHaveBeenCalledTimes(1);
   });
 
   it("returns null without logging amounts when a query fails", async () => {

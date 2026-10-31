@@ -161,7 +161,7 @@ interface ClientSort {
 const DEFAULT_CLIENT_SORT: ClientSort = { key: "annualTarget", direction: "desc" };
 
 /** 文字列の列は昇順、数値の列は降順から始める */
-const TEXT_SORT_KEYS: readonly ClientSortKey[] = ["crId", "clientName", "salesRep"];
+const TEXT_SORT_KEYS: readonly ClientSortKey[] = ["crId", "clientName", "inCharge"];
 
 function SortableTh({
   label,
@@ -201,7 +201,12 @@ function SortableTh({
  * 同じ列をもう一度押すと昇順・降順が切り替わる(初期は年間目標の降順、2026-10-31)。
  * 月次はこの表に限り受注基準(当月受注粗利 ÷ 当月目標)。
  */
-function ClientTable({ rows, currentMonth, periods }: Omit<TableProps, "showCr">) {
+function ClientTable({
+  rows,
+  inChargeAvailable,
+  currentMonth,
+  periods,
+}: Omit<TableProps, "showCr"> & { inChargeAvailable: boolean }) {
   const [sort, setSort] = useState<ClientSort>(DEFAULT_CLIENT_SORT);
   if (rows.length === 0) return <EmptyNote />;
   const onSort = (key: ClientSortKey) =>
@@ -218,7 +223,7 @@ function ClientTable({ rows, currentMonth, periods }: Omit<TableProps, "showCr">
         <HeadRow>
           <SortableTh label="CR" sortKey="crId" {...th} />
           <SortableTh label="クライアント" sortKey="clientName" {...th} />
-          <SortableTh label="担当者" sortKey="salesRep" {...th} />
+          <SortableTh label="担当者" sortKey="inCharge" {...th} />
           <SortableTh label="年間目標" sortKey="annualTarget" align="right" {...th} />
           <SortableTh label={`累計完了（${periods.toDate}）`} sortKey="completedToDate" align="right" {...th} />
           <SortableTh label="年間達成率" sortKey="annualRate" align="right" {...th} />
@@ -231,7 +236,7 @@ function ClientTable({ rows, currentMonth, periods }: Omit<TableProps, "showCr">
           <tr key={`${row.crId}-${row.clientName ?? ""}`} className="border-t border-[var(--gridline)] tabular-nums">
             <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.crId}</td>
             <td className="px-3 py-2 text-[var(--text-primary)]">{row.clientName}</td>
-            <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.salesRep ?? "—"}</td>
+            <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{inChargeAvailable ? (row.inCharge ?? "（未設定）") : "—"}</td>
             <td className="px-3 py-2 text-right">{formatThousandYen(row.annualTarget)}</td>
             <td className="px-3 py-2 text-right">{formatThousandYen(row.completedToDate)}</td>
             <td className={`px-3 py-2 text-right font-medium ${rateClassName(row.annualRate)}`}>{rateText(row.annualRate)}</td>
@@ -388,7 +393,12 @@ export function ClientTargetsView({ scopes, crList, currentMonth }: ClientTarget
           title="クライアント別進捗"
           note={`単位: 千円／年間達成率 = 累計完了 ÷ 年間目標／月次受注達成率 = ${currentMonth}月受注粗利 ÷ ${currentMonth}月目標`}
         />
-        <ClientTable rows={scope.targetedClients} currentMonth={currentMonth} periods={periods} />
+        <ClientTable
+          rows={scope.targetedClients}
+          inChargeAvailable={scope.inChargeAvailable}
+          currentMonth={currentMonth}
+          periods={periods}
+        />
       </section>
 
       {scope.unallocatedTargets.length > 0 && (

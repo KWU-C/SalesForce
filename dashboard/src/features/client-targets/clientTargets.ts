@@ -11,12 +11,12 @@ export interface ClientAmountRow {
   grossProfit: number | null;
 }
 
-/** 担当者判定用の案件1行(CR×クライアント×営業担当者) */
-export interface ClientSalesRepRow {
+/** 担当者判定用の目標レコード1行(CR×クライアント×取引先の社内担当者) */
+export interface ClientInChargeRow {
   crId: ConcreteCrId;
   clientName: string | null;
-  salesRepName: string;
-  grossProfit: number | null;
+  /** 取引先の社内担当者(Tantosha__c)。未設定ならnull */
+  inChargeName: string | null;
 }
 
 export interface ClientTargetInput {
@@ -26,8 +26,8 @@ export interface ClientTargetInput {
   targets: ClientAmountRow[];
   completed: ClientAmountRow[];
   orders: ClientAmountRow[];
-  /** 担当者判定用の案件(前期期首〜当期末の受注日、失注以外) */
-  salesReps: ClientSalesRepRow[];
+  /** 担当者判定用の目標レコード。取得できなければnull(担当者列は「—」になる) */
+  clientInCharge: ClientInChargeRow[] | null;
   /** SalesTarget__cのCR別年間目標粗利(営業進捗タブと同じ値)。取得できなければnull */
   crAnnualTargets: Partial<Record<ConcreteCrId, number | null>>;
 }
@@ -44,8 +44,8 @@ export interface ClientProgressRow {
   kind: ClientRowKind;
   crId: ConcreteCrId;
   clientName: string | null;
-  /** 担当者表示(粗利最大の営業担当者。複数いれば「〇〇 他N名」)。該当案件が無ければnull */
-  salesRep: string | null;
+  /** 取引先の社内担当者。未設定(または取得できなかった)ならnull */
+  inCharge: string | null;
   annualTarget: number;
   /** 期首〜当月の完了粗利 */
   completedToDate: number;
@@ -113,6 +113,8 @@ export interface ClientTargetScope {
   /** 目標未設定クライアントの実績。CR順・期首〜当月の完了粗利の降順 */
   untargetedClients: ClientProgressRow[];
   monthly: MonthlyClientTargetPoint[];
+  /** 社内担当者を取得できたか。falseなら担当者列は「—」(「（未設定）」と区別する) */
+  inChargeAvailable: boolean;
 }
 
 function rate(actual: number, target: number): number | null {
@@ -156,21 +158,11 @@ function kindOf(acc: Accumulator): ClientRowKind {
   return acc.targetByMonth.size > 0 ? "client" : "untargeted";
 }
 
-/**
- * 粗利最大の営業担当者を担当者とする。複数いれば「〇〇 他N名」。
- * 粗利が同額なら名前順で決める(表示が実行ごとに揺れないように)。
- */
-export function formatSalesRep(grossProfitByRep: Map<string, number> | undefined): string | null {
-  if (!grossProfitByRep || grossProfitByRep.size === 0) return null;
-  const [top] = [...grossProfitByRep.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  return grossProfitByRep.size === 1 ? top[0] : `${top[0]} 他${grossProfitByRep.size - 1}名`;
-}
-
 function toRow(
   acc: Accumulator,
   currentMonth: number,
   monthsToDate: readonly number[],
-  salesRep: string | null
+  inCharge: string | null
 ): ClientProgressRow {
   const annualTarget = sumMonths(acc.targetByMonth, FISCAL_MONTH_ORDER);
   const completedToDate = sumMonths(acc.completedByMonth, monthsToDate);
@@ -181,7 +173,7 @@ function toRow(
     kind: kindOf(acc),
     crId: acc.crId,
     clientName: acc.clientName,
-    salesRep,
+    inCharge,
     annualTarget,
     completedToDate,
     completedFullYear: sumMonths(acc.completedByMonth, FISCAL_MONTH_ORDER),
@@ -201,12 +193,17 @@ function buildScope(
   accumulators: Accumulator[],
   currentMonth: number,
   crAnnualTarget: number | null,
-  salesRepByKey: Map<string, Map<string, number>>
+  inChargeByKey: Map<string, string> | null
 ): ClientTargetScope {
   const currentIndex = FISCAL_MONTH_ORDER.indexOf(currentMonth);
   const monthsToDate = FISCAL_MONTH_ORDER.slice(0, currentIndex + 1);
   const rows = accumulators.map((acc) =>
-    toRow(acc, currentMonth, monthsToDate, acc.isUnallocatedSlot ? null : formatSalesRep(salesRepByKey.get(clientKey(acc.crId, acc.clientName))))
+    toRow(
+      acc,
+      currentMonth,
+      monthsToDate,
+      acc.isUnallocatedSlot ? null : (inChargeByKey?.get(clientKey(acc.crId, acc.clientName)) ?? null)
+    )
   );
   const ofKind = (kind: ClientRowKind) => rows.filter((r) => r.kind === kind);
   const sum = (items: ClientProgressRow[], pick: (r: ClientProgressRow) => number) =>
@@ -256,6 +253,7 @@ function buildScope(
       (a, b) => byCr(a, b) || b.completedToDate - a.completedToDate || b.completedFullYear - a.completedFullYear
     ),
     monthly,
+    inChargeAvailable: inChargeByKey !== null,
   };
 }
 
@@ -300,12 +298,13 @@ export function computeClientTargetProgress(input: ClientTargetInput): ClientTar
     addTo(get(row.crId, row.clientName, false).orderByMonth, monthOf(row.date), row.grossProfit);
   }
 
-  const salesRepByKey = new Map<string, Map<string, number>>();
-  for (const row of input.salesReps) {
-    const key = clientKey(row.crId, row.clientName);
-    const byRep = salesRepByKey.get(key) ?? new Map<string, number>();
-    byRep.set(row.salesRepName, (byRep.get(row.salesRepName) ?? 0) + (row.grossProfit ?? 0));
-    salesRepByKey.set(key, byRep);
+  // CR×クライアント名で同じ取引先を指す前提(目標レコードのクライアント名は取引先名の数式)
+  let inChargeByKey: Map<string, string> | null = null;
+  if (input.clientInCharge) {
+    inChargeByKey = new Map();
+    for (const row of input.clientInCharge) {
+      if (row.inChargeName) inChargeByKey.set(clientKey(row.crId, row.clientName), row.inChargeName);
+    }
   }
 
   const all = [...byKey.values()];
@@ -315,14 +314,14 @@ export function computeClientTargetProgress(input: ClientTargetInput): ClientTar
     : null;
 
   return [
-    buildScope("ALL", all, input.currentMonth, companyCrTarget, salesRepByKey),
+    buildScope("ALL", all, input.currentMonth, companyCrTarget, inChargeByKey),
     ...input.crIds.map((crId) =>
       buildScope(
         crId,
         all.filter((acc) => acc.crId === crId),
         input.currentMonth,
         input.crAnnualTargets[crId] ?? null,
-        salesRepByKey
+        inChargeByKey
       )
     ),
   ];
@@ -332,7 +331,7 @@ export function computeClientTargetProgress(input: ClientTargetInput): ClientTar
 export type ClientSortKey =
   | "crId"
   | "clientName"
-  | "salesRep"
+  | "inCharge"
   | "annualTarget"
   | "completedToDate"
   | "annualRate"
@@ -343,7 +342,7 @@ export type SortDirection = "asc" | "desc";
 
 /**
  * クライアント別進捗を指定列で並べ替える(各列でソート可、ユーザー確定 2026-10-31)。
- * 値が無い行(担当者なし・達成率「—」)は昇順・降順どちらでも末尾に置く。
+ * 値が無い行(担当者未設定・達成率「—」)は昇順・降順どちらでも末尾に置く。
  * 同値なら年間目標の降順→CR順で並べ、表示が揺れないようにする。
  */
 export function sortClientRows(

@@ -98,16 +98,16 @@ function SummarySection({ summary, periods }: { summary: ClientTargetSummary; pe
           <div key={label} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Tile label={label} value={formatYen(total)} sub={`年間達成率 ${rateText(totalRate)}`} />
             <Tile
-              label={`内既存（達成率：${rateText(existingRate)}）`}
+              label="内既存"
               value={formatYen(existingAmount)}
               valueClassName={rateClassName(existingRate)}
-              sub="目標のあるクライアント"
+              sub={`達成率 ${rateText(existingRate)}`}
             />
             <Tile
-              label={`内新規（達成率：${rateText(newRate)}）`}
+              label="内新規"
               value={formatYen(newAmount)}
               valueClassName={rateClassName(newRate)}
-              sub="目標未設定クライアント"
+              sub={`達成率 ${rateText(newRate)}`}
             />
           </div>
         );

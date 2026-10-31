@@ -46,21 +46,31 @@ function rateClassName(rate: number | null): string {
   return rate < 100 ? "text-[var(--status-serious)]" : "text-[var(--text-primary)]";
 }
 
+/**
+ * 上部のタイル。total=各段の合計(見出しを太字)、part=内既存・内新規(金額を太字にしない)
+ * (ユーザー指示、2026-10-31)
+ */
 function Tile({
   label,
   value,
   sub,
   valueClassName,
+  kind,
 }: {
   label: string;
   value: string;
   sub?: React.ReactNode;
   valueClassName?: string;
+  kind: "total" | "part";
 }) {
   return (
     <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-      <p className="text-sm text-[var(--text-secondary)]">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${valueClassName ?? "text-[var(--text-primary)]"}`}>{value}</p>
+      <p className={`text-sm text-[var(--text-secondary)] ${kind === "total" ? "font-semibold" : ""}`}>{label}</p>
+      <p
+        className={`mt-1 text-2xl tabular-nums ${kind === "total" ? "font-semibold" : "font-normal"} ${valueClassName ?? "text-[var(--text-primary)]"}`}
+      >
+        {value}
+      </p>
       {sub && <div className="mt-1 text-xs text-[var(--text-muted)]">{sub}</div>}
     </div>
   );
@@ -101,13 +111,15 @@ function SummarySection({ summary, periods }: { summary: ClientTargetSummary; pe
   return (
     <section className="flex flex-col gap-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Tile label="年間目標" value={formatYen(summary.annualTarget)} />
+        <Tile kind="total" label="年間目標" value={formatYen(summary.annualTarget)} />
         <Tile
+          kind="part"
           label={`内既存（${rateText(shareOf(existingTarget, summary.annualTarget))}）`}
           value={formatYen(existingTarget)}
           sub="クライアント指定の目標"
         />
         <Tile
+          kind="part"
           label={`内新規（${rateText(shareOf(newTarget, summary.annualTarget))}）`}
           value={formatYen(newTarget)}
           sub="未配分目標（クライアント未指定）"
@@ -123,14 +135,16 @@ function SummarySection({ summary, periods }: { summary: ClientTargetSummary; pe
           <Fragment key={label}>
             <hr className="border-t border-[var(--border-hairline)]" />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Tile label={label} value={formatYen(total)} sub={<RateWithGauge prefix="年間達成率 " rate={totalRate} />} />
+            <Tile kind="total" label={label} value={formatYen(total)} sub={<RateWithGauge prefix="年間達成率 " rate={totalRate} />} />
             <Tile
+              kind="part"
               label="内既存"
               value={formatYen(existingAmount)}
               valueClassName={rateClassName(existingRate)}
               sub={<RateWithGauge prefix="達成率 " rate={existingRate} />}
             />
             <Tile
+              kind="part"
               label="内新規"
               value={formatYen(newAmount)}
               valueClassName={rateClassName(newRate)}

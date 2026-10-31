@@ -141,14 +141,14 @@ function SummarySection({ summary, periods }: { summary: ClientTargetSummary; pe
               label="内既存"
               value={formatYen(existingAmount)}
               valueClassName={rateClassName(existingRate)}
-              sub={<RateWithGauge prefix="達成率 " rate={existingRate} />}
+              sub={<RateWithGauge prefix="年間達成率 " rate={existingRate} />}
             />
             <Tile
               kind="part"
               label="内新規"
               value={formatYen(newAmount)}
               valueClassName={rateClassName(newRate)}
-              sub={<RateWithGauge prefix="達成率 " rate={newRate} />}
+              sub={<RateWithGauge prefix="年間達成率 " rate={newRate} />}
             />
             </div>
           </Fragment>

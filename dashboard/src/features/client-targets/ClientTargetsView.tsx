@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CrTabs } from "@/components/CrTabs";
+import { RateGauge } from "@/components/RateGauge";
 import { FISCAL_MONTH_ORDER, FISCAL_YEAR_END_MONTH, fiscalYearToDateMonthsLabel } from "@/config/fiscalPeriods";
 import type { CrId } from "@/domain/types";
 import { formatPercent, formatThousandYen, formatYen } from "@/utils/format";
@@ -26,18 +27,41 @@ function rateText(rate: number | null): string {
   return rate === null ? "—" : formatPercent(rate);
 }
 
+/** 「達成率 00%」の右に小さいゲージを付ける(ユーザー指示、2026-10-31) */
+function RateWithGauge({ prefix, rate, className = "" }: { prefix?: string; rate: number | null; className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap ${className}`}>
+      <span>
+        {prefix}
+        {rateText(rate)}
+      </span>
+      <RateGauge rate={rate} />
+    </span>
+  );
+}
+
 /** 達成率100%未満は営業進捗タブのStatCardと同じ色で示す */
 function rateClassName(rate: number | null): string {
   if (rate === null) return "text-[var(--text-muted)]";
   return rate < 100 ? "text-[var(--status-serious)]" : "text-[var(--text-primary)]";
 }
 
-function Tile({ label, value, sub, valueClassName }: { label: string; value: string; sub?: string; valueClassName?: string }) {
+function Tile({
+  label,
+  value,
+  sub,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  sub?: React.ReactNode;
+  valueClassName?: string;
+}) {
   return (
     <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
       <p className="text-sm text-[var(--text-secondary)]">{label}</p>
       <p className={`mt-1 text-2xl font-semibold tabular-nums ${valueClassName ?? "text-[var(--text-primary)]"}`}>{value}</p>
-      {sub && <p className="mt-1 text-xs text-[var(--text-muted)]">{sub}</p>}
+      {sub && <div className="mt-1 text-xs text-[var(--text-muted)]">{sub}</div>}
     </div>
   );
 }
@@ -96,18 +120,18 @@ function SummarySection({ summary, periods }: { summary: ClientTargetSummary; pe
         const newRate = rateOf(newAmount, newTarget);
         return (
           <div key={label} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Tile label={label} value={formatYen(total)} sub={`年間達成率 ${rateText(totalRate)}`} />
+            <Tile label={label} value={formatYen(total)} sub={<RateWithGauge prefix="年間達成率 " rate={totalRate} />} />
             <Tile
               label="内既存"
               value={formatYen(existingAmount)}
               valueClassName={rateClassName(existingRate)}
-              sub={`達成率 ${rateText(existingRate)}`}
+              sub={<RateWithGauge prefix="達成率 " rate={existingRate} />}
             />
             <Tile
               label="内新規"
               value={formatYen(newAmount)}
               valueClassName={rateClassName(newRate)}
-              sub={`達成率 ${rateText(newRate)}`}
+              sub={<RateWithGauge prefix="達成率 " rate={newRate} />}
             />
           </div>
         );
@@ -239,13 +263,15 @@ function ClientTable({
             <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{inChargeAvailable ? (row.inCharge ?? "（未設定）") : "—"}</td>
             <td className="px-3 py-2 text-right">{formatThousandYen(row.annualTarget)}</td>
             <td className="px-3 py-2 text-right">{formatThousandYen(row.completedToDate)}</td>
-            <td className={`px-3 py-2 text-right font-medium ${rateClassName(row.annualRate)}`}>{rateText(row.annualRate)}</td>
+            <td className={`px-3 py-2 text-right font-medium ${rateClassName(row.annualRate)}`}>
+              <RateWithGauge rate={row.annualRate} />
+            </td>
             <td className="px-3 py-2 text-right">{formatThousandYen(row.monthTarget)}</td>
             <td
               className={`px-3 py-2 text-right ${rateClassName(row.monthOrderRate)}`}
               title={`${currentMonth}月受注粗利 ${formatThousandYen(row.monthOrder)}千円`}
             >
-              {rateText(row.monthOrderRate)}
+              <RateWithGauge rate={row.monthOrderRate} />
             </td>
           </tr>
         ))}

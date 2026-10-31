@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { computeClientTargetProgress, formatSalesRep, type ClientAmountRow, type ClientTargetInput } from "./clientTargets";
+import {
+  computeClientTargetProgress,
+  formatSalesRep,
+  sortClientRows,
+  type ClientAmountRow,
+  type ClientProgressRow,
+  type ClientTargetInput,
+} from "./clientTargets";
 
 const FISCAL_DATES = ["2026-09-01", "2026-10-01", "2026-11-01", "2026-12-01", "2027-01-01", "2027-02-01",
   "2027-03-01", "2027-04-01", "2027-05-01", "2027-06-01", "2027-07-01", "2027-08-01"];
@@ -224,5 +231,54 @@ describe("computeClientTargetProgress", () => {
     expect(cr2.completedToDate).toBe(0);
     expect(cr2.annualRate).toBeNull();
     expect(cr2.monthRate).toBeNull();
+  });
+});
+
+describe("sortClientRows", () => {
+  const base: ClientProgressRow = {
+    kind: "client",
+    crId: "CR1",
+    clientName: null,
+    salesRep: null,
+    annualTarget: 0,
+    completedToDate: 0,
+    completedFullYear: 0,
+    annualRate: null,
+    monthTarget: 0,
+    monthCompleted: 0,
+    monthRate: null,
+    monthOrder: 0,
+    monthOrderRate: null,
+    orderToDate: 0,
+    orderFullYear: 0,
+  };
+  const rows: ClientProgressRow[] = [
+    { ...base, crId: "CR2", clientName: "B社", salesRep: "佐藤", annualTarget: 100, annualRate: 50 },
+    { ...base, crId: "CR1", clientName: "A社", salesRep: null, annualTarget: 300, annualRate: null },
+    { ...base, crId: "CR3", clientName: "C社", salesRep: "伊藤", annualTarget: 200, annualRate: 120 },
+  ];
+  const names = (sorted: ClientProgressRow[]) => sorted.map((r) => r.clientName);
+
+  it("数値列を昇順・降順に並べる", () => {
+    expect(names(sortClientRows(rows, "annualTarget", "desc"))).toEqual(["A社", "C社", "B社"]);
+    expect(names(sortClientRows(rows, "annualTarget", "asc"))).toEqual(["B社", "C社", "A社"]);
+  });
+
+  it("値が無い行は昇順・降順どちらでも末尾に置く", () => {
+    expect(names(sortClientRows(rows, "annualRate", "desc"))).toEqual(["C社", "B社", "A社"]);
+    expect(names(sortClientRows(rows, "annualRate", "asc"))).toEqual(["B社", "C社", "A社"]);
+    expect(names(sortClientRows(rows, "salesRep", "asc")).at(-1)).toBe("A社");
+  });
+
+  it("文字列列で並べ、同値は年間目標の降順にする", () => {
+    expect(names(sortClientRows(rows, "crId", "asc"))).toEqual(["A社", "B社", "C社"]);
+    const tied = rows.map((r) => ({ ...r, crId: "CR1" as const }));
+    expect(names(sortClientRows(tied, "crId", "asc"))).toEqual(["A社", "C社", "B社"]);
+  });
+
+  it("元の配列は変更しない", () => {
+    const copy = [...rows];
+    sortClientRows(rows, "clientName", "asc");
+    expect(rows).toEqual(copy);
   });
 });

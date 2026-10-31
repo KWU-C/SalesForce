@@ -327,3 +327,40 @@ export function computeClientTargetProgress(input: ClientTargetInput): ClientTar
     ),
   ];
 }
+
+/** クライアント別進捗の並べ替えに使える列 */
+export type ClientSortKey =
+  | "crId"
+  | "clientName"
+  | "salesRep"
+  | "annualTarget"
+  | "completedToDate"
+  | "annualRate"
+  | "monthTarget"
+  | "monthOrderRate";
+
+export type SortDirection = "asc" | "desc";
+
+/**
+ * クライアント別進捗を指定列で並べ替える(各列でソート可、ユーザー確定 2026-10-31)。
+ * 値が無い行(担当者なし・達成率「—」)は昇順・降順どちらでも末尾に置く。
+ * 同値なら年間目標の降順→CR順で並べ、表示が揺れないようにする。
+ */
+export function sortClientRows(
+  rows: readonly ClientProgressRow[],
+  key: ClientSortKey,
+  direction: SortDirection
+): ClientProgressRow[] {
+  const sign = direction === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const av = a[key];
+    const bv = b[key];
+    if (av !== bv) {
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      const diff = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "ja");
+      if (diff !== 0) return sign * diff;
+    }
+    return b.annualTarget - a.annualTarget || byCr(a, b);
+  });
+}

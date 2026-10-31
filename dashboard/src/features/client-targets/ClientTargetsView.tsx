@@ -5,7 +5,15 @@ import { CrTabs } from "@/components/CrTabs";
 import { FISCAL_MONTH_ORDER, FISCAL_YEAR_END_MONTH, fiscalYearToDateMonthsLabel } from "@/config/fiscalPeriods";
 import type { CrId } from "@/domain/types";
 import { formatPercent, formatThousandYen, formatYen } from "@/utils/format";
-import type { ClientProgressRow, ClientTargetScope, ClientTargetSummary, MonthlyClientTargetPoint } from "./clientTargets";
+import { sortClientRows } from "./clientTargets";
+import type {
+  ClientProgressRow,
+  ClientSortKey,
+  ClientTargetScope,
+  ClientTargetSummary,
+  MonthlyClientTargetPoint,
+  SortDirection,
+} from "./clientTargets";
 import { MonthlyClientTargetChart } from "./MonthlyClientTargetChart";
 
 /** 集計期間の表記。toDate=期首〜当月(例: 9-10月)、fullYear=当期全月(9-8月) */
@@ -34,65 +42,76 @@ function Tile({ label, value, sub, valueClassName }: { label: string; value: str
   );
 }
 
-function SummarySection({
-  summary,
-  currentMonth,
-  periods,
-}: {
-  summary: ClientTargetSummary;
-  currentMonth: number;
-  periods: PeriodLabels;
-}) {
+/** 全体に占める割合(%)。全体0ならnull */
+function shareOf(part: number, total: number): number | null {
+  return total === 0 ? null : Math.round((part / total) * 1000) / 10;
+}
+
+/** 実績 ÷ 目標(%)。目標0ならnull */
+function rateOf(actual: number, target: number): number | null {
+  return target === 0 ? null : Math.round((actual / target) * 1000) / 10;
+}
+
+/**
+ * 上部タイル。1段目=年間目標、2段目=累計受注粗利、3段目=累計完了粗利を、それぞれ
+ * 合計・内既存・内新規の3列で並べる(ユーザー確定、2026-10-31)。
+ * 既存=クライアント指定の目標と、目標のあるクライアントの実績。
+ * 新規=未配分目標(クライアント未指定の目標)と、目標未設定クライアントの実績。
+ * 達成率はそれぞれの年間目標を分母にする。
+ */
+function SummarySection({ summary, periods }: { summary: ClientTargetSummary; periods: PeriodLabels }) {
+  const existingTarget = summary.clientTarget;
+  const newTarget = summary.unallocatedTarget;
+  const actualRows = [
+    {
+      label: `累計受注粗利（${periods.toDate}・受注日基準）`,
+      total: summary.orderToDate,
+      newAmount: summary.untargetedOrderToDate,
+    },
+    {
+      label: `累計完了粗利（${periods.toDate}・請求日基準）`,
+      total: summary.completedToDate,
+      newAmount: summary.untargetedCompletedToDate,
+    },
+  ];
   return (
     <section className="flex flex-col gap-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Tile label="年間目標" value={formatYen(summary.annualTarget)} />
         <Tile
-          label="年間目標"
-          value={formatYen(summary.annualTarget)}
-          sub={`クライアント指定 ${formatYen(summary.clientTarget)}／未配分目標 ${formatYen(summary.unallocatedTarget)}`}
+          label={`内既存（${rateText(shareOf(existingTarget, summary.annualTarget))}）`}
+          value={formatYen(existingTarget)}
+          sub="クライアント指定の目標"
         />
         <Tile
-          label={`累計完了粗利（${periods.toDate}・請求日基準）`}
-          value={formatYen(summary.completedToDate)}
-          sub={`うち目標未設定クライアント ${formatYen(summary.untargetedCompletedToDate)}`}
-        />
-        <Tile
-          label="年間達成率"
-          value={rateText(summary.annualRate)}
-          valueClassName={rateClassName(summary.annualRate)}
-          sub={`累計完了粗利（${periods.toDate}） ÷ 年間目標`}
+          label={`内新規（${rateText(shareOf(newTarget, summary.annualTarget))}）`}
+          value={formatYen(newTarget)}
+          sub="未配分目標（クライアント未指定）"
         />
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Tile
-          label={`${currentMonth}月 完了粗利`}
-          value={formatYen(summary.monthCompleted)}
-          sub={`${currentMonth}月目標 ${formatYen(summary.monthTarget)}`}
-        />
-        <Tile
-          label={`${currentMonth}月 月次達成率`}
-          value={rateText(summary.monthRate)}
-          valueClassName={rateClassName(summary.monthRate)}
-          sub={`${currentMonth}月完了粗利 ÷ ${currentMonth}月目標`}
-        />
-        <Tile
-          label={`通年完了予定粗利（${periods.fullYear}・請求予定を含む）`}
-          value={formatYen(summary.completedFullYear)}
-          sub={`うち目標未設定クライアント ${formatYen(summary.untargetedCompletedFullYear)}`}
-        />
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Tile
-          label={`累計受注粗利（${periods.toDate}・受注日基準、先行指標）`}
-          value={formatYen(summary.orderToDate)}
-          sub={`うち目標未設定クライアント ${formatYen(summary.untargetedOrderToDate)}`}
-        />
-        <Tile
-          label={`通年受注粗利（${periods.fullYear}・受注日基準）`}
-          value={formatYen(summary.orderFullYear)}
-          sub={`うち目標未設定クライアント ${formatYen(summary.untargetedOrderFullYear)}`}
-        />
-      </div>
+      {actualRows.map(({ label, total, newAmount }) => {
+        const existingAmount = total - newAmount;
+        const totalRate = rateOf(total, summary.annualTarget);
+        const existingRate = rateOf(existingAmount, existingTarget);
+        const newRate = rateOf(newAmount, newTarget);
+        return (
+          <div key={label} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Tile label={label} value={formatYen(total)} sub={`年間達成率 ${rateText(totalRate)}`} />
+            <Tile
+              label={`内既存（達成率：${rateText(existingRate)}）`}
+              value={formatYen(existingAmount)}
+              valueClassName={rateClassName(existingRate)}
+              sub="目標のあるクライアント"
+            />
+            <Tile
+              label={`内新規（達成率：${rateText(newRate)}）`}
+              value={formatYen(newAmount)}
+              valueClassName={rateClassName(newRate)}
+              sub="目標未設定クライアント"
+            />
+          </div>
+        );
+      })}
       {summary.crTargetGap !== null && Math.abs(summary.crTargetGap) >= 1 && (
         <p className="rounded border border-[var(--border-hairline)] bg-[var(--surface-reference)] px-3 py-2 text-xs text-[var(--text-secondary)]">
           営業進捗タブのCR年間目標 {formatYen(summary.crAnnualTarget ?? 0)} に対し、この画面の年間目標（Salesforceの目標レコード合計）は{" "}
@@ -133,28 +152,82 @@ interface TableProps {
   periods: PeriodLabels;
 }
 
+interface ClientSort {
+  key: ClientSortKey;
+  direction: SortDirection;
+}
+
+/** 初期表示は年間目標の高い順(ユーザー確定、2026-10-14・2026-10-31) */
+const DEFAULT_CLIENT_SORT: ClientSort = { key: "annualTarget", direction: "desc" };
+
+/** 文字列の列は昇順、数値の列は降順から始める */
+const TEXT_SORT_KEYS: readonly ClientSortKey[] = ["crId", "clientName", "salesRep"];
+
+function SortableTh({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  sortKey: ClientSortKey;
+  sort: ClientSort;
+  onSort: (key: ClientSortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      className={`px-3 py-2 ${align === "right" ? "text-right" : ""}`}
+      aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-1 hover:text-[var(--text-primary)] ${active ? "text-[var(--text-primary)]" : ""}`}
+      >
+        {label}
+        <span aria-hidden className={active ? "" : "opacity-30"}>
+          {active && sort.direction === "asc" ? "▲" : "▼"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 /**
- * クライアント別進捗。列と並び(年間目標の降順)はユーザー確定(2026-10-14)。
- * 月次はこの表に限り受注基準(当月受注粗利 ÷ 当月目標)。上部タイルの月次達成率は完了基準のまま。
+ * クライアント別進捗。列はユーザー確定(2026-10-14)。各列の見出しクリックで並べ替え、
+ * 同じ列をもう一度押すと昇順・降順が切り替わる(初期は年間目標の降順、2026-10-31)。
+ * 月次はこの表に限り受注基準(当月受注粗利 ÷ 当月目標)。
  */
 function ClientTable({ rows, currentMonth, periods }: Omit<TableProps, "showCr">) {
+  const [sort, setSort] = useState<ClientSort>(DEFAULT_CLIENT_SORT);
   if (rows.length === 0) return <EmptyNote />;
+  const onSort = (key: ClientSortKey) =>
+    setSort((prev) =>
+      prev.key === key
+        ? { key, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: TEXT_SORT_KEYS.includes(key) ? "asc" : "desc" }
+    );
+  const sorted = sortClientRows(rows, sort.key, sort.direction);
+  const th = { sort, onSort };
   return (
     <TableShell>
       <thead>
         <HeadRow>
-          <th className="px-3 py-2">CR</th>
-          <th className="px-3 py-2">クライアント</th>
-          <th className="px-3 py-2">担当者</th>
-          <th className={TH}>年間目標</th>
-          <th className={TH}>累計完了（{periods.toDate}）</th>
-          <th className={TH}>年間達成率</th>
-          <th className={TH}>{currentMonth}月受注目標</th>
-          <th className={TH}>月次受注達成率</th>
+          <SortableTh label="CR" sortKey="crId" {...th} />
+          <SortableTh label="クライアント" sortKey="clientName" {...th} />
+          <SortableTh label="担当者" sortKey="salesRep" {...th} />
+          <SortableTh label="年間目標" sortKey="annualTarget" align="right" {...th} />
+          <SortableTh label={`累計完了（${periods.toDate}）`} sortKey="completedToDate" align="right" {...th} />
+          <SortableTh label="年間達成率" sortKey="annualRate" align="right" {...th} />
+          <SortableTh label={`${currentMonth}月受注目標`} sortKey="monthTarget" align="right" {...th} />
+          <SortableTh label="月次受注達成率" sortKey="monthOrderRate" align="right" {...th} />
         </HeadRow>
       </thead>
       <tbody>
-        {rows.map((row) => (
+        {sorted.map((row) => (
           <tr key={`${row.crId}-${row.clientName ?? ""}`} className="border-t border-[var(--gridline)] tabular-nums">
             <td className="px-3 py-2 whitespace-nowrap text-[var(--text-secondary)]">{row.crId}</td>
             <td className="px-3 py-2 text-[var(--text-primary)]">{row.clientName}</td>
@@ -308,7 +381,7 @@ export function ClientTargetsView({ scopes, crList, currentMonth }: ClientTarget
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6">
       <CrTabs crList={crList} selected={selected} onSelect={setSelected} />
 
-      <SummarySection summary={scope.summary} currentMonth={currentMonth} periods={periods} />
+      <SummarySection summary={scope.summary} periods={periods} />
 
       <section className="flex flex-col gap-2">
         <SectionHeading

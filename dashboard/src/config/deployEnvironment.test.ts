@@ -44,12 +44,9 @@ describe("isPreReleaseEnabled", () => {
 });
 
 describe("isPreReleasePath", () => {
-  it("matches the unreleased pages and their API, including sub-paths", () => {
-    expect(isPreReleasePath("/client-targets")).toBe(true);
-    expect(isPreReleasePath("/client-targets/sub")).toBe(true);
-  });
-
-  it("does not match released pages or look-alike paths", () => {
+  it("does not match released pages", () => {
+    expect(isPreReleasePath("/client-targets")).toBe(false);
+    expect(isPreReleasePath("/client-targets/sub")).toBe(false);
     expect(isPreReleasePath("/")).toBe(false);
     expect(isPreReleasePath("/management")).toBe(false);
     expect(isPreReleasePath("/api/accounting-reports/cash-plan/2026-10")).toBe(false);

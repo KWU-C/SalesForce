@@ -32,10 +32,10 @@ export function isRetiredDeployment(serviceName: string | undefined = process.en
 /**
  * 本番未公開の機能(devでのみ確認中)のページ・API。本番ではナビに出さず、URLを直接開いても
  * 届かないようにする(proxy.ts)。本番へ公開するときは、ここから外すだけでよい。
- * - /client-targets: クライアント別目標(2026-10-14追加)
- * 注力クライアント(/focus-clients, /api/focus-clients)は2026-10-22に本番公開したので外した。
+ * 注力クライアント(/focus-clients, /api/focus-clients)は2026-10-22、
+ * クライアント別目標(/client-targets)は2026-10-31に本番公開したので外した。現在は空。
  */
-export const PRE_RELEASE_PATHS = ["/client-targets"] as const;
+export const PRE_RELEASE_PATHS: readonly string[] = [];
 
 /** 本番未公開の機能を使える環境か。dev環境とローカル(K_SERVICEなし)だけtrue。本番・旧devはfalse */
 export function isPreReleaseEnabled(serviceName: string | undefined = process.env.K_SERVICE): boolean {

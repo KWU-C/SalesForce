@@ -22,9 +22,8 @@ export interface AttendanceRow {
   /** 総勤務時間(h) */
   totalWorkHours: number;
   workDays: number;
-  /** 期間内の休暇取得日数(有給・特別休暇、全休=1、半休=0.5)。画面の労働日数は
-   * 出勤日数(workDays − takenLeaveDays)を出し、右に「(-2)」の形で添えて、
-   * 出勤日数+休暇=基準の所定労働日数(過去28日間なら19日)になるようにする(ユーザー確定、2026-11-01) */
+  /** 期間内の休暇取得日数(有給・特別休暇、全休=1、半休=0.5)。現在は画面に出していない
+   * (画面の( )は基準日数−労働日数、AttendanceSection.tsxのformatShortfall参照) */
   takenLeaveDays: number;
   /** 期間内のfreee所定労働日数(会社カレンダー基準)。取得できない時はnull */
   baselineDays: number | null;

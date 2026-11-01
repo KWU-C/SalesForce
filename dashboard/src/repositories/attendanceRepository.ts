@@ -46,6 +46,7 @@ function toDailyWorkRecord(record: FreeeWorkRecord): DailyWorkRecord {
     actualWorkMins: workedMins > 0 ? workedMins - spanMins(record.break_records) : 0,
     leaveDays: (record.paid_holiday ?? 0) + (record.special_holiday ?? 0),
     paidLeaveDays: record.paid_holiday ?? 0,
+    prescribedWorkDay: record.day_pattern === "normal_day",
     partialLeaveMins:
       (record.half_paid_holiday_mins ?? 0) +
       (record.hourly_paid_holiday_mins ?? 0) +
@@ -105,6 +106,7 @@ async function getWorkRecordInput(
     totalWorkMins: summary.total_work_mins,
     normalWorkMins: summary.total_normal_work_mins,
     paidLeaveDays: (summary.work_records ?? []).reduce((sum, r) => sum + (r.paid_holiday ?? 0), 0),
+    baselineDays: summary.work_records ? summary.work_records.filter((r) => r.day_pattern === "normal_day").length : null,
   };
 }
 

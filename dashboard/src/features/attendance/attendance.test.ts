@@ -28,7 +28,7 @@ describe("classifyAttendanceMember", () => {
 
 describe("buildAttendanceRow", () => {
   it("computes overtimeHours, totalWorkHours, and overtimeAvgPerDay from raw minutes", () => {
-    const row = buildAttendanceRow({ name: "竹本 晃", workDays: 20, totalWorkMins: 191 * 60 + 43, normalWorkMins: 159 * 60 + 48, paidLeaveDays: 0 });
+    const row = buildAttendanceRow({ name: "竹本 晃", workDays: 20, totalWorkMins: 191 * 60 + 43, normalWorkMins: 159 * 60 + 48, paidLeaveDays: 0, baselineDays: null });
     expect(row).not.toBeNull();
     expect(row!.overtimeHours).toBeCloseTo(31 + 55 / 60, 2); // 191:43 - 159:48 = 31:55
     expect(row!.totalWorkHours).toBeCloseTo(191 + 43 / 60, 2);
@@ -37,15 +37,29 @@ describe("buildAttendanceRow", () => {
   });
 
   it("returns null (not a divide-by-zero) when workDays is 0", () => {
-    const row = buildAttendanceRow({ name: "竹本 晃", workDays: 0, totalWorkMins: 0, normalWorkMins: 0, paidLeaveDays: 0 });
+    const row = buildAttendanceRow({ name: "竹本 晃", workDays: 0, totalWorkMins: 0, normalWorkMins: 0, paidLeaveDays: 0, baselineDays: null });
     expect(row).toBeNull();
   });
 });
 
 describe("buildAttendanceSection", () => {
   function row(name: string, overtimeAvgPerDay: number) {
-    return { name, overtimeHours: overtimeAvgPerDay * 10, totalWorkHours: 160, workDays: 10, paidLeaveDays: 0, overtimeAvgPerDay };
+    return { name, overtimeHours: overtimeAvgPerDay * 10, totalWorkHours: 160, workDays: 10, paidLeaveDays: 0, baselineDays: 19, overtimeAvgPerDay };
   }
+
+  it("uses the most common per-member baselineDays (freee所定労働日数) for the table header", () => {
+    const section = buildAttendanceSection([
+      { category: "target" as const, row: row("A", 1.0) },
+      { category: "target" as const, row: { ...row("B", 2.0), baselineDays: 12 } }, // 途中入社等
+      { category: "clerical" as const, row: row("C", 0.5) },
+    ]);
+    expect(section.baselineDays).toBe(19);
+  });
+
+  it("returns null baselineDays when no member has a baseline", () => {
+    const section = buildAttendanceSection([{ category: "target" as const, row: { ...row("A", 1.0), baselineDays: null } }]);
+    expect(section.baselineDays).toBeNull();
+  });
 
   it("sorts target members by descending overtimeAvgPerDay and splits into left (high half, desc) and right (low half, asc)", () => {
     const rowsByCategory = [
@@ -106,7 +120,7 @@ describe("isOvertimeAvgAlert(残業平均時間2.50h以上を赤文字)", () => 
 
 
 describe("summarizeDailyWorkRecords", () => {
-  const base = { normalWorkMins: 480, overtimeMins: 0, actualWorkMins: 0, leaveDays: 0, paidLeaveDays: 0, partialLeaveMins: 0 };
+  const base = { normalWorkMins: 480, overtimeMins: 0, actualWorkMins: 0, leaveDays: 0, paidLeaveDays: 0, prescribedWorkDay: true, partialLeaveMins: 0 };
   const range = { start: "2026-09-03", end: "2026-09-30" };
 
   it("sums worked days inside the range (inclusive) and ignores days outside it", () => {
@@ -115,7 +129,7 @@ describe("summarizeDailyWorkRecords", () => {
       { ...base, date: "2026-09-03", actualWorkMins: 540, overtimeMins: 60 },
       { ...base, date: "2026-09-30", actualWorkMins: 480 },
       { ...base, date: "2026-10-01", actualWorkMins: 600, overtimeMins: 120 },
-      { ...base, date: "2026-09-05" }, // 打刻なし(休日)
+      { ...base, date: "2026-09-05", prescribedWorkDay: false }, // 打刻なし(休日)
     ];
 
     expect(summarizeDailyWorkRecords("対象 花子", records, range)).toEqual({
@@ -124,6 +138,7 @@ describe("summarizeDailyWorkRecords", () => {
       totalWorkMins: 1020,
       normalWorkMins: 960,
       paidLeaveDays: 0,
+      baselineDays: 2,
     });
   });
 

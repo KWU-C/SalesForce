@@ -25,6 +25,8 @@ export interface AttendanceRow {
   /** 期間内の有給取得日数(全休=1、半休=0.5)。労働日数の右に「(-1)」の形で添えて、
    * 基準の労働日数との差の理由が分かるようにする(ユーザー確定、2026-11-01) */
   paidLeaveDays: number;
+  /** 期間内のfreee所定労働日数(会社カレンダー基準)。取得できない時はnull */
+  baselineDays: number | null;
   /** 残業平均時間 = overtimeHours / workDays */
   overtimeAvgPerDay: number;
 }
@@ -36,6 +38,8 @@ export interface AttendanceSectionData {
   targetRight: AttendanceRow[];
   /** 時短・事務をまとめた下段セクション */
   lower: AttendanceRow[];
+  /** 基準の労働日数(freeeの所定労働日数)。従業員ごとの値で最も多いもの。取得できない時はnull */
+  baselineDays: number | null;
 }
 
 function normalizeName(name: string): string {
@@ -63,6 +67,8 @@ export interface WorkRecordInput {
   normalWorkMins: number;
   /** 期間内の有給取得日数(全休=1、半休=0.5) */
   paidLeaveDays: number;
+  /** 期間内のfreee所定労働日数。取得できない時はnull */
+  baselineDays: number | null;
 }
 
 /** workDaysが0(当月まだ勤怠実績が無い等)の場合はnull(0除算・無意味な平均値を作らない) */
@@ -75,6 +81,7 @@ export function buildAttendanceRow(input: WorkRecordInput): AttendanceRow | null
     totalWorkHours: input.totalWorkMins / 60,
     workDays: input.workDays,
     paidLeaveDays: input.paidLeaveDays,
+    baselineDays: input.baselineDays,
     overtimeAvgPerDay: overtimeHours / input.workDays,
   };
 }
@@ -93,6 +100,8 @@ export interface DailyWorkRecord {
   leaveDays: number;
   /** うち有給の日数(全休=1、半休=0.5) */
   paidLeaveDays: number;
+  /** freeeの会社カレンダー上の所定労働日か(day_pattern=normal_day) */
+  prescribedWorkDay: boolean;
   /** 半休・時間休として取得した分(分) */
   partialLeaveMins: number;
 }
@@ -132,6 +141,7 @@ export function summarizeDailyWorkRecords(
   let totalWorkMins = 0;
   let overtimeMins = 0;
   let paidLeaveDays = 0;
+  let baselineDays = 0;
   for (const record of records) {
     if (record.date < range.start || record.date > range.end) continue;
     const worked = record.actualWorkMins > 0;
@@ -140,8 +150,38 @@ export function summarizeDailyWorkRecords(
     totalWorkMins += record.actualWorkMins + (fullLeave ? standardMins : 0) + record.partialLeaveMins;
     overtimeMins += record.overtimeMins;
     paidLeaveDays += record.paidLeaveDays;
+    if (record.prescribedWorkDay) baselineDays += 1;
   }
-  return { name, workDays, totalWorkMins, normalWorkMins: totalWorkMins - overtimeMins, paidLeaveDays };
+  return {
+    name,
+    workDays,
+    totalWorkMins,
+    normalWorkMins: totalWorkMins - overtimeMins,
+    paidLeaveDays,
+    baselineDays,
+  };
+}
+
+/**
+ * 表の見出しに出す基準の労働日数。会社カレンダーは全員共通だが、入社・締め日違い等で
+ * 個人の値がずれることがあるため、最も多い値(同数なら大きい方)を採る。
+ */
+function mostCommonBaselineDays(rows: AttendanceRow[]): number | null {
+  const counts = new Map<number, number>();
+  for (const row of rows) {
+    if (row.baselineDays !== null && row.baselineDays > 0) {
+      counts.set(row.baselineDays, (counts.get(row.baselineDays) ?? 0) + 1);
+    }
+  }
+  let best: number | null = null;
+  let bestCount = 0;
+  for (const [days, count] of counts) {
+    if (count > bestCount || (count === bestCount && best !== null && days > best)) {
+      best = days;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
 /**
@@ -163,7 +203,7 @@ export function buildAttendanceSection(
   const targetLeft = sortedDesc.slice(0, mid);
   const targetRight = sortedDesc.slice(mid).reverse();
 
-  return { targetLeft, targetRight, lower: lowerRows };
+  return { targetLeft, targetRight, lower: lowerRows, baselineDays: mostCommonBaselineDays([...targetRows, ...lowerRows]) };
 }
 
 /** 残業平均時間(時間/日)を赤文字にするしきい値(ユーザー確定、2026-09-19: 2.50h以上) */

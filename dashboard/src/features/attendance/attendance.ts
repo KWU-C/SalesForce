@@ -22,6 +22,9 @@ export interface AttendanceRow {
   /** 総勤務時間(h) */
   totalWorkHours: number;
   workDays: number;
+  /** 期間内の有給取得日数(全休=1、半休=0.5)。労働日数の右に「(-1)」の形で添えて、
+   * 基準の労働日数との差の理由が分かるようにする(ユーザー確定、2026-11-01) */
+  paidLeaveDays: number;
   /** 残業平均時間 = overtimeHours / workDays */
   overtimeAvgPerDay: number;
 }
@@ -58,6 +61,8 @@ export interface WorkRecordInput {
   workDays: number;
   totalWorkMins: number;
   normalWorkMins: number;
+  /** 期間内の有給取得日数(全休=1、半休=0.5) */
+  paidLeaveDays: number;
 }
 
 /** workDaysが0(当月まだ勤怠実績が無い等)の場合はnull(0除算・無意味な平均値を作らない) */
@@ -69,6 +74,7 @@ export function buildAttendanceRow(input: WorkRecordInput): AttendanceRow | null
     overtimeHours,
     totalWorkHours: input.totalWorkMins / 60,
     workDays: input.workDays,
+    paidLeaveDays: input.paidLeaveDays,
     overtimeAvgPerDay: overtimeHours / input.workDays,
   };
 }
@@ -85,6 +91,8 @@ export interface DailyWorkRecord {
   actualWorkMins: number;
   /** 全休(有給・特別休暇)の日数。全休=1、半休=0.5 */
   leaveDays: number;
+  /** うち有給の日数(全休=1、半休=0.5) */
+  paidLeaveDays: number;
   /** 半休・時間休として取得した分(分) */
   partialLeaveMins: number;
 }
@@ -123,6 +131,7 @@ export function summarizeDailyWorkRecords(
   let workDays = 0;
   let totalWorkMins = 0;
   let overtimeMins = 0;
+  let paidLeaveDays = 0;
   for (const record of records) {
     if (record.date < range.start || record.date > range.end) continue;
     const worked = record.actualWorkMins > 0;
@@ -130,8 +139,9 @@ export function summarizeDailyWorkRecords(
     workDays += worked || fullLeave ? 1 : record.leaveDays;
     totalWorkMins += record.actualWorkMins + (fullLeave ? standardMins : 0) + record.partialLeaveMins;
     overtimeMins += record.overtimeMins;
+    paidLeaveDays += record.paidLeaveDays;
   }
-  return { name, workDays, totalWorkMins, normalWorkMins: totalWorkMins - overtimeMins };
+  return { name, workDays, totalWorkMins, normalWorkMins: totalWorkMins - overtimeMins, paidLeaveDays };
 }
 
 /**

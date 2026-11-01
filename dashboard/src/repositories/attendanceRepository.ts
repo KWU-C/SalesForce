@@ -45,6 +45,7 @@ function toDailyWorkRecord(record: FreeeWorkRecord): DailyWorkRecord {
     overtimeMins: record.total_overtime_work_mins ?? 0,
     actualWorkMins: workedMins > 0 ? workedMins - spanMins(record.break_records) : 0,
     leaveDays: (record.paid_holiday ?? 0) + (record.special_holiday ?? 0),
+    paidLeaveDays: record.paid_holiday ?? 0,
     partialLeaveMins:
       (record.half_paid_holiday_mins ?? 0) +
       (record.hourly_paid_holiday_mins ?? 0) +
@@ -94,12 +95,16 @@ async function getWorkRecordInput(
     const records = await getDailyWorkRecords(employee.id, companyId, range);
     return summarizeDailyWorkRecords(employee.display_name, records, range);
   }
-  const summary = await getWorkRecordSummary(employee.id, companyId, period.year, period.month);
+  // 有給取得日数は月次サマリに無いため、日次の勤怠も含めて取得して合算する
+  const summary = await getWorkRecordSummary(employee.id, companyId, period.year, period.month, {
+    includeWorkRecords: true,
+  });
   return {
     name: employee.display_name,
     workDays: summary.work_days,
     totalWorkMins: summary.total_work_mins,
     normalWorkMins: summary.total_normal_work_mins,
+    paidLeaveDays: (summary.work_records ?? []).reduce((sum, r) => sum + (r.paid_holiday ?? 0), 0),
   };
 }
 

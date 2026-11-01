@@ -43,7 +43,7 @@ function AttendanceTable({
           <thead>
             <tr className="border-b border-[var(--gridline)] bg-[var(--surface-sunken)] text-left text-xs font-medium text-[var(--text-muted)]">
               <th className="px-3 py-2">氏名</th>
-              <th className="px-3 py-2 text-right">残業平均時間</th>
+              <th className="px-3 py-2 text-right md:whitespace-nowrap">残業平均時間</th>
               <th className="px-3 py-2 text-right">総勤務</th>
               <th className="whitespace-nowrap px-3 py-2 text-right">
                 労働日数{baselineDays !== null && <span className="font-normal">（基準{baselineDays}日）</span>}

@@ -18,57 +18,87 @@ function statusColor(rate: number): string | undefined {
   return undefined;
 }
 
-function CrCells({ col, highlightBg }: { col: CrossCrColumn; highlightBg: string }) {
-  return (
-    <>
-      <td className="border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right text-[var(--text-secondary)]">
-        {formatThousandYen(col.targetGrossProfit)}
-      </td>
-      <td className="border-l border-[var(--gridline)] px-2 py-1.5 text-right text-[var(--text-primary)]">
-        {col.orderGrossProfit === null ? "—" : formatThousandYen(col.orderGrossProfit)}
-      </td>
-      <td
-        className={`px-2 py-1.5 text-right font-semibold ${highlightBg}`}
-        style={col.orderMonthlyRate === null ? undefined : { color: statusColor(col.orderMonthlyRate) }}
-      >
-        {col.orderMonthlyRate === null ? "—" : formatPercent2(col.orderMonthlyRate)}
-      </td>
-      <td
-        className="px-2 py-1.5 text-right"
-        style={
-          col.orderCumulativeRate === null ? undefined : { color: statusColor(col.orderCumulativeRate) }
-        }
-      >
-        {col.orderCumulativeRate === null ? "—" : formatPercentInt(col.orderCumulativeRate)}
-      </td>
-      <td className="border-l border-[var(--gridline)] px-2 py-1.5 text-right text-[var(--text-primary)]">
-        {col.completedGrossProfit === null ? "—" : formatThousandYen(col.completedGrossProfit)}
-      </td>
-      <td
-        className={`px-2 py-1.5 text-right font-semibold ${highlightBg}`}
-        style={
-          col.completedMonthlyRate === null ? undefined : { color: statusColor(col.completedMonthlyRate) }
-        }
-      >
-        {col.completedMonthlyRate === null ? "—" : formatPercent2(col.completedMonthlyRate)}
-      </td>
-      <td
-        className="px-2 py-1.5 text-right"
-        style={
-          col.completedCumulativeRate === null
-            ? undefined
-            : { color: statusColor(col.completedCumulativeRate) }
-        }
-      >
-        {col.completedCumulativeRate === null ? "—" : formatPercentInt(col.completedCumulativeRate)}
-      </td>
-    </>
-  );
+type Series = "target" | "order" | "completed";
+
+interface MetricRow {
+  key: string;
+  label: string;
+  series: Series;
+  /** 達成率(当月)行。クリーム色で強調する */
+  highlight?: boolean;
+  /** 受注・完了ブロックの先頭行。上に区切り線を入れる */
+  blockStart?: boolean;
+  render: (col: CrossCrColumn) => { text: string; color?: string };
 }
 
+function amount(v: number | null) {
+  return { text: v === null ? "—" : formatThousandYen(v) };
+}
+
+function monthlyRate(v: number | null) {
+  return v === null ? { text: "—" } : { text: formatPercent2(v), color: statusColor(v) };
+}
+
+function cumulativeRate(v: number | null) {
+  return v === null ? { text: "—" } : { text: formatPercentInt(v), color: statusColor(v) };
+}
+
+const METRIC_ROWS: MetricRow[] = [
+  { key: "target", label: "目標", series: "target", render: (c) => amount(c.targetGrossProfit) },
+  {
+    key: "order",
+    label: "受注",
+    series: "order",
+    blockStart: true,
+    render: (c) => amount(c.orderGrossProfit),
+  },
+  {
+    key: "orderMonthlyRate",
+    label: "受注 達成率",
+    series: "order",
+    highlight: true,
+    render: (c) => monthlyRate(c.orderMonthlyRate),
+  },
+  {
+    key: "orderCumulativeRate",
+    label: "受注 累計",
+    series: "order",
+    render: (c) => cumulativeRate(c.orderCumulativeRate),
+  },
+  {
+    key: "completed",
+    label: "完了",
+    series: "completed",
+    blockStart: true,
+    render: (c) => amount(c.completedGrossProfit),
+  },
+  {
+    key: "completedMonthlyRate",
+    label: "完了 達成率",
+    series: "completed",
+    highlight: true,
+    render: (c) => monthlyRate(c.completedMonthlyRate),
+  },
+  {
+    key: "completedCumulativeRate",
+    label: "完了 累計",
+    series: "completed",
+    render: (c) => cumulativeRate(c.completedCumulativeRate),
+  },
+];
+
+const SERIES_LABEL_COLOR: Record<Series, string> = {
+  target: "text-[var(--text-secondary)]",
+  order: "text-[var(--series-1)]",
+  completed: "text-[var(--series-2)]",
+};
+
+const HIGHLIGHT_BG = "bg-[#fdf3d0]";
+
 /**
- * CR1・CR2・CR3を横方向に並べたCR横断進捗表。上部のCRタブ(全社/CR1/CR2/CR3)の
- * 選択状態には連動しない（常にCR1〜CR3を横断して1枚だけ表示する）。
+ * CR1・CR2・CR3(50期以降はCR4まで)を縦方向に並べたCR横断進捗表。
+ * 縦軸=CR×項目(目標/受注/達成率/累計/完了/達成率/累計)、横軸=月(9月〜8月)+合計。
+ * 上部のCRタブ(全社/CR1/CR2/CR3)の選択状態には連動しない（常にCR横断で1枚だけ表示する）。
  * データはprogressByCrをそのまま渡し、表専用のSalesforce取得・集計は行わない
  * （features/sales-progress/crossCrProgress.tsで既存のsummarizePeriodを再利用）。
  */
@@ -85,72 +115,90 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
       <div className="overflow-x-auto">
         <table className="text-sm tabular-nums">
           <thead>
-            <tr>
-              <th
-                rowSpan={2}
-                className="sticky left-0 z-10 bg-[var(--surface-1)] px-3 py-1.5 text-left font-normal text-[var(--text-muted)]"
-              >
-                月
+            <tr className="text-xs text-[var(--text-muted)]">
+              <th className="sticky left-0 z-10 bg-[var(--surface-1)] px-3 py-1.5 text-left font-normal">
+                CR
               </th>
-              {crossCrList.map((cr) => (
+              <th className="sticky left-[3.5rem] z-10 bg-[var(--surface-1)] px-3 py-1.5 text-left font-normal">
+                項目
+              </th>
+              {monthRows.map((row) => (
                 <th
-                  key={cr.id}
-                  colSpan={7}
-                  className="border-l-2 border-[var(--baseline)] px-2 py-1.5 text-center font-medium text-[var(--text-secondary)]"
+                  key={row.month}
+                  className={`px-2 py-1.5 text-right font-medium ${
+                    row.isCurrentMonth ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
+                  }`}
                 >
-                  {cr.label}
+                  {row.month}月
                 </th>
               ))}
-            </tr>
-            <tr className="text-xs text-[var(--text-muted)]">
-              {crossCrList.map((cr) => (
-                <Fragment key={cr.id}>
-                  <th className="border-l-2 border-[var(--baseline)] px-2 py-1 text-right font-normal">
-                    目標
-                  </th>
-                  <th className="border-l border-[var(--gridline)] px-2 py-1 text-right font-normal text-[var(--series-1)]">
-                    受注
-                  </th>
-                  <th className="px-2 py-1 text-right font-semibold text-[var(--series-1)]">達成率</th>
-                  <th className="px-2 py-1 text-right font-normal text-[var(--series-1)]">累計</th>
-                  <th className="border-l border-[var(--gridline)] px-2 py-1 text-right font-normal text-[var(--series-2)]">
-                    完了
-                  </th>
-                  <th className="px-2 py-1 text-right font-semibold text-[var(--series-2)]">達成率</th>
-                  <th className="px-2 py-1 text-right font-normal text-[var(--series-2)]">累計</th>
-                </Fragment>
-              ))}
+              <th className="border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right font-medium text-[var(--text-secondary)]">
+                合計
+              </th>
             </tr>
           </thead>
           <tbody>
-            {monthRows.map((row, i) => {
-              const zebra = i % 2 === 0;
-              const rowBg = zebra ? "bg-[var(--gridline)]/50" : "";
-              const stickyBg = zebra ? "bg-[var(--gridline)]/50" : "bg-[var(--surface-1)]";
-              // 帯色のある行(9月/11月/...)は少し濃いめ、白地の行(10月/12月/...)は薄めのクリーム色(達成率列)
-              const highlightBg = zebra ? "bg-[#ece2bf]" : "bg-[#fdf3d0]";
-
+            {crossCrList.map((cr, crIndex) => {
+              const groupBg = crIndex % 2 === 0 ? "bg-[var(--gridline)]/50" : "";
+              const stickyBg = "bg-[var(--surface-1)]";
               return (
-                <tr key={row.month} className={`border-t border-[var(--gridline)] ${rowBg}`}>
-                  <td
-                    className={`sticky left-0 z-10 px-3 py-1.5 text-left font-medium text-[var(--text-primary)] ${stickyBg}`}
-                  >
-                    {row.month}月
-                  </td>
-                  {row.columns.map((col) => (
-                    <CrCells key={col.crId} col={col} highlightBg={highlightBg} />
-                  ))}
-                </tr>
+                <Fragment key={cr.id}>
+                  {METRIC_ROWS.map((metric, metricIndex) => {
+                    const rowBorder =
+                      metricIndex === 0
+                        ? "border-t-2 border-[var(--baseline)]"
+                        : metric.blockStart
+                          ? "border-t border-[var(--gridline)]"
+                          : "";
+                    const cellBg = metric.highlight ? HIGHLIGHT_BG : "";
+                    const cellWeight = metric.highlight ? "font-semibold" : "";
+                    const totalCol = totalRow[crIndex];
+                    const total = metric.render(totalCol);
+                    return (
+                      <tr key={metric.key} className={`${rowBorder} ${groupBg}`}>
+                        {metricIndex === 0 && (
+                          <td
+                            rowSpan={METRIC_ROWS.length}
+                            className={`sticky left-0 z-10 w-[3.5rem] min-w-[3.5rem] px-3 py-1.5 align-top font-medium text-[var(--text-primary)] ${stickyBg}`}
+                          >
+                            {cr.label}
+                          </td>
+                        )}
+                        <td
+                          className={`sticky left-[3.5rem] z-10 whitespace-nowrap px-3 py-1.5 text-left text-xs ${
+                            metric.highlight ? "font-semibold" : ""
+                          } ${SERIES_LABEL_COLOR[metric.series]} ${stickyBg}`}
+                        >
+                          {metric.label}
+                        </td>
+                        {monthRows.map((row) => {
+                          const v = metric.render(row.columns[crIndex]);
+                          return (
+                            <td
+                              key={row.month}
+                              className={`px-2 py-1.5 text-right ${cellBg} ${cellWeight} ${
+                                metric.series === "target" ? "text-[var(--text-secondary)]" : ""
+                              }`}
+                              style={v.color ? { color: v.color } : undefined}
+                            >
+                              {v.text}
+                            </td>
+                          );
+                        })}
+                        <td
+                          className={`border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right font-medium ${
+                            metric.series === "target" ? "text-[var(--text-secondary)]" : ""
+                          }`}
+                          style={total.color ? { color: total.color } : undefined}
+                        >
+                          {total.text}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
               );
             })}
-            <tr className="border-t-2 border-[var(--baseline)] bg-[var(--gridline)]/50 font-medium">
-              <td className="sticky left-0 z-10 bg-[var(--gridline)]/50 px-3 py-1.5 text-left text-[var(--text-primary)]">
-                合計
-              </td>
-              {totalRow.map((col) => (
-                <CrCells key={col.crId} col={col} highlightBg="bg-[#ece2bf]" />
-              ))}
-            </tr>
           </tbody>
         </table>
       </div>

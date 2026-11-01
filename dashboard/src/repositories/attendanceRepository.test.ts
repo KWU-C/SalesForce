@@ -106,7 +106,7 @@ describe("getAttendanceSection", () => {
     expect(getWorkRecordSummaryMock).toHaveBeenCalledWith(6, 1, 2026, 9, { includeWorkRecords: true });
     expect(getWorkRecordSummaryMock).toHaveBeenCalledWith(6, 1, 2026, 10, { includeWorkRecords: true });
     expect(result!.targetLeft).toEqual([
-      { name: "対象 五郎", overtimeHours: 1, totalWorkHours: 17, workDays: 2, paidLeaveDays: 0, baselineDays: 2, overtimeAvgPerDay: 0.5 },
+      { name: "対象 五郎", overtimeHours: 1, totalWorkHours: 17, workDays: 2, takenLeaveDays: 0, baselineDays: 2, overtimeAvgPerDay: 0.5 },
     ]);
   });
 

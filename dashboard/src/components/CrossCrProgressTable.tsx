@@ -7,7 +7,7 @@ import {
 } from "@/features/sales-progress/crossCrProgress";
 import { formatThousandYen } from "@/utils/format";
 
-/** この表の%は小数点以下を切り捨てて整数で出す(達成率・累計とも、ユーザー確定2026-11-01)。
+/** 累計%は小数点以下を切り捨てて整数で出す(ユーザー確定2026-11-01)。
  * マイナスは0側へ切り捨てる(-3.4%→-3%) */
 function truncPercent(rate: number): number {
   return Math.trunc(rate) || 0; // -0を0にする
@@ -15,6 +15,12 @@ function truncPercent(rate: number): number {
 
 function formatPercentTrunc(rate: number): string {
   return `${truncPercent(rate)}%`;
+}
+
+/** 当月達成率は小数第1位まで(第2位以下切り捨て、例: 229.10%→229.1%、3.00%→3.0%、ユーザー確定2026-11-01)。
+ * 浮動小数の誤差(2.3*10=22.999…)で1つ下がらないよう、一度小数第6位で丸めてから切り捨てる */
+function truncPercent1(rate: number): number {
+  return Math.trunc(Number((rate * 10).toFixed(6))) / 10 || 0;
 }
 
 interface CrossCrProgressTableProps {
@@ -49,8 +55,10 @@ function amount(v: number | null) {
 }
 
 function monthlyRate(v: number | null) {
-  // 赤字判定も表示値(切り捨て後)に揃える(99.6%→99%は赤)
-  return v === null ? { text: "—" } : { text: formatPercentTrunc(v), color: statusColor(truncPercent(v)) };
+  // 赤字判定も表示値(切り捨て後)に揃える
+  if (v === null) return { text: "—" };
+  const shown = truncPercent1(v);
+  return { text: `${shown.toFixed(1)}%`, color: statusColor(shown) };
 }
 
 

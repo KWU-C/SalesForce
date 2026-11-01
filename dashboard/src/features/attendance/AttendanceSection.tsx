@@ -14,8 +14,14 @@ function formatDays(days: number): string {
   return String(Number(days.toFixed(1)));
 }
 
-/** 休暇取得日数を「(-2)」「(-0.5)」の形にする。0日なら表示しない */
-function formatTakenLeave(days: number): string | null {
+/**
+ * 基準日数(所定労働日数)に足りない日数を「(-2)」「(-0.5)」の形にする。
+ * 労働日数+不足日数=基準日数になる(ユーザー確定、2026-11-01: 基準19日で17日の人は(-2))。
+ * 基準以上・基準が取れない時は表示しない
+ */
+function formatShortfall(baselineDays: number | null, workDays: number): string | null {
+  if (baselineDays === null) return null;
+  const days = baselineDays - workDays;
   if (days <= 0) return null;
   return `(-${formatDays(days)})`;
 }
@@ -66,9 +72,9 @@ function AttendanceTable({
                     {formatHours(row.totalWorkHours)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right text-[var(--text-secondary)]">
-                    {formatDays(row.workDays - row.takenLeaveDays)}日
+                    {formatDays(row.workDays)}日
                     <span className="ml-1 inline-block min-w-[3.5em] text-left text-xs text-[var(--text-muted)]">
-                      {formatTakenLeave(row.takenLeaveDays)}
+                      {formatShortfall(baselineDays, row.workDays)}
                     </span>
                   </td>
                 </tr>
@@ -108,7 +114,7 @@ export function AttendanceSection({ data, period }: { data: AttendanceSectionDat
         <div>
           <h2 className="text-base font-semibold text-[var(--text-primary)]">勤怠状況（{period.title}）</h2>
           <p className="text-xs text-[var(--text-muted)]">
-            {period.rangeLabel}のfreee人事労務実績。残業平均時間＝時間外(総勤務−所定内)÷労働日数。労働日数は出勤日数、( )は有給などの休暇取得日数で、合計が基準(freeeの会社カレンダーの所定労働日数、土日祝・会社所定休日を除く)になる。
+            {period.rangeLabel}のfreee人事労務実績。残業平均時間＝時間外(総勤務−所定内)÷労働日数。労働日数の( )は基準(freeeの会社カレンダーの所定労働日数、土日祝・会社所定休日を除く)に足りない日数。
           </p>
         </div>
         <AttendancePeriodSelector

@@ -5,7 +5,7 @@ import {
   getCrossCrList,
   type CrossCrColumn,
 } from "@/features/sales-progress/crossCrProgress";
-import { formatPercent2, formatPercentInt, formatThousandYen } from "@/utils/format";
+import { formatPercentInt, formatThousandYen } from "@/utils/format";
 
 interface CrossCrProgressTableProps {
   progressByCr: CrProgress[];
@@ -39,7 +39,8 @@ function amount(v: number | null) {
 }
 
 function monthlyRate(v: number | null) {
-  return v === null ? { text: "—" } : { text: formatPercent2(v), color: statusColor(v) };
+  // 小数点以下は四捨五入(ユーザー確定2026-11-01)。赤字判定も表示値に揃える(99.6%→100%は赤にしない)
+  return v === null ? { text: "—" } : { text: formatPercentInt(v), color: statusColor(Math.round(v)) };
 }
 
 

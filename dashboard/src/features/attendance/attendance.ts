@@ -22,9 +22,10 @@ export interface AttendanceRow {
   /** 総勤務時間(h) */
   totalWorkHours: number;
   workDays: number;
-  /** 期間内の有給取得日数(全休=1、半休=0.5)。労働日数の右に「(-1)」の形で添えて、
-   * 基準の労働日数との差の理由が分かるようにする(ユーザー確定、2026-11-01) */
-  paidLeaveDays: number;
+  /** 期間内の休暇取得日数(有給・特別休暇、全休=1、半休=0.5)。画面の労働日数は
+   * 出勤日数(workDays − takenLeaveDays)を出し、右に「(-2)」の形で添えて、
+   * 出勤日数+休暇=基準の所定労働日数(過去28日間なら19日)になるようにする(ユーザー確定、2026-11-01) */
+  takenLeaveDays: number;
   /** 期間内のfreee所定労働日数(会社カレンダー基準)。取得できない時はnull */
   baselineDays: number | null;
   /** 残業平均時間 = overtimeHours / workDays */
@@ -65,8 +66,8 @@ export interface WorkRecordInput {
   workDays: number;
   totalWorkMins: number;
   normalWorkMins: number;
-  /** 期間内の有給取得日数(全休=1、半休=0.5) */
-  paidLeaveDays: number;
+  /** 期間内の休暇取得日数(有給・特別休暇、全休=1、半休=0.5) */
+  takenLeaveDays: number;
   /** 期間内のfreee所定労働日数。取得できない時はnull */
   baselineDays: number | null;
 }
@@ -80,7 +81,7 @@ export function buildAttendanceRow(input: WorkRecordInput): AttendanceRow | null
     overtimeHours,
     totalWorkHours: input.totalWorkMins / 60,
     workDays: input.workDays,
-    paidLeaveDays: input.paidLeaveDays,
+    takenLeaveDays: input.takenLeaveDays,
     baselineDays: input.baselineDays,
     overtimeAvgPerDay: overtimeHours / input.workDays,
   };
@@ -98,8 +99,6 @@ export interface DailyWorkRecord {
   actualWorkMins: number;
   /** 全休(有給・特別休暇)の日数。全休=1、半休=0.5 */
   leaveDays: number;
-  /** うち有給の日数(全休=1、半休=0.5) */
-  paidLeaveDays: number;
   /** freeeの会社カレンダー上の所定労働日か(day_pattern=normal_day) */
   prescribedWorkDay: boolean;
   /** 半休・時間休として取得した分(分) */
@@ -140,7 +139,7 @@ export function summarizeDailyWorkRecords(
   let workDays = 0;
   let totalWorkMins = 0;
   let overtimeMins = 0;
-  let paidLeaveDays = 0;
+  let takenLeaveDays = 0;
   let baselineDays = 0;
   for (const record of records) {
     if (record.date < range.start || record.date > range.end) continue;
@@ -149,7 +148,7 @@ export function summarizeDailyWorkRecords(
     workDays += worked || fullLeave ? 1 : record.leaveDays;
     totalWorkMins += record.actualWorkMins + (fullLeave ? standardMins : 0) + record.partialLeaveMins;
     overtimeMins += record.overtimeMins;
-    paidLeaveDays += record.paidLeaveDays;
+    takenLeaveDays += record.leaveDays;
     if (record.prescribedWorkDay) baselineDays += 1;
   }
   return {
@@ -157,7 +156,7 @@ export function summarizeDailyWorkRecords(
     workDays,
     totalWorkMins,
     normalWorkMins: totalWorkMins - overtimeMins,
-    paidLeaveDays,
+    takenLeaveDays,
     baselineDays,
   };
 }

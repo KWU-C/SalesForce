@@ -93,7 +93,16 @@ const SERIES_LABEL_COLOR: Record<Series, string> = {
   completed: "text-[var(--series-2)]",
 };
 
-const HIGHLIGHT_BG = "bg-[#fdf3d0]";
+/**
+ * 色の付け方は縦横入れ替え前の表を踏襲する。月ごとにベース色(帯)を入れる/入れないを交互にし、
+ * 達成率の行はクリーム色の帯を横断して敷く。帯色のある月(9月/11月/...)は濃いめ、
+ * 白地の月(10月/12月/...)は薄めのクリーム色。合計列は帯色あり扱い。
+ */
+const MONTH_BAND_BG = "bg-[var(--gridline)]/50";
+function cellBackground(banded: boolean, highlight: boolean | undefined): string {
+  if (highlight) return banded ? "bg-[#ece2bf]" : "bg-[#fdf3d0]";
+  return banded ? MONTH_BAND_BG : "";
+}
 
 /**
  * CR1・CR2・CR3(50期以降はCR4まで)を縦方向に並べたCR横断進捗表。
@@ -122,24 +131,23 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
               <th className="sticky left-[3.5rem] z-10 bg-[var(--surface-1)] px-3 py-1.5 text-left font-normal">
                 項目
               </th>
-              {monthRows.map((row) => (
+              {monthRows.map((row, monthIndex) => (
                 <th
                   key={row.month}
-                  className={`px-2 py-1.5 text-right font-medium ${
+                  className={`px-2 py-1.5 text-right font-medium ${monthIndex % 2 === 0 ? MONTH_BAND_BG : ""} ${
                     row.isCurrentMonth ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
                   }`}
                 >
                   {row.month}月
                 </th>
               ))}
-              <th className="border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right font-medium text-[var(--text-secondary)]">
+              <th className={`border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right font-medium text-[var(--text-secondary)] ${MONTH_BAND_BG}`}>
                 合計
               </th>
             </tr>
           </thead>
           <tbody>
             {crossCrList.map((cr, crIndex) => {
-              const groupBg = crIndex % 2 === 0 ? "bg-[var(--gridline)]/50" : "";
               const stickyBg = "bg-[var(--surface-1)]";
               return (
                 <Fragment key={cr.id}>
@@ -150,12 +158,11 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                         : metric.blockStart
                           ? "border-t border-[var(--gridline)]"
                           : "";
-                    const cellBg = metric.highlight ? HIGHLIGHT_BG : "";
                     const cellWeight = metric.highlight ? "font-semibold" : "";
                     const totalCol = totalRow[crIndex];
                     const total = metric.render(totalCol);
                     return (
-                      <tr key={metric.key} className={`${rowBorder} ${groupBg}`}>
+                      <tr key={metric.key} className={rowBorder}>
                         {metricIndex === 0 && (
                           <td
                             rowSpan={METRIC_ROWS.length}
@@ -171,7 +178,8 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                         >
                           {metric.label}
                         </td>
-                        {monthRows.map((row) => {
+                        {monthRows.map((row, monthIndex) => {
+                          const cellBg = cellBackground(monthIndex % 2 === 0, metric.highlight);
                           const v = metric.render(row.columns[crIndex]);
                           return (
                             <td
@@ -186,7 +194,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           );
                         })}
                         <td
-                          className={`border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right font-medium ${
+                          className={`border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right font-medium ${cellBackground(true, metric.highlight)} ${
                             metric.series === "target" ? "text-[var(--text-secondary)]" : ""
                           }`}
                           style={total.color ? { color: total.color } : undefined}

@@ -180,6 +180,8 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                     const cellWeight = metric.highlight ? "font-semibold" : "";
                     // 受注・完了行は天地130%(py-1.5の行≒32pxに対し≒42px)
                     const cellPy = metric.highlight ? "py-[11px]" : "py-1.5";
+                    // 達成率の数字はひとまわり小さく(ユーザー確定2026-11-01)
+                    const cellSize = metric.cumulative ? "text-xs" : "";
                     const totalCol = totalRow[crIndex];
                     const total = metric.render(totalCol);
                     return (
@@ -208,7 +210,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           return (
                             <td
                               key={row.month}
-                              className={`px-2 ${cellPy} text-right ${cellBg} ${cellWeight} ${
+                              className={`px-2 ${cellPy} text-right ${cellSize} ${cellBg} ${cellWeight} ${
                                 metric.series === "target" ? "text-[var(--text-secondary)]" : ""
                               }`}
                               style={v.color ? { color: v.color } : undefined}
@@ -219,7 +221,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           );
                         })}
                         <td
-                          className={`border-l-2 border-[var(--baseline)] px-2 ${cellPy} text-right ${metric.highlight ? "font-semibold" : "font-medium"} ${cellBackground(true, metric.highlight)} ${
+                          className={`border-l-2 border-[var(--baseline)] px-2 ${cellPy} text-right ${cellSize} ${metric.highlight ? "font-semibold" : "font-medium"} ${cellBackground(true, metric.highlight)} ${
                             metric.series === "target" ? "text-[var(--text-secondary)]" : ""
                           }`}
                           style={total.color ? { color: total.color } : undefined}

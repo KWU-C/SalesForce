@@ -53,7 +53,7 @@ const METRIC_ROWS: MetricRow[] = [
   },
   {
     key: "orderMonthlyRate",
-    label: "受注 達成率",
+    label: "達成率",
     series: "order",
     highlight: true,
     render: (c) => monthlyRate(c.orderMonthlyRate),
@@ -68,7 +68,7 @@ const METRIC_ROWS: MetricRow[] = [
   },
   {
     key: "completedMonthlyRate",
-    label: "完了 達成率",
+    label: "達成率",
     series: "completed",
     highlight: true,
     render: (c) => monthlyRate(c.completedMonthlyRate),
@@ -172,7 +172,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                         )}
                         <td
                           className={`sticky left-[3.5rem] z-10 whitespace-nowrap px-3 py-1.5 text-left text-xs ${
-                            metric.highlight ? "font-semibold" : ""
+                            metric.blockStart ? "font-semibold" : "font-normal"
                           } ${SERIES_LABEL_COLOR[metric.series]} ${stickyBg}`}
                         >
                           {metric.label}

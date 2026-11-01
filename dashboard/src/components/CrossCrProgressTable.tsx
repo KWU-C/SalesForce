@@ -5,7 +5,17 @@ import {
   getCrossCrList,
   type CrossCrColumn,
 } from "@/features/sales-progress/crossCrProgress";
-import { formatPercentInt, formatThousandYen } from "@/utils/format";
+import { formatThousandYen } from "@/utils/format";
+
+/** この表の%は小数点以下を切り捨てて整数で出す(達成率・累計とも、ユーザー確定2026-11-01)。
+ * マイナスは0側へ切り捨てる(-3.4%→-3%) */
+function truncPercent(rate: number): number {
+  return Math.trunc(rate) || 0; // -0を0にする
+}
+
+function formatPercentTrunc(rate: number): string {
+  return `${truncPercent(rate)}%`;
+}
 
 interface CrossCrProgressTableProps {
   progressByCr: CrProgress[];
@@ -39,8 +49,8 @@ function amount(v: number | null) {
 }
 
 function monthlyRate(v: number | null) {
-  // 小数点以下は四捨五入(ユーザー確定2026-11-01)。赤字判定も表示値に揃える(99.6%→100%は赤にしない)
-  return v === null ? { text: "—" } : { text: formatPercentInt(v), color: statusColor(Math.round(v)) };
+  // 赤字判定も表示値(切り捨て後)に揃える(99.6%→99%は赤)
+  return v === null ? { text: "—" } : { text: formatPercentTrunc(v), color: statusColor(truncPercent(v)) };
 }
 
 
@@ -94,7 +104,7 @@ const SERIES_LABEL_COLOR: Record<Series, string> = {
 function CumulativeNote({ value }: { value: number | null }) {
   return (
     <div className="text-[10px] font-normal leading-tight text-[var(--text-secondary)]">
-      {value === null ? "—" : formatPercentInt(value)}
+      {value === null ? "—" : formatPercentTrunc(value)}
     </div>
   );
 }

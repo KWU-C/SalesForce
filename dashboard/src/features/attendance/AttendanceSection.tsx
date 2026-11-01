@@ -16,7 +16,15 @@ function formatPaidLeave(days: number): string | null {
   return `(-${Number(days.toFixed(1))})`;
 }
 
-function AttendanceTable({ title, rows }: { title: string; rows: AttendanceRow[] }) {
+function AttendanceTable({
+  title,
+  rows,
+  baselineDays,
+}: {
+  title: string;
+  rows: AttendanceRow[];
+  baselineDays: number | null;
+}) {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="text-xs font-medium text-[var(--text-muted)]">{title}</h3>
@@ -27,7 +35,9 @@ function AttendanceTable({ title, rows }: { title: string; rows: AttendanceRow[]
               <th className="px-3 py-2">氏名</th>
               <th className="px-3 py-2 text-right">残業平均時間</th>
               <th className="px-3 py-2 text-right">総勤務</th>
-              <th className="px-3 py-2 text-right">労働日数</th>
+              <th className="whitespace-nowrap px-3 py-2 text-right">
+                労働日数{baselineDays !== null && <span className="font-normal">（基準{baselineDays}日）</span>}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -94,7 +104,7 @@ export function AttendanceSection({ data, period }: { data: AttendanceSectionDat
         <div>
           <h2 className="text-base font-semibold text-[var(--text-primary)]">勤怠状況（{period.title}）</h2>
           <p className="text-xs text-[var(--text-muted)]">
-            {period.rangeLabel}のfreee人事労務実績。残業平均時間＝時間外(総勤務−所定内)÷労働日数。労働日数の( )は有給取得日数。
+            {period.rangeLabel}のfreee人事労務実績。残業平均時間＝時間外(総勤務−所定内)÷労働日数。労働日数の( )は有給取得日数、基準はfreeeの会社カレンダーの所定労働日数(土日祝・会社所定休日を除く)。
           </p>
         </div>
         <AttendancePeriodSelector
@@ -104,10 +114,10 @@ export function AttendanceSection({ data, period }: { data: AttendanceSectionDat
         />
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <AttendanceTable title="残業平均時間が多い順" rows={data.targetLeft} />
-        <AttendanceTable title="残業平均時間が少ない順" rows={data.targetRight} />
+        <AttendanceTable title="残業平均時間が多い順" rows={data.targetLeft} baselineDays={data.baselineDays} />
+        <AttendanceTable title="残業平均時間が少ない順" rows={data.targetRight} baselineDays={data.baselineDays} />
       </div>
-      <AttendanceTable title="時短・事務" rows={data.lower} />
+      <AttendanceTable title="時短・事務" rows={data.lower} baselineDays={data.baselineDays} />
     </div>
   );
 }

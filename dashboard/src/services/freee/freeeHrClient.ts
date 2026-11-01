@@ -34,6 +34,9 @@ export interface FreeeWorkRecord {
   total_overtime_work_mins: number;
   /** 有給取得日数(全休=1、半休=0.5) */
   paid_holiday: number | null;
+  /** 勤務パターン(normal_day=所定労働日、prescribed_holiday=所定休日、legal_holiday=法定休日)。
+   * freeeの会社カレンダー(土日祝以外の所定休日の設定を含む)が反映される(公式スキーマで確認、2026-11-01) */
+  day_pattern?: "normal_day" | "prescribed_holiday" | "legal_holiday" | null;
   special_holiday: number | null;
   half_paid_holiday_mins: number | null;
   hourly_paid_holiday_mins: number | null;

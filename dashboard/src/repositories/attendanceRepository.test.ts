@@ -80,6 +80,7 @@ describe("getAttendanceSection", () => {
       normal_work_mins: 480,
       total_overtime_work_mins: overtime,
       paid_holiday: 0,
+      day_pattern: "normal_day" as const,
       special_holiday: 0,
       half_paid_holiday_mins: 0,
       hourly_paid_holiday_mins: 0,
@@ -105,7 +106,7 @@ describe("getAttendanceSection", () => {
     expect(getWorkRecordSummaryMock).toHaveBeenCalledWith(6, 1, 2026, 9, { includeWorkRecords: true });
     expect(getWorkRecordSummaryMock).toHaveBeenCalledWith(6, 1, 2026, 10, { includeWorkRecords: true });
     expect(result!.targetLeft).toEqual([
-      { name: "対象 五郎", overtimeHours: 1, totalWorkHours: 17, workDays: 2, paidLeaveDays: 0, overtimeAvgPerDay: 0.5 },
+      { name: "対象 五郎", overtimeHours: 1, totalWorkHours: 17, workDays: 2, paidLeaveDays: 0, baselineDays: 2, overtimeAvgPerDay: 0.5 },
     ]);
   });
 
@@ -116,7 +117,7 @@ describe("getAttendanceSection", () => {
 
     const result = await getAttendanceSection();
 
-    expect(result).toEqual({ targetLeft: [], targetRight: [], lower: [] });
+    expect(result).toEqual({ targetLeft: [], targetRight: [], lower: [], baselineDays: null });
   });
 
   it("returns null without leaking error details when getHrEmployees itself fails", async () => {

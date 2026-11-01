@@ -29,6 +29,8 @@ interface MetricRow {
   /** 受注・完了ブロックの先頭行。上に区切り線を入れる */
   blockStart?: boolean;
   render: (col: CrossCrColumn) => { text: string; color?: string };
+  /** 達成率セル内に小さくグレーで添える累計(%)。「累計 19%」の形で出す */
+  cumulative?: (col: CrossCrColumn) => number | null;
 }
 
 function amount(v: number | null) {
@@ -39,9 +41,6 @@ function monthlyRate(v: number | null) {
   return v === null ? { text: "—" } : { text: formatPercent2(v), color: statusColor(v) };
 }
 
-function cumulativeRate(v: number | null) {
-  return v === null ? { text: "—" } : { text: formatPercentInt(v), color: statusColor(v) };
-}
 
 const METRIC_ROWS: MetricRow[] = [
   { key: "target", label: "目標", series: "target", render: (c) => amount(c.targetGrossProfit) },
@@ -58,12 +57,7 @@ const METRIC_ROWS: MetricRow[] = [
     series: "order",
     highlight: true,
     render: (c) => monthlyRate(c.orderMonthlyRate),
-  },
-  {
-    key: "orderCumulativeRate",
-    label: "受注 累計",
-    series: "order",
-    render: (c) => cumulativeRate(c.orderCumulativeRate),
+    cumulative: (c) => c.orderCumulativeRate,
   },
   {
     key: "completed",
@@ -78,12 +72,7 @@ const METRIC_ROWS: MetricRow[] = [
     series: "completed",
     highlight: true,
     render: (c) => monthlyRate(c.completedMonthlyRate),
-  },
-  {
-    key: "completedCumulativeRate",
-    label: "完了 累計",
-    series: "completed",
-    render: (c) => cumulativeRate(c.completedCumulativeRate),
+    cumulative: (c) => c.completedCumulativeRate,
   },
 ];
 
@@ -98,6 +87,15 @@ const SERIES_LABEL_COLOR: Record<Series, string> = {
  * 達成率の行はクリーム色の帯を横断して敷く。帯色のある月(9月/11月/...)は濃いめ、
  * 白地の月(10月/12月/...)は薄めのクリーム色。合計列は帯色あり扱い。
  */
+/** 達成率セル内の累計表示(小さい文字・グレー、ユーザー確定2026-11-01) */
+function CumulativeNote({ value }: { value: number | null }) {
+  return (
+    <div className="text-[10px] font-normal leading-tight text-[var(--text-muted)]">
+      累計 {value === null ? "—" : formatPercentInt(value)}
+    </div>
+  );
+}
+
 const MONTH_BAND_BG = "bg-[var(--gridline)]/50";
 function cellBackground(banded: boolean, highlight: boolean | undefined): string {
   if (highlight) return banded ? "bg-[#ece2bf]" : "bg-[#fdf3d0]";
@@ -106,7 +104,7 @@ function cellBackground(banded: boolean, highlight: boolean | undefined): string
 
 /**
  * CR1・CR2・CR3(50期以降はCR4まで)を縦方向に並べたCR横断進捗表。
- * 縦軸=CR×項目(目標/受注/達成率/累計/完了/達成率/累計)、横軸=月(9月〜8月)+合計。
+ * 縦軸=CR×項目(目標/受注/達成率(累計を内包)/完了/達成率(累計を内包))、横軸=月(9月〜8月)+合計。
  * 上部のCRタブ(全社/CR1/CR2/CR3)の選択状態には連動しない（常にCR横断で1枚だけ表示する）。
  * データはprogressByCrをそのまま渡し、表専用のSalesforce取得・集計は行わない
  * （features/sales-progress/crossCrProgress.tsで既存のsummarizePeriodを再利用）。
@@ -156,7 +154,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                       metricIndex === 0
                         ? "border-t-2 border-[var(--baseline)]"
                         : metric.blockStart
-                          ? "border-t border-[var(--gridline)]"
+                          ? "border-t border-[var(--baseline)]"
                           : "";
                     const cellWeight = metric.highlight ? "font-semibold" : "";
                     const totalCol = totalRow[crIndex];
@@ -190,6 +188,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                               style={v.color ? { color: v.color } : undefined}
                             >
                               {v.text}
+                              {metric.cumulative && <CumulativeNote value={metric.cumulative(row.columns[crIndex])} />}
                             </td>
                           );
                         })}
@@ -200,6 +199,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           style={total.color ? { color: total.color } : undefined}
                         >
                           {total.text}
+                          {metric.cumulative && <CumulativeNote value={metric.cumulative(totalCol)} />}
                         </td>
                       </tr>
                     );

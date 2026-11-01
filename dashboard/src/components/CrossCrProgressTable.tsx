@@ -24,7 +24,8 @@ interface MetricRow {
   key: string;
   label: string;
   series: Series;
-  /** 達成率(当月)行。クリーム色で強調する */
+  /** 受注・完了(金額)行。クリーム色の帯・太字・天地130%で強調する
+   * (ユーザー確定2026-11-01: 以前は達成率行を強調していたが入れ替え) */
   highlight?: boolean;
   /** 受注・完了ブロックの先頭行。上に区切り線を入れる */
   blockStart?: boolean;
@@ -47,6 +48,7 @@ const METRIC_ROWS: MetricRow[] = [
   {
     key: "order",
     label: "受注",
+    highlight: true,
     series: "order",
     blockStart: true,
     render: (c) => amount(c.orderGrossProfit),
@@ -55,13 +57,13 @@ const METRIC_ROWS: MetricRow[] = [
     key: "orderMonthlyRate",
     label: "達成率",
     series: "order",
-    highlight: true,
     render: (c) => monthlyRate(c.orderMonthlyRate),
     cumulative: (c) => c.orderCumulativeRate,
   },
   {
     key: "completed",
     label: "完了",
+    highlight: true,
     series: "completed",
     blockStart: true,
     render: (c) => amount(c.completedGrossProfit),
@@ -70,7 +72,6 @@ const METRIC_ROWS: MetricRow[] = [
     key: "completedMonthlyRate",
     label: "達成率",
     series: "completed",
-    highlight: true,
     render: (c) => monthlyRate(c.completedMonthlyRate),
     cumulative: (c) => c.completedCumulativeRate,
   },
@@ -84,7 +85,7 @@ const SERIES_LABEL_COLOR: Record<Series, string> = {
 
 /**
  * 色の付け方は縦横入れ替え前の表を踏襲する。月ごとにベース色(帯)を入れる/入れないを交互にし、
- * 達成率の行はクリーム色の帯を横断して敷く。帯色のある月(9月/11月/...)は濃いめ、
+ * 受注・完了の行はクリーム色の帯を横断して敷く。帯色のある月(9月/11月/...)は濃いめ、
  * 白地の月(10月/12月/...)は薄めのクリーム色。合計列は帯色あり扱い。
  */
 /** 達成率セル内の累計表示(小さい文字・グレー、数字のみ。「累計」の見出しは項目列に1回だけ出す。
@@ -158,6 +159,8 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           ? "border-t border-[var(--baseline)]"
                           : "";
                     const cellWeight = metric.highlight ? "font-semibold" : "";
+                    // 受注・完了行は天地130%(py-1.5の行≒32pxに対し≒42px)
+                    const cellPy = metric.highlight ? "py-[11px]" : "py-1.5";
                     const totalCol = totalRow[crIndex];
                     const total = metric.render(totalCol);
                     return (
@@ -171,7 +174,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           </td>
                         )}
                         <td
-                          className={`sticky left-[3.5rem] z-10 whitespace-nowrap px-3 py-1.5 text-left text-xs ${
+                          className={`sticky left-[3.5rem] z-10 whitespace-nowrap px-3 ${cellPy} text-left text-xs ${
                             metric.blockStart ? "font-semibold" : "font-normal"
                           } ${SERIES_LABEL_COLOR[metric.series]} ${stickyBg}`}
                         >
@@ -186,7 +189,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           return (
                             <td
                               key={row.month}
-                              className={`px-2 py-1.5 text-right ${cellBg} ${cellWeight} ${
+                              className={`px-2 ${cellPy} text-right ${cellBg} ${cellWeight} ${
                                 metric.series === "target" ? "text-[var(--text-secondary)]" : ""
                               }`}
                               style={v.color ? { color: v.color } : undefined}
@@ -197,7 +200,7 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           );
                         })}
                         <td
-                          className={`border-l-2 border-[var(--baseline)] px-2 py-1.5 text-right font-medium ${cellBackground(true, metric.highlight)} ${
+                          className={`border-l-2 border-[var(--baseline)] px-2 ${cellPy} text-right ${metric.highlight ? "font-semibold" : "font-medium"} ${cellBackground(true, metric.highlight)} ${
                             metric.series === "target" ? "text-[var(--text-secondary)]" : ""
                           }`}
                           style={total.color ? { color: total.color } : undefined}

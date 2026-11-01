@@ -87,11 +87,12 @@ const SERIES_LABEL_COLOR: Record<Series, string> = {
  * 達成率の行はクリーム色の帯を横断して敷く。帯色のある月(9月/11月/...)は濃いめ、
  * 白地の月(10月/12月/...)は薄めのクリーム色。合計列は帯色あり扱い。
  */
-/** 達成率セル内の累計表示(小さい文字・グレー、ユーザー確定2026-11-01) */
+/** 達成率セル内の累計表示(小さい文字・グレー、数字のみ。「累計」の見出しは項目列に1回だけ出す。
+ * design_sample.jpgに合わせる、ユーザー確定2026-11-01) */
 function CumulativeNote({ value }: { value: number | null }) {
   return (
-    <div className="text-[10px] font-normal leading-tight text-[var(--text-muted)]">
-      累計 {value === null ? "—" : formatPercentInt(value)}
+    <div className="text-[10px] font-normal leading-tight text-[var(--text-secondary)]">
+      {value === null ? "—" : formatPercentInt(value)}
     </div>
   );
 }
@@ -175,6 +176,9 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           } ${SERIES_LABEL_COLOR[metric.series]} ${stickyBg}`}
                         >
                           {metric.label}
+                          {metric.cumulative && (
+                            <div className="text-[10px] font-normal leading-tight">累計</div>
+                          )}
                         </td>
                         {monthRows.map((row, monthIndex) => {
                           const cellBg = cellBackground(monthIndex % 2 === 0, metric.highlight);

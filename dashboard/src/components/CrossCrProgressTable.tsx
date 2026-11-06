@@ -104,7 +104,7 @@ const SERIES_LABEL_COLOR: Record<Series, string> = {
 
 /**
  * 色の付け方は縦横入れ替え前の表を踏襲する。月ごとにベース色(帯)を入れる/入れないを交互にし、
- * 受注・完了の行はクリーム色の帯を横断して敷く。帯色のある月(9月/11月/...)は濃いめ、
+ * 達成率(累計)の行はクリーム色の帯を横断して敷く(2026-11-06 デザイン検証)。帯色のある月(9月/11月/...)は濃いめ、
  * 白地の月(10月/12月/...)は薄めのクリーム色。合計列は帯色あり扱い。
  */
 /** 達成率セル内の累計表示(小さい文字・グレー、数字のみ。「累計」の見出しは項目列に1回だけ出す。
@@ -118,8 +118,8 @@ function CumulativeNote({ value }: { value: number | null }) {
 }
 
 const MONTH_BAND_BG = "bg-[var(--gridline)]/50";
-function cellBackground(banded: boolean, highlight: boolean | undefined): string {
-  if (highlight) return banded ? "bg-[#ece2bf]" : "bg-[#fdf3d0]";
+function cellBackground(banded: boolean, cream: boolean): string {
+  if (cream) return banded ? "bg-[#ece2bf]" : "bg-[#fdf3d0]";
   return banded ? MONTH_BAND_BG : "";
 }
 
@@ -177,11 +177,13 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                         : metric.blockStart
                           ? "border-t border-[var(--baseline)]"
                           : "";
-                    const cellWeight = metric.highlight ? "font-semibold" : "";
+                    // デザイン検証(2026-11-06): 受注・完了の数字は目標と同じスタイル、
+                    // 達成率の数字はひとまわり大きく太字、クリーム色の帯は達成率・累計の行へ
+                    const cellWeight = metric.cumulative ? "font-semibold" : "";
+                    const mutedNumber = metric.series === "target" || metric.highlight;
+                    const creamBand = Boolean(metric.cumulative);
                     // 受注・完了行は天地130%(py-1.5の行≒32pxに対し≒42px)
                     const cellPy = metric.highlight ? "py-[11px]" : "py-1.5";
-                    // 達成率の数字はひとまわり小さく(ユーザー確定2026-11-01)
-                    const cellSize = metric.cumulative ? "text-xs" : "";
                     const totalCol = totalRow[crIndex];
                     const total = metric.render(totalCol);
                     return (
@@ -205,13 +207,13 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           )}
                         </td>
                         {monthRows.map((row, monthIndex) => {
-                          const cellBg = cellBackground(monthIndex % 2 === 0, metric.highlight);
+                          const cellBg = cellBackground(monthIndex % 2 === 0, creamBand);
                           const v = metric.render(row.columns[crIndex]);
                           return (
                             <td
                               key={row.month}
-                              className={`px-2 ${cellPy} text-right ${cellSize} ${cellBg} ${cellWeight} ${
-                                metric.series === "target" ? "text-[var(--text-secondary)]" : ""
+                              className={`px-2 ${cellPy} text-right ${cellBg} ${cellWeight} ${
+                                mutedNumber ? "text-[var(--text-secondary)]" : ""
                               }`}
                               style={v.color ? { color: v.color } : undefined}
                             >
@@ -221,8 +223,8 @@ export function CrossCrProgressTable({ progressByCr, currentMonth, term }: Cross
                           );
                         })}
                         <td
-                          className={`border-l-2 border-[var(--baseline)] px-2 ${cellPy} text-right ${cellSize} ${metric.highlight ? "font-semibold" : "font-medium"} ${cellBackground(true, metric.highlight)} ${
-                            metric.series === "target" ? "text-[var(--text-secondary)]" : ""
+                          className={`border-l-2 border-[var(--baseline)] px-2 ${cellPy} text-right ${metric.cumulative ? "font-semibold" : "font-medium"} ${cellBackground(true, creamBand)} ${
+                            mutedNumber ? "text-[var(--text-secondary)]" : ""
                           }`}
                           style={total.color ? { color: total.color } : undefined}
                         >

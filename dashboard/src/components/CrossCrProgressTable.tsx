@@ -30,7 +30,8 @@ interface CrossCrProgressTableProps {
 }
 
 function statusColor(rate: number): string | undefined {
-  if (rate < 100) return "var(--status-serious)";
+  // 80%以上は黒文字(ユーザー確定2026-11-06、以前は100%未満を赤)
+  if (rate < 80) return "var(--status-serious)";
   return undefined;
 }
 

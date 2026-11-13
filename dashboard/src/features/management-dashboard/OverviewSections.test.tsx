@@ -108,10 +108,11 @@ describe("収支予定", () => {
     );
     expect(screen.getByText("¥1,000")).toBeTruthy();
     expect(screen.getByText("¥1,100")).toBeTruthy();
-    expect(screen.getByText("¥200")).toBeTruthy();
+    expect(screen.getByText("うち担保控除額（予定に記載の額） ¥200")).toBeTruthy();
     expect(screen.getByText("2026/10/14時点・経理の資金繰り予定")).toBeTruthy();
     expect(screen.getAllByText("未算出")).toHaveLength(2);
-    expect(screen.getByText("登録された予定なし")).toBeTruthy();
+    expect(screen.getByText(/登録された予定なし/)).toBeTruthy();
+    expect(screen.getByText("2026年12月末（予定）")).toBeTruthy();
     expect(screen.getByText(/freeeが算出した予測ではありません/)).toBeTruthy();
   });
 });

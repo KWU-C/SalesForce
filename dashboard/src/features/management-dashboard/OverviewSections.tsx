@@ -172,6 +172,24 @@ export function PerformanceSummaryBand({
 // ---------------------------------------------------------------------------
 // 収支予定
 
+function PlanRow({ label, note, value, empty }: { label: string; note?: string; value: string; empty: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1">
+      <span className="text-sm text-[var(--text-secondary)]">
+        {label}
+        {note && <span className="block text-xs text-[var(--text-muted)]">{note}</span>}
+      </span>
+      <span
+        className={`whitespace-nowrap text-xl font-semibold tabular-nums ${
+          empty ? "text-[var(--text-muted)]" : "text-[var(--text-primary)]"
+        }`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function planAmount(value: number | null | undefined): string {
   return value === null || value === undefined ? "記載なし" : signedYen(value);
 }
@@ -188,9 +206,7 @@ export function CashPlanOutlook({
   outlook: { target: TargetMonth; plan: CashPlan | null }[];
   failed: boolean;
 }) {
-  const label = (t: TargetMonth) => `${t.calendarYear}年${t.month}月末`;
-  const TH = "px-3 py-2 text-right font-medium whitespace-nowrap";
-  const TD = "px-3 py-2 text-right tabular-nums whitespace-nowrap";
+  const label = (t: TargetMonth) => `${t.calendarYear}年${t.month}月末（予定）`;
   return (
     <div className="flex flex-col gap-2">
       <SectionBanner>収支予定</SectionBanner>
@@ -200,58 +216,31 @@ export function CashPlanOutlook({
       {failed ? (
         <p className="text-sm text-[var(--status-serious)]">資金繰り予定の読み込みに失敗しました。</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-[var(--gridline)] bg-[var(--surface-sunken)] text-xs text-[var(--text-muted)]">
-                <th className="px-3 py-2 text-left font-medium">予定</th>
-                {outlook.map(({ target }) => (
-                  <th key={target.key} className={TH}>
-                    {label(target)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-t border-[var(--gridline)]">
-                <td className="px-3 py-2 whitespace-nowrap text-[var(--text-primary)]">当座・普通預金合計</td>
-                {outlook.map(({ target, plan }) => (
-                  <td key={target.key} className={`${TD} ${plan ? "font-semibold" : "text-[var(--text-muted)]"}`}>
-                    {plan ? planAmount(plan.values.checkingSavingsTotal) : "未算出"}
-                  </td>
-                ))}
-              </tr>
-              <tr className="border-t border-[var(--gridline)]">
-                <td className="px-3 py-2 whitespace-nowrap text-[var(--text-primary)]">
-                  預金総合計（担保控除後）
-                  <span className="block text-xs text-[var(--text-muted)]">当座・普通＋定期 − 担保控除額</span>
-                </td>
-                {outlook.map(({ target, plan }) => (
-                  <td key={target.key} className={`${TD} ${plan ? "font-semibold" : "text-[var(--text-muted)]"}`}>
-                    {plan ? planAmount(plan.values.depositTotalAfterCollateral) : "未算出"}
-                  </td>
-                ))}
-              </tr>
-              <tr className="border-t border-[var(--gridline)] text-xs text-[var(--text-secondary)]">
-                <td className="px-3 py-2 whitespace-nowrap">うち担保控除額（予定に記載の額）</td>
-                {outlook.map(({ target, plan }) => (
-                  <td key={target.key} className={TD}>
-                    {plan ? planAmount(plan.values.collateralDeduction) : "―"}
-                  </td>
-                ))}
-              </tr>
-              <tr className="border-t border-[var(--gridline)] text-xs text-[var(--text-muted)]">
-                <td className="px-3 py-2 whitespace-nowrap">予定の基準日・出所</td>
-                {outlook.map(({ target, plan }) => (
-                  <td key={target.key} className="px-3 py-2 text-right whitespace-nowrap">
-                    {plan
-                      ? `${plan.values.sourceUpdatedOn ? `${plan.values.sourceUpdatedOn.replaceAll("-", "/")}時点` : "基準日なし"}・経理の資金繰り予定`
-                      : "登録された予定なし"}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {outlook.map(({ target, plan }) => (
+            <div key={target.key} className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
+              <p className="mb-2 text-xs font-medium text-[var(--text-muted)]">{label(target)}</p>
+              <PlanRow label="当座・普通預金合計" value={plan ? planAmount(plan.values.checkingSavingsTotal) : "未算出"} empty={!plan} />
+              <PlanRow
+                label="預金総合計（担保控除後）"
+                note="当座・普通＋定期 − 担保控除額"
+                value={plan ? planAmount(plan.values.depositTotalAfterCollateral) : "未算出"}
+                empty={!plan}
+              />
+              <div className="mt-2 flex flex-col gap-0.5 border-t border-[var(--gridline)] pt-2 text-xs text-[var(--text-muted)]">
+                {plan ? (
+                  <>
+                    <p>うち担保控除額（予定に記載の額） {planAmount(plan.values.collateralDeduction)}</p>
+                    <p>
+                      {plan.values.sourceUpdatedOn ? `${plan.values.sourceUpdatedOn.replaceAll("-", "/")}時点` : "基準日なし"}・経理の資金繰り予定
+                    </p>
+                  </>
+                ) : (
+                  <p>登録された予定なし（freeeの予定や現在残高からは算出していません）</p>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
       <p className="text-xs text-[var(--text-muted)]">

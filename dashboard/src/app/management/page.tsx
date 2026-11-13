@@ -37,10 +37,11 @@ import {
 import { CostStructureSection } from "@/features/management-dashboard/CostStructureSection";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
-import { CashComparison, PerformanceComparison } from "@/features/management-dashboard/OverviewComparisonSection";
+import { CashPlanOutlook, PerformanceSummaryBand } from "@/features/management-dashboard/OverviewSections";
 import {
+  nextTargetMonth,
   previousMonthInJst,
-  summarizeCurrentCash,
+  selectCashPlanOutlook,
   summarizePerformanceColumn,
   summarizePreviousMonthCash,
   targetMonth,
@@ -383,7 +384,7 @@ export default async function ManagementPage() {
     accountingReportsError && "資金繰り見通し",
   ].filter((label): label is string => typeof label === "string");
 
-  // 概要の経営サマリー・資金サマリー(実績/速報、前月末/現在)。上で読み込んだ保存済みスナップショットから組み立てる
+  // 概要の経営サマリー(実績/進捗)・資金サマリーの補足(前月末現預金)。上で読み込んだ保存済みスナップショットから組み立てる
   // (freeeの呼び出しは増やさない)
   const loadedPerformance = [...(currentPerformance ?? []), ...(previousPerformance ?? []), ...twoTermsAgoPerformance].filter(
     (p): p is MonthlyPerformanceSnapshot => p !== null
@@ -391,7 +392,7 @@ export default async function ManagementPage() {
   const lookupPerformance = (fy: number, month: number) =>
     loadedPerformance.find((p) => p.fiscalYear === fy && p.month === month) ?? null;
   const actualPerformance = summarizePerformanceColumn(previousMonthTarget, lookupPerformance, { requireMonthEnd: true });
-  const flashPerformance = summarizePerformanceColumn(targetMonth(currentTerm, currentMonth), lookupPerformance, {
+  const progressPerformance = summarizePerformanceColumn(targetMonth(currentTerm, currentMonth), lookupPerformance, {
     requireMonthEnd: false,
   });
   // 担保控除額は各時点に有効な経理の管理設定(前月末は前月末時点、現在は当月の設定)。無ければ未設定
@@ -404,8 +405,14 @@ export default async function ManagementPage() {
     ),
     now
   );
-  const currentCash = summarizeCurrentCash(currentCashFlow, collateralDeductionOf(reserveSettings));
+  // 収支予定: 当月末・翌月末の登録済みの経理の資金繰り予定(無い月は未算出)
+  const currentTarget = targetMonth(currentTerm, currentMonth);
+  const cashPlanOutlook = selectCashPlanOutlook(
+    (accountingReports?.cashPlans ?? []).map((c) => c.plan),
+    [currentTarget, nextTargetMonth(currentTarget)]
+  );
 
+  // 概要(2026-11-13、ユーザー指定の構成): 経営サマリー(実績)→経営サマリー(進捗)→資金サマリー→収支予定を縦に並べる
   const overviewTab = (
     <>
       {overviewFailures.length > 0 && (
@@ -413,27 +420,27 @@ export default async function ManagementPage() {
           {`取得に失敗した項目があります（${overviewFailures.join("・")}）。該当するタブの表示をご確認ください。`}
         </OverviewNotice>
       )}
+      <PerformanceSummaryBand
+        kind="actual"
+        column={actualPerformance}
+        failed={performanceError || twoTermsAgoPerformanceError}
+      />
       <div className="flex flex-col gap-3">
-        <PerformanceComparison
-          actual={actualPerformance}
-          flash={flashPerformance}
-          failed={performanceError || twoTermsAgoPerformanceError}
-        />
-        <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る" }]} />
+        <PerformanceSummaryBand kind="progress" column={progressPerformance} failed={performanceError} />
+        <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る（売上総利益・利益率・月次表）" }]} />
       </div>
       <div className="flex flex-col gap-3">
-        <CashComparison
-          target={previousMonthTarget}
-          previous={previousMonthCash}
-          current={currentCash}
-          currentMonthLabel={`${calendarYearForTermMonth(currentTerm, currentMonth)}年${currentMonth}月`}
-        />
         <ManagementSummary
           term={currentTerm}
           month={currentMonth}
           cashFlow={currentCashFlow}
           loanStatus={loanStatus}
           fundReserve={fundReserve}
+          previousMonthEnd={{
+            label: `前月末現預金（${previousMonthTarget.calendarYear}年${previousMonthTarget.month}月末）`,
+            cashClosing: previousMonthCash.status === "fetched" ? previousMonthCash.cashClosing : null,
+          }}
+          fetchedAt={dataUpdatedAt}
         />
         <OverviewLinks
           links={[
@@ -442,6 +449,7 @@ export default async function ManagementPage() {
           ]}
         />
       </div>
+      <CashPlanOutlook outlook={cashPlanOutlook} failed={accountingReportsError} />
     </>
   );
 

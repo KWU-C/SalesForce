@@ -34,9 +34,10 @@ function monthEndLabel(target: TargetMonth): string {
 
 function fetchedRange(from: Date | null, to: Date | null): string {
   if (from === null || to === null) return "freee取得: なし";
-  return from.getTime() === to.getTime()
-    ? `freee取得: ${formatDateTime(to)}`
-    : `freee取得: ${formatDateTime(from)}〜${formatDateTime(to)}（月により異なる）`;
+  // 表示は分単位なので、同じ分に取得した月は1つの日時として出す(同じ更新操作で月ごとに数秒ずれる)
+  const fromLabel = formatDateTime(from);
+  const toLabel = formatDateTime(to);
+  return fromLabel === toLabel ? `freee取得: ${toLabel}` : `freee取得: ${fromLabel}〜${toLabel}（月により異なる）`;
 }
 
 /**

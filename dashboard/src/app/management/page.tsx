@@ -13,7 +13,11 @@ import { FundReserveSection } from "@/features/management-dashboard/FundReserveS
 import { composeFundReserve } from "@/features/management-dashboard/fundReserve";
 import { computeOverdraftStatus } from "@/features/management-dashboard/loanStatus";
 import type { OverdraftStatus } from "@/features/management-dashboard/loanStatus";
-import { overdraftLimitTotal, selectReserveSettings } from "@/features/management-dashboard/reserveSettings";
+import {
+  collateralDeductionOf,
+  overdraftLimitTotal,
+  selectReserveSettings,
+} from "@/features/management-dashboard/reserveSettings";
 import type { ManagementReserveSettings } from "@/features/management-dashboard/reserveSettings";
 import { listManagementReserveSettings } from "@/repositories/managementReserveSettingsRepository";
 import type { FundReserve } from "@/features/management-dashboard/fundReserve";
@@ -26,7 +30,6 @@ import {
 } from "@/features/management-dashboard/monthlyPerformanceService";
 import type { MonthlyPerformanceSnapshot } from "@/features/management-dashboard/monthlyPerformance";
 import type { PerformanceMonth } from "@/features/management-dashboard/performanceView";
-import { PerformanceSummaryCards } from "@/features/management-dashboard/PerformanceSummaryCards";
 import {
   MonthlyPerformanceSection,
   latestFetchedAt,
@@ -34,17 +37,15 @@ import {
 import { CostStructureSection } from "@/features/management-dashboard/CostStructureSection";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
-import {
-  OverviewPartHeading,
-  PreviousMonthResults,
-} from "@/features/management-dashboard/PreviousMonthResultsSection";
+import { CashComparison, PerformanceComparison } from "@/features/management-dashboard/OverviewComparisonSection";
 import {
   previousMonthInJst,
+  summarizeCurrentCash,
+  summarizePerformanceColumn,
   summarizePreviousMonthCash,
-  summarizePreviousMonthPerformance,
-} from "@/features/management-dashboard/previousMonthResults";
+  targetMonth,
+} from "@/features/management-dashboard/overviewComparison";
 import {
-  CapacitySummary,
   OverviewLinks,
   OverviewNotice,
 } from "@/features/management-dashboard/ManagementOverview";
@@ -144,6 +145,8 @@ export default async function ManagementPage() {
   let loanStatus: LoanStatusSnapshot | null = null;
   let loanStatusError = false;
   let reserveSettings: ManagementReserveSettings | null = null;
+  // 全時点の管理設定(前月末の担保控除額は前月末に有効な設定を選ぶため)
+  let allReserveSettings: ManagementReserveSettings[] = [];
   let overdraft: OverdraftStatus | null = null;
   let fundReserve: FundReserve | null = null;
   let fundReserveError = false;
@@ -225,8 +228,9 @@ export default async function ManagementPage() {
       }
       // 準備額・当座貸越枠(経理の管理値)。読めなくても他の表示は止めず「データ未設定」にする
       try {
+        allReserveSettings = await listManagementReserveSettings();
         reserveSettings = selectReserveSettings(
-          await listManagementReserveSettings(),
+          allReserveSettings,
           currentFiscalYear,
           currentMonth
         );
@@ -340,7 +344,6 @@ export default async function ManagementPage() {
     }
   });
   const currentCashFlow = cashFlowByMonth[cashFlowByMonth.length - 1] ?? null;
-  const previousCashFlow = cashFlowByMonth.length > 1 ? cashFlowByMonth[cashFlowByMonth.length - 2] : null;
   // 「最終更新」表示は接続(トークン)更新時刻ではなく、当月分データが実際にfreeeから
   // 取得された時刻を示す(ユーザー確定、2026-09-18)。当月分は4スナップショットとも
   // 同じ操作(定時ジョブ/「更新」ボタン)でまとめて更新されるため、代表として
@@ -380,23 +383,28 @@ export default async function ManagementPage() {
     accountingReportsError && "資金繰り見通し",
   ].filter((label): label is string => typeof label === "string");
 
-  // 概要「前月末までの実績」。上で読み込んだ保存済みスナップショットから組み立てる(freeeの呼び出しは増やさない)
+  // 概要の経営サマリー・資金サマリー(実績/速報、前月末/現在)。上で読み込んだ保存済みスナップショットから組み立てる
+  // (freeeの呼び出しは増やさない)
   const loadedPerformance = [...(currentPerformance ?? []), ...(previousPerformance ?? []), ...twoTermsAgoPerformance].filter(
     (p): p is MonthlyPerformanceSnapshot => p !== null
   );
-  const previousMonthPerformance = summarizePreviousMonthPerformance(
-    previousMonthTarget,
-    (fy, month) => loadedPerformance.find((p) => p.fiscalYear === fy && p.month === month) ?? null
-  );
-  // 担保控除額: 資料と同じ定義(経理の管理上の控除額)の管理設定は今のところ無い。当座貸越の枠・利用額や
-  // 担保定期の残高では代用しないので、未設定(預金総合計(担保控除後)は表示しない)
+  const lookupPerformance = (fy: number, month: number) =>
+    loadedPerformance.find((p) => p.fiscalYear === fy && p.month === month) ?? null;
+  const actualPerformance = summarizePerformanceColumn(previousMonthTarget, lookupPerformance, { requireMonthEnd: true });
+  const flashPerformance = summarizePerformanceColumn(targetMonth(currentTerm, currentMonth), lookupPerformance, {
+    requireMonthEnd: false,
+  });
+  // 担保控除額は各時点に有効な経理の管理設定(前月末は前月末時点、現在は当月の設定)。無ければ未設定
   const previousMonthCash = summarizePreviousMonthCash(
     previousMonthTarget,
     cashFlowByMonth.find((c) => c?.fiscalYear === previousMonthTarget.fiscalYear && c.month === previousMonthTarget.month) ??
       null,
-    { amount: null },
+    collateralDeductionOf(
+      selectReserveSettings(allReserveSettings, previousMonthTarget.fiscalYear, previousMonthTarget.month)
+    ),
     now
   );
+  const currentCash = summarizeCurrentCash(currentCashFlow, collateralDeductionOf(reserveSettings));
 
   const overviewTab = (
     <>
@@ -405,43 +413,34 @@ export default async function ManagementPage() {
           {`取得に失敗した項目があります（${overviewFailures.join("・")}）。該当するタブの表示をご確認ください。`}
         </OverviewNotice>
       )}
-      <div className="flex flex-col gap-4">
-        <OverviewPartHeading
-          title="前月末までの実績"
-          note={`${previousMonthTarget.calendarYear}年${previousMonthTarget.month}月末まで。freeeから取得した時点の帳簿の数値で、経理の月次決算の確定は判定していません`}
+      <div className="flex flex-col gap-3">
+        <PerformanceComparison
+          actual={actualPerformance}
+          flash={flashPerformance}
+          failed={performanceError || twoTermsAgoPerformanceError}
         />
-        <PreviousMonthResults
-          performance={previousMonthPerformance}
-          performanceFailed={performanceError || twoTermsAgoPerformanceError}
-          cash={previousMonthCash}
-        />
+        <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る" }]} />
       </div>
-      <div className="flex flex-col gap-4">
-        <OverviewPartHeading
-          title="現在の状況"
-          note={`当月（${calendarYearForTermMonth(currentTerm, currentMonth)}年${currentMonth}月）途中の数値を含みます。freeeから取得した時点の値です`}
+      <div className="flex flex-col gap-3">
+        <CashComparison
+          target={previousMonthTarget}
+          previous={previousMonthCash}
+          current={currentCash}
+          currentMonthLabel={`${calendarYearForTermMonth(currentTerm, currentMonth)}年${currentMonth}月`}
         />
-        <div className="flex flex-col gap-3">
-          {performanceMonths && <PerformanceSummaryCards months={performanceMonths} currentMonth={currentMonth} />}
-          {performanceErrorNotice}
-          <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る" }]} />
-        </div>
-        <div className="flex flex-col gap-3">
-          <ManagementSummary
-            term={currentTerm}
-            month={currentMonth}
-            cashFlow={currentCashFlow}
-            loanStatus={loanStatus}
-            previousMonthCashClosing={previousCashFlow?.cashClosing ?? null}
-          />
-          <CapacitySummary fundReserve={fundReserve} />
-          <OverviewLinks
-            links={[
-              { tab: "finance", label: "財務・資金繰りを見る" },
-              { tab: "cashflow", label: "入出金明細を見る" },
-            ]}
-          />
-        </div>
+        <ManagementSummary
+          term={currentTerm}
+          month={currentMonth}
+          cashFlow={currentCashFlow}
+          loanStatus={loanStatus}
+          fundReserve={fundReserve}
+        />
+        <OverviewLinks
+          links={[
+            { tab: "finance", label: "財務・資金繰りを見る" },
+            { tab: "cashflow", label: "入出金明細を見る" },
+          ]}
+        />
       </div>
     </>
   );

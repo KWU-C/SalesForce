@@ -17,7 +17,9 @@ vi.mock("./monthlyPerformance", async (importOriginal) => {
 });
 
 const { MONTHLY_PERFORMANCE_CALCULATION_VERSION } = await import("./monthlyPerformance");
-const { getOrFetchTermPerformance, getStoredTermPerformance, refreshTermPerformance } = await import("./monthlyPerformanceService");
+const { getOrFetchClosedTermPerformance, getOrFetchTermPerformance, getStoredTermPerformance, refreshTermPerformance } = await import(
+  "./monthlyPerformanceService"
+);
 
 function perf(month: number): MonthlyPerformance {
   return { revenue: month * 100 } as MonthlyPerformance;
@@ -93,5 +95,34 @@ describe("getOrFetchTermPerformance", () => {
     getSnapshotMock.mockResolvedValue(null);
     getFreeeCompanyIdMock.mockResolvedValue(null);
     expect(await getOrFetchTermPerformance(2025, 9)).toBeNull();
+  });
+});
+
+describe("getOrFetchClosedTermPerformance(前期12か月)", () => {
+  // fiscal_year 2025 = 2025年9月〜2026年8月。8月の月末境界は 2026-09-01 0:00 JST(= 2026-08-31 15:00 UTC)
+  const now = new Date("2026-09-01T09:00:00Z");
+  const storedAt = (month: number, fetchedAt: string): MonthlyPerformanceSnapshot => ({
+    ...cached(month),
+    fetchedAt: new Date(fetchedAt),
+  });
+
+  it("月末後に保存済みの月は取り直さず、月末前に取得した8月だけ取り直す", async () => {
+    getFreeeCompanyIdMock.mockResolvedValue(1);
+    getSnapshotMock.mockImplementation(async (_fy: number, m: number) =>
+      m === 8 ? storedAt(8, "2026-08-31T09:00:00Z") : storedAt(m, "2026-08-31T09:00:00Z")
+    );
+    fetchMonthlyPerformanceMock.mockImplementation(async (_c: number, _fy: number, m: number) => perf(m));
+    const result = await getOrFetchClosedTermPerformance(2025, now);
+    expect(fetchMonthlyPerformanceMock.mock.calls.map((c) => c[2])).toEqual([8]);
+    expect(result?.length).toBe(12);
+    expect(result?.[11]?.revenue).toBe(800);
+  });
+
+  it("全月が月末後の保存なら何も取得しない。未保存の月は取得する", async () => {
+    getFreeeCompanyIdMock.mockResolvedValue(1);
+    getSnapshotMock.mockImplementation(async (_fy: number, m: number) => (m === 10 ? null : storedAt(m, "2026-09-01T09:00:00Z")));
+    fetchMonthlyPerformanceMock.mockImplementation(async (_c: number, _fy: number, m: number) => perf(m));
+    await getOrFetchClosedTermPerformance(2025, now);
+    expect(fetchMonthlyPerformanceMock.mock.calls.map((c) => c[2])).toEqual([10]);
   });
 });

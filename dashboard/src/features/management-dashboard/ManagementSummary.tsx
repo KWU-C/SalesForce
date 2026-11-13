@@ -89,7 +89,7 @@ export function ManagementSummary({
   return (
     <div className="flex flex-col gap-2">
       <SectionBanner>
-        財務・資金　{calendarYear}年{month}月
+        財務・資金　{calendarYear}年{month}月（当月・freee取得時点）
       </SectionBanner>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

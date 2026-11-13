@@ -30,6 +30,24 @@ function signedYen(v: number): string {
 }
 
 /**
+ * 範囲の定義と内訳の開閉欄(2026-11-13、閲覧構成の整理)。見出しだけで中身が分かる名前にし、初期は閉じる。
+ * 合算しない旨の注意は開閉欄の外に出したままにする。
+ */
+function DetailsBox({ summary, children }: { summary: string; children: React.ReactNode }) {
+  return (
+    <details className="group rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] text-xs text-[var(--text-secondary)]">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg p-4 font-medium text-[var(--text-secondary)] focus-visible:ring-2 focus-visible:ring-[var(--series-1)] focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+        <span>{summary}</span>
+        <span aria-hidden="true" className="shrink-0 text-[var(--text-muted)] transition-transform group-open:rotate-180">
+          ▾
+        </span>
+      </summary>
+      <div className="border-t border-[var(--gridline)] px-4 pt-3 pb-4">{children}</div>
+    </details>
+  );
+}
+
+/**
  * ③ 採算・固定費(ユーザー確定、2026-10-27)。
  * - 製造労務費・外注加工費([製]外注加工費、決算書と同じ)・[製]業務委託費(別項目)は金額と対売上比率
  * - 販管費・建物関連費用・マザー関連支出は金額と前年同期比
@@ -81,9 +99,8 @@ export function CostStructureSection({ months }: { months: PerformanceMonth[] })
     <div className="flex flex-col gap-2">
       <SectionBanner>採算・固定費</SectionBanner>
       <PerformanceTable months={months.map((m) => m.month)} rows={rows} />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4 text-xs text-[var(--text-secondary)]">
-          <p className="mb-1 font-medium text-[var(--text-muted)]">建物関連費用の範囲（当期累計の内訳）</p>
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+        <DetailsBox summary="建物関連費用の範囲と品目別内訳（当期累計）">
           <p className="mb-2 text-[var(--text-muted)]">
             {`${BUILDING_CANDIDATE_ACCOUNTS.join("・")}のうち、品目が「${BUILDING_ITEM_PREFIX}」のものだけ。[製]賃借料のリース料（複合機・PC等）や修繕費の設備保全費は含めない。`}
           </p>
@@ -102,9 +119,8 @@ export function CostStructureSection({ months }: { months: PerformanceMonth[] })
               ※ 上記の科目で品目が未選択の {signedYen(unassigned)} は、用途を識別できないため含めていません。
             </p>
           )}
-        </div>
-        <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4 text-xs text-[var(--text-secondary)]">
-          <p className="mb-1 font-medium text-[var(--text-muted)]">マザー関連支出の範囲（当期累計の内訳）</p>
+        </DetailsBox>
+        <DetailsBox summary="マザー関連支出の範囲と科目別内訳（当期累計）">
           <p className="mb-2 text-[var(--text-muted)]">
             取引先「有限会社ティーシーディマザー」の費用すべて（科目別）。マザーからの雑収入は相殺せず、営業外収益に含む。
           </p>
@@ -118,7 +134,7 @@ export function CostStructureSection({ months }: { months: PerformanceMonth[] })
               </div>
             ))
           )}
-        </div>
+        </DetailsBox>
       </div>
       <p className="text-xs text-[var(--text-muted)]">
         {"※ 建物関連費用とマザー関連支出は芦屋オフィスの地代（マザー所有）が両方に入るため、合算しないでください。費用は発生額（製造原価の分は仕掛品へ振り替わる前の額）。資産計上した建物・設備は含めない。"}

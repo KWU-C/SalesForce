@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ManagementTabLink, ManagementTabs } from "./ManagementTabs";
 import type { ManagementTab } from "./ManagementTabs";
 
-const mountCount = { performance: 0 };
+const onPerformanceMount = vi.fn();
 
 function PerformanceContent() {
-  mountCount.performance += 1;
+  useEffect(() => {
+    onPerformanceMount();
+  }, []);
   return <p>業績の中身</p>;
 }
 
@@ -44,7 +47,7 @@ describe("経営ダッシュボードのタブ", () => {
   });
   afterEach(() => {
     cleanup();
-    mountCount.performance = 0;
+    onPerformanceMount.mockClear();
   });
 
   it("初期表示は概要で、タブとパネルが aria-controls / aria-labelledby で対応している", () => {
@@ -67,7 +70,7 @@ describe("経営ダッシュボードのタブ", () => {
   it("開いていないタブの中身は描画しない(隠したままグラフを描かない)", () => {
     renderTabs();
     expect(screen.queryByText("業績の中身")).toBeNull();
-    expect(mountCount.performance).toBe(0);
+    expect(onPerformanceMount).not.toHaveBeenCalled();
   });
 
   it("クリックで切り替わり、一度開いたタブは往復しても作り直さない", () => {
@@ -78,7 +81,7 @@ describe("経営ダッシュボードのタブ", () => {
     fireEvent.click(tab("概要"));
     expect(visiblePanel()[0].textContent).toContain("概要の中身");
     fireEvent.click(tab("業績・採算"));
-    expect(mountCount.performance).toBe(1);
+    expect(onPerformanceMount).toHaveBeenCalledTimes(1);
   });
 
   it("←→・Home・End で隣のタブへ移動し、選択とフォーカスが一致する", () => {

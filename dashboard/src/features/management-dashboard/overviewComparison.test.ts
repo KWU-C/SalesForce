@@ -3,7 +3,8 @@ import type { MonthlyPerformanceSnapshot } from "./monthlyPerformance";
 import type { MonthEndCashSnapshot } from "./accountingReports";
 import {
   previousMonthInJst,
-  summarizeCurrentCash,
+  nextTargetMonth,
+  selectCashPlanOutlook,
   summarizePerformanceColumn,
   summarizePreviousMonthCash,
   targetMonth,
@@ -209,10 +210,21 @@ describe("資金の比較", () => {
     expect(summarizePreviousMonthCash(october, null, NO_COLLATERAL, now).status).toBe("notFetched");
   });
 
-  it("現在: 取得時点の値をそのまま使い、種類別の項目が欠けていれば未取得(0円とみなさない)", () => {
-    const current = { ...base, fetchedAt: new Date("2026-11-12T09:00:00Z") };
-    expect(summarizeCurrentCash(current, NO_COLLATERAL)).toMatchObject({ status: "fetched", checkingSavings: 1_000 });
-    expect(summarizeCurrentCash({ ...current, cashOnHandClosing: null }, NO_COLLATERAL).status).toBe("notFetched");
-    expect(summarizeCurrentCash(null, NO_COLLATERAL).status).toBe("notFetched");
+});
+
+describe("収支予定の対象月", () => {
+  it("翌月は期をまたぐと次期の9月、年をまたぐと翌年1月", () => {
+    expect(nextTargetMonth(targetMonth(50, 11))).toMatchObject({ term: 50, month: 12, key: "2026-12" });
+    expect(nextTargetMonth(targetMonth(50, 12))).toMatchObject({ term: 50, month: 1, key: "2027-01" });
+    expect(nextTargetMonth(targetMonth(50, 8))).toMatchObject({ term: 51, month: 9, key: "2027-09" });
+  });
+
+  it("登録済みの資金繰り予定がある月だけ対応させ、無い月はnull(他の月の予定や残高で埋めない)", () => {
+    const plan = (targetMonth: string) => ({ targetMonth }) as unknown as import("./accountingReports").CashPlan;
+    const result = selectCashPlanOutlook([plan("2026-10"), plan("2026-11")], [targetMonth(50, 11), targetMonth(50, 12)]);
+    expect(result.map((r) => [r.target.key, r.plan?.targetMonth ?? null])).toEqual([
+      ["2026-11", "2026-11"],
+      ["2026-12", null],
+    ]);
   });
 });

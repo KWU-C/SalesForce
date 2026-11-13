@@ -1,5 +1,5 @@
 import { calendarYearForTermMonth } from "@/config/fiscalPeriods";
-import { formatManYen, formatManYenSigned } from "@/utils/format";
+import { formatDateTime, formatManYen, formatManYenSigned } from "@/utils/format";
 import { SectionBanner } from "./SectionBanner";
 import type { MonthlyCashFlow } from "./types";
 import type { LoanStatus } from "./loanStatus";
@@ -12,6 +12,10 @@ interface ManagementSummaryProps {
   loanStatus: LoanStatus | null;
   /** 資金余力は資金の備えと同じ composeFundReserve の結果(capacity.capacity)をそのまま表示する */
   fundReserve: FundReserve | null;
+  /** 補足: 前月末の現預金(月末後に取得した月次資金収支の月末現預金)。無ければnull(未取得) */
+  previousMonthEnd: { label: string; cashClosing: number | null };
+  /** 当月の月次資金収支の取得日時 */
+  fetchedAt: Date | null;
 }
 
 function Row({
@@ -19,13 +23,15 @@ function Row({
   value,
   signed = false,
   bold = false,
+  emptyLabel = "データ未設定",
 }: {
   label: string;
   value: number | null;
   signed?: boolean;
   bold?: boolean;
+  emptyLabel?: string;
 }) {
-  const formatted = value === null ? "データ未設定" : signed ? formatManYenSigned(value) : formatManYen(value);
+  const formatted = value === null ? emptyLabel : signed ? formatManYenSigned(value) : formatManYen(value);
   return (
     <div className="flex items-center justify-between gap-3 py-1 text-sm">
       <span className={bold ? "font-medium text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}>
@@ -59,15 +65,24 @@ function SummaryBox({ title, children }: { title: string; children: React.ReactN
 }
 
 /**
- * 現在の資金収支・借入・資金余力(概要の補助情報、2026-11-13に整理)。いずれも当月・freee取得時点の値で、
- * 下の詳細タブ(入出金明細・財務・資金繰り)と同じデータ・同じ計算関数の結果をそのまま使い、ここでは別計算しない
- * (実質借入残高 = 借入残高 − 月末現預金 のみ、従来どおりここで求める)。
- * 月末現預金と先月の残高は、概要の資金サマリー(前月末実績/現在の比較)へ移した。
+ * 資金サマリー(概要、2026-11-13にユーザー指定の構成へ整理)。取得時点の資金状態を4枠にまとめる:
+ * 現預金残高(取得時点、補足に前月末現預金)/今月の資金収支/借入状況/資金余力。
+ * いずれも詳細タブ(入出金明細・財務・資金繰り)と同じデータ・同じ計算関数の結果をそのまま使い、ここでは別計算しない
+ * (実質借入残高 = 借入残高 − 現預金残高 のみ、従来どおりここで求める)。
+ * 当月途中の残高を「月末現預金」とは呼ばない(月末の見通しと誤解されるため)。
  * 各ボックスは「タイトル→項目名+大きい文字の数字→hr→小さい文字で補足情報」(ユーザー確定、2026-09-16)。
  */
-export function ManagementSummary({ term, month, cashFlow, loanStatus, fundReserve }: ManagementSummaryProps) {
+export function ManagementSummary({
+  term,
+  month,
+  cashFlow,
+  loanStatus,
+  fundReserve,
+  previousMonthEnd,
+  fetchedAt,
+}: ManagementSummaryProps) {
   const calendarYear = calendarYearForTermMonth(term, month);
-  // 実質借入残高 = 借入残高 − 月末現預金(資金の備えの「ネットキャッシュ」の符号違い)。現預金の方が多い場合はマイナス
+  // 実質借入残高 = 借入残高 − 現預金残高(資金の備えの「ネットキャッシュ」の符号違い)。現預金の方が多い場合はマイナス
   const loanTotal = loanStatus?.totalCurrent ?? null;
   const cashClosing = cashFlow?.cashClosing ?? null;
   const netDebt = loanTotal === null || cashClosing === null ? null : loanTotal - cashClosing;
@@ -75,11 +90,20 @@ export function ManagementSummary({ term, month, cashFlow, loanStatus, fundReser
 
   return (
     <div className="flex flex-col gap-2">
-      <SectionBanner>
-        現在の資金収支・借入・資金余力　{calendarYear}年{month}月（当月途中・freee取得時点）
-      </SectionBanner>
+      <SectionBanner>資金サマリー</SectionBanner>
+      <p className="text-xs text-[var(--text-secondary)]">
+        {calendarYear}年{month}月・当月途中の取得時点の値{fetchedAt ? `／freee取得: ${formatDateTime(fetchedAt)}` : ""}
+        <span className="text-[var(--text-muted)]">（月末の見通しではありません）</span>
+      </p>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <SummaryBox title="手元資金">
+          <BigRow label="現預金残高（取得時点）" value={cashClosing} />
+          <div className="mt-3 border-t border-[var(--gridline)] pt-2">
+            <Row label={previousMonthEnd.label} value={previousMonthEnd.cashClosing} emptyLabel="未取得" />
+          </div>
+        </SummaryBox>
+
         <SummaryBox title="今月の資金収支">
           <BigRow label="当月現金増減" value={cashFlow?.cashChange ?? null} signed />
           <div className="mt-3 border-t border-[var(--gridline)] pt-2">

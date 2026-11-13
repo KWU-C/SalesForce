@@ -6,18 +6,17 @@ import {
   previousFiscalTermMonth,
 } from "@/config/fiscalPeriods";
 import { actualKindsDifference, monthEndBoundary, resolveCashPlanActual } from "./accountingReports";
-import type { MonthEndCashSnapshot } from "./accountingReports";
+import type { CashPlan, MonthEndCashSnapshot } from "./accountingReports";
 import type { MonthlyPerformanceSnapshot } from "./monthlyPerformance";
 import type { CollateralDeductionSetting } from "./reserveSettings";
 
 /**
- * 概要の経営サマリー・資金サマリー(2026-11-13)。「前月末までの実績」と「現在の速報」を同じ指標・同じ形で
- * 並べるための集計。保存済みのfreeeスナップショットから組み立て、freeeは呼ばない。どちらも取得時点の
+ * 概要の経営サマリー(実績/進捗)・資金サマリー・収支予定(2026-11-13)の集計。保存済みのfreeeスナップショットから組み立て、freeeは呼ばない。どちらも取得時点の
  * freee帳簿の数値で、月次決算の確定は判定しない。
  *
  * - 実績: 日本時間の前月までの期首(9月)からの累計と、前月末の残高。月末前に取得したスナップショットは
  *   その月の月末実績ではないので欠けとして扱う(資金は資金繰り見通しと同じ resolveCashPlanActual で判定)
- * - 速報: 当月を含む期首からの累計と、当月のスナップショットの残高(取得時点)
+ * - 進捗: 当月を含む期首からの累計(freeeに登録済みの当月日付の取引を含む途中の値。予測ではない)
  * - 累計は単月値の合計。1か月でも欠けていれば出さない(0円とみなさない)
  * - 担保控除額は経理の管理値(managementReserveSettings.collateralDeduction)。無ければ担保控除後は未設定
  */
@@ -186,26 +185,21 @@ export function summarizePreviousMonthCash(
   return fetchedColumn({ ...actual, fetchedAt: new Date(actual.fetchedAt) }, collateral);
 }
 
-/** 当月のスナップショットの残高(取得時点。月末見通しではない)。種類別の項目が欠けていれば未取得 */
-export function summarizeCurrentCash(snapshot: MonthEndCashSnapshot | null, collateral: CollateralDeductionSetting): CashColumn {
-  const s = snapshot;
-  if (
-    s === null ||
-    s.cashClosing === null ||
-    s.checkingSavingsClosing == null ||
-    s.timeDepositClosing == null ||
-    s.cashOnHandClosing == null
-  ) {
-    return { status: "notFetched", collateral };
-  }
-  return fetchedColumn(
-    {
-      checkingSavings: s.checkingSavingsClosing,
-      timeDeposit: s.timeDepositClosing,
-      cashOnHand: s.cashOnHandClosing,
-      cashClosing: s.cashClosing,
-      fetchedAt: s.fetchedAt,
-    },
-    collateral
-  );
+/** 翌月(期をまたぐ場合は次期の9月) */
+export function nextTargetMonth(target: TargetMonth): TargetMonth {
+  const index = FISCAL_MONTH_ORDER.indexOf(target.month);
+  return index === FISCAL_MONTH_ORDER.length - 1
+    ? targetMonth(target.term + 1, FISCAL_MONTH_ORDER[0])
+    : targetMonth(target.term, FISCAL_MONTH_ORDER[index + 1]);
+}
+
+/**
+ * 収支予定: 指定した月末ごとに、登録済みの経理の資金繰り予定(cashPlanForecasts)を対応させる。登録が無い月は
+ * plan=null(未算出)。現在残高・前月末残高やfreeeの予定からの推計で埋めない。
+ */
+export function selectCashPlanOutlook(
+  plans: readonly CashPlan[],
+  months: readonly TargetMonth[]
+): { target: TargetMonth; plan: CashPlan | null }[] {
+  return months.map((target) => ({ target, plan: plans.find((p) => p.targetMonth === target.key) ?? null }));
 }

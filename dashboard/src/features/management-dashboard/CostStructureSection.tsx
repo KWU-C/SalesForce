@@ -38,7 +38,7 @@ function DetailsBox({ summary, children }: { summary: string; children: React.Re
     <details className="group rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] text-xs text-[var(--text-secondary)]">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg p-4 font-medium text-[var(--text-secondary)] focus-visible:ring-2 focus-visible:ring-[var(--series-1)] focus-visible:outline-none [&::-webkit-details-marker]:hidden">
         <span>{summary}</span>
-        <span aria-hidden="true" className="shrink-0 text-[var(--text-muted)] transition-transform group-open:rotate-180">
+        <span aria-hidden="true" className="shrink-0 text-base leading-none text-[var(--text-muted)] transition-transform group-open:rotate-180">
           ▾
         </span>
       </summary>

@@ -30,7 +30,7 @@ function Row({
       <span className={bold ? "font-medium text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}>
         {label}
       </span>
-      <span className={`tabular-nums ${bold ? "font-semibold text-[var(--text-primary)]" : "text-[var(--text-primary)]"}`}>
+      <span className={`whitespace-nowrap tabular-nums ${bold ? "font-semibold text-[var(--text-primary)]" : "text-[var(--text-primary)]"}`}>
         {formatted}
       </span>
     </div>

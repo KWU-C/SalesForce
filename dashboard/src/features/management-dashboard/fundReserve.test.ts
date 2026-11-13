@@ -50,6 +50,7 @@ function settings(overrides: Partial<ManagementReserveSettings> = {}): Managemen
       { lender: "A", limit: 300 },
       { lender: "B", limit: 500 },
     ],
+    collateralDeduction: null,
     source: "テスト",
     ...overrides,
   };

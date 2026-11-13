@@ -16,7 +16,7 @@ vi.mock("./monthlyPlService", () => ({ getOrFetchTermMonthlyPl: getOrFetchTermMo
 vi.mock("./monthlyPerformanceService", () => ({
   FULL_TERM_LAST_MONTH: 8,
   refreshTermPerformance: refreshTermPerformanceMock,
-  getOrFetchTermPerformance: getOrFetchTermPerformanceMock,
+  getOrFetchClosedTermPerformance: getOrFetchTermPerformanceMock,
 }));
 
 const { refreshCurrentMonthSnapshots } = await import("./refreshCurrentMonthSnapshots");
@@ -146,14 +146,14 @@ describe("refreshCurrentMonthSnapshots", () => {
     await expect(refreshCurrentMonthSnapshots(2025, 8)).rejects.toThrow("freee_api_error");
   });
 
-  it("月次業績・採算は当期を全月取り直し、前期は未保存の月だけ取得する(期首3か月でも保存済みの前期は取り直さない)", async () => {
+  it("月次業績・採算は当期を全月取り直し、前期は未保存・月末前取得の月だけを取り直す関数で取得する", async () => {
     mockAllSucceed();
     for (const month of [9, 11, 12]) {
       refreshTermPerformanceMock.mockClear();
       getOrFetchTermPerformanceMock.mockClear();
       await refreshCurrentMonthSnapshots(2026, month, { includeFinancialSummary: true });
       expect(refreshTermPerformanceMock.mock.calls).toEqual([[2026, month]]);
-      expect(getOrFetchTermPerformanceMock.mock.calls).toEqual([[2025, 8]]);
+      expect(getOrFetchTermPerformanceMock.mock.calls).toEqual([[2025]]);
     }
   });
 

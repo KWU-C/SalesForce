@@ -5,7 +5,7 @@ import { getOrFetchFinancialSummary } from "./financialSummaryService";
 import { getOrFetchTermMonthlyPl } from "./monthlyPlService";
 import { reconcileMonthlyPlWithSummary } from "./monthlyPl";
 import type { MonthlyPlReconciliation } from "./monthlyPl";
-import { FULL_TERM_LAST_MONTH, getOrFetchTermPerformance, refreshTermPerformance } from "./monthlyPerformanceService";
+import { getOrFetchClosedTermPerformance, refreshTermPerformance } from "./monthlyPerformanceService";
 
 export interface RefreshSnapshotsResult {
   /** false の場合、いずれかのスナップショットがfreee未接続(null)だったことを示す。
@@ -23,13 +23,14 @@ export interface RefreshSnapshotsResult {
 
 /**
  * 月次業績・採算を更新する。当期は期首〜当月をすべて取り直す。前期(確定済み)は未保存の月がある時だけ取得し、
- * 保存済みの月は取り直さない(ユーザー確定、2026-10-27)。
+ * 保存済みの月は取り直さない(ユーザー確定、2026-10-27)。ただし月末前に取得した月(期末の8月)は取り直す
+ * (2026-11-13、概要の前月末実績が9月に未取得のまま残らないように)。
  * 失敗はthrowせずfalseを返す(金額は出さず、失敗した事実だけをログに出す)。
  */
 async function refreshPerformance(fiscalYear: number, month: number): Promise<boolean> {
   try {
     if ((await refreshTermPerformance(fiscalYear, month)) === null) return false;
-    if ((await getOrFetchTermPerformance(fiscalYear - 1, FULL_TERM_LAST_MONTH)) === null) return false;
+    if ((await getOrFetchClosedTermPerformance(fiscalYear - 1)) === null) return false;
     return true;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);

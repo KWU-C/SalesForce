@@ -21,6 +21,13 @@ export interface ManagementReserveSettings {
   bonusReserve: number | null;
   /** 当座貸越枠(経理報告の「当座貸越担保分（枠）」)。未入力は空配列 */
   overdraftLimits: OverdraftLimit[];
+  /**
+   * 経理管理上の担保控除額(資金繰り表の「預金総合計(担保控除後)」で差し引く額、2026-11-13追加)。
+   * 当座貸越の枠・利用額や担保に入れている定期預金の残高とは別の値として持ち、それらで代用しない。
+   * 項目が無いドキュメントはnull(未設定)。0は「0円と明示された」もので未設定と区別する。
+   * この基準日(asOf)から次の基準日の前日まで有効(selectReserveSettingsと同じ)。資金余力などの既存の計算には使わない
+   */
+  collateralDeduction: number | null;
   /** 出所(例: 経理報告の名称) */
   source: string | null;
 }
@@ -55,6 +62,7 @@ export function parseReserveSettings(data: unknown): ManagementReserveSettings |
     consumptionTaxReserve: toAmount(raw.consumptionTaxReserve),
     bonusReserve: toAmount(raw.bonusReserve),
     overdraftLimits,
+    collateralDeduction: toAmount(raw.collateralDeduction),
     source: typeof raw.source === "string" ? raw.source : null,
   };
 }
@@ -88,4 +96,19 @@ export function selectReserveSettings(
 export function overdraftLimitTotal(settings: ManagementReserveSettings | null): number | null {
   if (settings === null || settings.overdraftLimits.length === 0) return null;
   return settings.overdraftLimits.reduce((sum, l) => sum + l.limit, 0);
+}
+
+/** 担保控除額と、その出所(適用した設定の基準日・出所)。設定が無い・項目が無ければ amount=null(未設定) */
+export interface CollateralDeductionSetting {
+  amount: number | null;
+  asOf: string | null;
+  source: string | null;
+}
+
+export function collateralDeductionOf(settings: ManagementReserveSettings | null): CollateralDeductionSetting {
+  return {
+    amount: settings?.collateralDeduction ?? null,
+    asOf: settings?.asOf ?? null,
+    source: settings?.source ?? null,
+  };
 }

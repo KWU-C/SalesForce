@@ -7,6 +7,7 @@ import {
 import { MONTHLY_PERFORMANCE_CALCULATION_VERSION, fetchMonthlyPerformance } from "./monthlyPerformance";
 import type { MonthlyPerformanceSnapshot } from "./monthlyPerformance";
 import { termMonthsThrough } from "./monthlyPlService";
+import { monthEndBoundary } from "./accountingReports";
 
 /** 前期は期末月(8月)まで12か月すべて */
 export const FULL_TERM_LAST_MONTH = FISCAL_MONTH_ORDER[FISCAL_MONTH_ORDER.length - 1];
@@ -82,4 +83,35 @@ export async function getOrFetchTermPerformance(
   const fetched = await fetchAndSaveMonths(fiscalYear, missing);
   if (fetched === null) return null;
   return months.map((month, i) => stored[i] ?? fetched.find((s) => s.month === month) ?? null);
+}
+
+/** fiscal_year・暦月の月末境界(翌月1日0時JST) */
+function monthEndBoundaryOf(fiscalYear: number, month: number): Date {
+  const calendarYear = month >= 9 ? fiscalYear : fiscalYear + 1;
+  return monthEndBoundary(`${calendarYear}-${String(month).padStart(2, "0")}`);
+}
+
+/**
+ * 前期(終わった期)の12か月を返す。未保存の月と、月末前に取得した月(実際には期末の8月。8月31日の定時更新で
+ * 当期として取得したもの)だけをfreeeから取り直し、月末後に保存済みの月は取り直さない(2026-11-13)。
+ * 月末前の取得分を残すと、9月に概要の「前月末までの実績」(前期8月まで)がいつまでも未取得になるため。
+ * 定時更新・手動更新からだけ呼ぶ(画面表示では呼ばない)。
+ */
+export async function getOrFetchClosedTermPerformance(
+  fiscalYear: number,
+  now: Date = new Date()
+): Promise<(MonthlyPerformanceSnapshot | null)[] | null> {
+  const months = termMonthsThrough(FULL_TERM_LAST_MONTH);
+  const stored = await getStoredTermPerformance(fiscalYear, FULL_TERM_LAST_MONTH);
+  const needsFetch = (month: number, snapshot: MonthlyPerformanceSnapshot | null) => {
+    const boundary = monthEndBoundaryOf(fiscalYear, month);
+    if (now.getTime() < boundary.getTime()) return snapshot === null; // 月末前の月は従来どおり未保存の時だけ
+    return snapshot === null || snapshot.fetchedAt.getTime() < boundary.getTime();
+  };
+  const targets = months.filter((month, i) => needsFetch(month, stored[i]));
+  if (targets.length === 0) return stored;
+
+  const fetched = await fetchAndSaveMonths(fiscalYear, targets);
+  if (fetched === null) return null;
+  return months.map((month, i) => fetched.find((s) => s.month === month) ?? stored[i]);
 }

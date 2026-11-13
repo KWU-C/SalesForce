@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { overdraftLimitTotal, parseReserveSettings, selectReserveSettings } from "./reserveSettings";
+import { collateralDeductionOf, overdraftLimitTotal, parseReserveSettings, selectReserveSettings } from "./reserveSettings";
 import type { ManagementReserveSettings } from "./reserveSettings";
 
 function settings(asOf: string, overrides: Partial<ManagementReserveSettings> = {}): ManagementReserveSettings {
-  return { asOf, consumptionTaxReserve: 75, bonusReserve: 90, overdraftLimits: [], source: null, ...overrides };
+  return { asOf, consumptionTaxReserve: 75, bonusReserve: 90, overdraftLimits: [], collateralDeduction: null, source: null, ...overrides };
 }
 
 describe("parseReserveSettings", () => {
@@ -22,8 +22,31 @@ describe("parseReserveSettings", () => {
       consumptionTaxReserve: 75,
       bonusReserve: 90,
       overdraftLimits: [{ lender: "A", limit: 300 }],
+      collateralDeduction: null,
       source: "残高表",
     });
+  });
+
+  it("担保控除額: 項目なしは未設定(null)、0は明示の0円、負数・文字列は未設定", () => {
+    const base = { asOf: "2026-10-05" };
+    expect(parseReserveSettings(base)?.collateralDeduction).toBeNull();
+    expect(parseReserveSettings({ ...base, collateralDeduction: 0 })?.collateralDeduction).toBe(0);
+    expect(parseReserveSettings({ ...base, collateralDeduction: 123 })?.collateralDeduction).toBe(123);
+    expect(parseReserveSettings({ ...base, collateralDeduction: -1 })?.collateralDeduction).toBeNull();
+    expect(parseReserveSettings({ ...base, collateralDeduction: "123" })?.collateralDeduction).toBeNull();
+  });
+
+  it("担保控除額: 対象月末以前で最新の設定を使い、後の基準日の値を過去月へ当てはめない", () => {
+    const all = [
+      settings("2026-09-15", { collateralDeduction: 100 }),
+      settings("2026-11-05", { collateralDeduction: 0 }),
+    ];
+    // fiscal_year 2026(50期)の10月末 → 9/15の設定
+    expect(collateralDeductionOf(selectReserveSettings(all, 2026, 10))).toEqual({ amount: 100, asOf: "2026-09-15", source: null });
+    // 11月末 → 11/5の設定(明示の0円)
+    expect(collateralDeductionOf(selectReserveSettings(all, 2026, 11)).amount).toBe(0);
+    // fiscal_year 2025(49期)の8月末 → 該当なし(未設定)
+    expect(collateralDeductionOf(selectReserveSettings(all, 2025, 8))).toEqual({ amount: null, asOf: null, source: null });
   });
 
   it.each([[null], ["text"], [{}], [{ asOf: "2026/10/05" }], [{ asOf: 20261005 }]])(

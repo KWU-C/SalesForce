@@ -35,6 +35,15 @@ import { CostStructureSection } from "@/features/management-dashboard/CostStruct
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
 import {
+  OverviewPartHeading,
+  PreviousMonthResults,
+} from "@/features/management-dashboard/PreviousMonthResultsSection";
+import {
+  previousMonthInJst,
+  summarizePreviousMonthCash,
+  summarizePreviousMonthPerformance,
+} from "@/features/management-dashboard/previousMonthResults";
+import {
   CapacitySummary,
   OverviewLinks,
   OverviewNotice,
@@ -127,6 +136,9 @@ export default async function ManagementPage() {
   let currentPerformance: (MonthlyPerformanceSnapshot | null)[] | null = null;
   let previousPerformance: (MonthlyPerformanceSnapshot | null)[] | null = null;
   let performanceError = false;
+  // 概要「前月末までの実績」の比較に要る、前々期の保存済み月次業績(9月に開いたときだけ。Firestoreのみ)
+  let twoTermsAgoPerformance: (MonthlyPerformanceSnapshot | null)[] = [];
+  let twoTermsAgoPerformanceError = false;
   let cashFlowByMonth: (MonthlyCashFlow | null)[] = [];
   let cashFlowError = false;
   let loanStatus: LoanStatusSnapshot | null = null;
@@ -140,6 +152,9 @@ export default async function ManagementPage() {
   let accountingReportsError = false;
 
   const { term: currentTerm, currentMonth } = getCurrentFiscalPeriod();
+  const now = new Date();
+  // 概要「前月末までの実績」の対象月(日本時間の前月)
+  const previousMonthTarget = previousMonthInJst(now);
   const currentFiscalYear = freeeFiscalYearForTerm(currentTerm);
   const monthList = monthsFromAnchorToCurrent(CASH_FLOW_TABLE_ANCHOR, { term: currentTerm, month: currentMonth });
   // 隣接する月列でtermが変わる境目を機械的に検出する。現在は49期8月→50期9月の1箇所
@@ -245,6 +260,15 @@ export default async function ManagementPage() {
       } catch {
         console.error("[management page] 月次業績・採算の取得に失敗しました");
         performanceError = true;
+      }
+      // 前月が前期(=9月に開いた)なら、その前年同期は前々期。保存済みの値を読むだけでfreeeは呼ばない
+      if (previousMonthTarget.fiscalYear - 1 < currentFiscalYear - 1) {
+        try {
+          twoTermsAgoPerformance = await getStoredTermPerformance(previousMonthTarget.fiscalYear - 1, FULL_TERM_LAST_MONTH);
+        } catch {
+          console.error("[management page] 前々期の月次業績の読み込みに失敗しました");
+          twoTermsAgoPerformanceError = true;
+        }
       }
       // 月次P/L(monthlyPlSnapshots)は経理月次報告・資金繰り見通しのfreee比較に使う。画面のグラフは
       // 月次業績の推移へ置き換えたが、当月分の遅延取得は従来どおり行う
@@ -356,6 +380,24 @@ export default async function ManagementPage() {
     accountingReportsError && "資金繰り見通し",
   ].filter((label): label is string => typeof label === "string");
 
+  // 概要「前月末までの実績」。上で読み込んだ保存済みスナップショットから組み立てる(freeeの呼び出しは増やさない)
+  const loadedPerformance = [...(currentPerformance ?? []), ...(previousPerformance ?? []), ...twoTermsAgoPerformance].filter(
+    (p): p is MonthlyPerformanceSnapshot => p !== null
+  );
+  const previousMonthPerformance = summarizePreviousMonthPerformance(
+    previousMonthTarget,
+    (fy, month) => loadedPerformance.find((p) => p.fiscalYear === fy && p.month === month) ?? null
+  );
+  // 担保控除額: 資料と同じ定義(経理の管理上の控除額)の管理設定は今のところ無い。当座貸越の枠・利用額や
+  // 担保定期の残高では代用しないので、未設定(預金総合計(担保控除後)は表示しない)
+  const previousMonthCash = summarizePreviousMonthCash(
+    previousMonthTarget,
+    cashFlowByMonth.find((c) => c?.fiscalYear === previousMonthTarget.fiscalYear && c.month === previousMonthTarget.month) ??
+      null,
+    { amount: null },
+    now
+  );
+
   const overviewTab = (
     <>
       {overviewFailures.length > 0 && (
@@ -363,26 +405,43 @@ export default async function ManagementPage() {
           {`取得に失敗した項目があります（${overviewFailures.join("・")}）。該当するタブの表示をご確認ください。`}
         </OverviewNotice>
       )}
-      <div className="flex flex-col gap-3">
-        {performanceMonths && <PerformanceSummaryCards months={performanceMonths} currentMonth={currentMonth} />}
-        {performanceErrorNotice}
-        <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る" }]} />
+      <div className="flex flex-col gap-4">
+        <OverviewPartHeading
+          title="前月末までの実績"
+          note={`${previousMonthTarget.calendarYear}年${previousMonthTarget.month}月末まで。freeeから取得した時点の帳簿の数値で、経理の月次決算の確定は判定していません`}
+        />
+        <PreviousMonthResults
+          performance={previousMonthPerformance}
+          performanceFailed={performanceError || twoTermsAgoPerformanceError}
+          cash={previousMonthCash}
+        />
       </div>
-      <div className="flex flex-col gap-3">
-        <ManagementSummary
-          term={currentTerm}
-          month={currentMonth}
-          cashFlow={currentCashFlow}
-          loanStatus={loanStatus}
-          previousMonthCashClosing={previousCashFlow?.cashClosing ?? null}
+      <div className="flex flex-col gap-4">
+        <OverviewPartHeading
+          title="現在の状況"
+          note={`当月（${calendarYearForTermMonth(currentTerm, currentMonth)}年${currentMonth}月）途中の数値を含みます。freeeから取得した時点の値です`}
         />
-        <CapacitySummary fundReserve={fundReserve} />
-        <OverviewLinks
-          links={[
-            { tab: "finance", label: "財務・資金繰りを見る" },
-            { tab: "cashflow", label: "入出金明細を見る" },
-          ]}
-        />
+        <div className="flex flex-col gap-3">
+          {performanceMonths && <PerformanceSummaryCards months={performanceMonths} currentMonth={currentMonth} />}
+          {performanceErrorNotice}
+          <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る" }]} />
+        </div>
+        <div className="flex flex-col gap-3">
+          <ManagementSummary
+            term={currentTerm}
+            month={currentMonth}
+            cashFlow={currentCashFlow}
+            loanStatus={loanStatus}
+            previousMonthCashClosing={previousCashFlow?.cashClosing ?? null}
+          />
+          <CapacitySummary fundReserve={fundReserve} />
+          <OverviewLinks
+            links={[
+              { tab: "finance", label: "財務・資金繰りを見る" },
+              { tab: "cashflow", label: "入出金明細を見る" },
+            ]}
+          />
+        </div>
       </div>
     </>
   );

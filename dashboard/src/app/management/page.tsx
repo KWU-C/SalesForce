@@ -33,6 +33,12 @@ import {
 } from "@/features/management-dashboard/MonthlyPerformanceSection";
 import { CostStructureSection } from "@/features/management-dashboard/CostStructureSection";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
+import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
+import {
+  CapacitySummary,
+  OverviewLinks,
+  OverviewNotice,
+} from "@/features/management-dashboard/ManagementOverview";
 import { ExpenseCompositionSection } from "@/features/management-dashboard/ExpenseCompositionSection";
 import { RefreshMonthButton } from "@/features/management-dashboard/RefreshMonthButton";
 import { AccountingReportsSection } from "@/features/management-dashboard/AccountingReportsSection";
@@ -106,6 +112,11 @@ function monthsFromAnchorToCurrent(
  * このWebサービスのIAP/OAuth/Cloud Run IAM設定には一切触れない)と、ヘッダーの
  * 「更新」ボタン(手動、/api/freee/monthly-finance/refresh)。両経路とも実体は
  * `refreshCurrentMonthSnapshots`を共有する(重複実装なし)。
+ *
+ * freee接続済みの本文は「概要/業績・採算/財務・資金繰り/入出金明細」の4タブに分ける(2026-11-13、閲覧構成の
+ * 整理。取得項目・計算式・対象期間は変えない)。タブの中身はここ(サーバー)で組み立てて渡し、タブ切替は
+ * クライアントでの表示切替だけにする。未接続時は従来どおり接続フォームと資金繰り見通しだけを出す。
+ * 再接続の導線はタブの外(本文の最下部)に置き、どのタブからでも使えるようにする。
  */
 export default async function ManagementPage() {
   const iapEmail = await getRequestIapEmail();
@@ -322,6 +333,105 @@ export default async function ManagementPage() {
       : null;
   const performanceFetchedAt = latestFetchedAt((currentPerformance ?? []).map((p) => p?.fetchedAt ?? null));
 
+  // 4タブ(概要/業績・採算/財務・資金繰り/入出金明細、2026-11-13 閲覧構成の整理)。中身は上で取得・計算済みの
+  // 値をそのまま既存の表示部品へ渡すだけで、タブ用の再取得・再計算はしない。未取得・取得失敗の表示は関連タブに
+  // 置いたうえで、概要にも短く残す
+  const performanceErrorNotice = performanceError && (
+    <p className="text-center text-sm text-[var(--text-muted)]">月次業績・採算の取得に失敗しました。</p>
+  );
+  const loanStatusErrorNotice = loanStatusError && (
+    <p className="text-center text-sm text-[var(--text-muted)]">借入状況の取得に失敗しました。</p>
+  );
+  const fundReserveErrorNotice = fundReserveError && (
+    <p className="text-center text-sm text-[var(--text-muted)]">資金の備えの取得に失敗しました。</p>
+  );
+  const accountingReportsErrorNotice = accountingReportsError && (
+    <p className="text-center text-sm text-[var(--text-muted)]">資金繰り見通しの取得に失敗しました。</p>
+  );
+  const overviewFailures = [
+    performanceError && "月次業績・採算",
+    cashFlowError && "当月の月次資金収支",
+    loanStatusError && "借入状況",
+    fundReserveError && "資金の備え",
+    accountingReportsError && "資金繰り見通し",
+  ].filter((label): label is string => typeof label === "string");
+
+  const overviewTab = (
+    <>
+      {overviewFailures.length > 0 && (
+        <OverviewNotice>
+          {`取得に失敗した項目があります（${overviewFailures.join("・")}）。該当するタブの表示をご確認ください。`}
+        </OverviewNotice>
+      )}
+      <div className="flex flex-col gap-3">
+        {performanceMonths && <PerformanceSummaryCards months={performanceMonths} currentMonth={currentMonth} />}
+        {performanceErrorNotice}
+        <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る" }]} />
+      </div>
+      <div className="flex flex-col gap-3">
+        <ManagementSummary
+          term={currentTerm}
+          month={currentMonth}
+          cashFlow={currentCashFlow}
+          loanStatus={loanStatus}
+          previousMonthCashClosing={previousCashFlow?.cashClosing ?? null}
+        />
+        <CapacitySummary fundReserve={fundReserve} />
+        <OverviewLinks
+          links={[
+            { tab: "finance", label: "財務・資金繰りを見る" },
+            { tab: "cashflow", label: "入出金明細を見る" },
+          ]}
+        />
+      </div>
+    </>
+  );
+
+  const performanceTab = (
+    <>
+      {performanceMonths && (
+        <>
+          <MonthlyPerformanceSection months={performanceMonths} fetchedAt={performanceFetchedAt} />
+          <CostStructureSection months={performanceMonths} />
+        </>
+      )}
+      {performanceErrorNotice}
+    </>
+  );
+
+  const financeTab = (
+    <>
+      {loanStatusErrorNotice}
+      {loanStatus && overdraft && <LoanStatusTable loanStatus={loanStatus} overdraft={overdraft} />}
+      {fundReserveErrorNotice}
+      {fundReserve && <FundReserveSection fundReserve={fundReserve} />}
+      {accountingReports && <AccountingReportsSection view={accountingReports} />}
+      {accountingReportsErrorNotice}
+    </>
+  );
+
+  const cashFlowTab = (
+    <>
+      <p className="text-xs text-[var(--text-muted)]">
+        {"※ このタブの月次資金収支・支出構成は入出金ベース（現金の動き）です。「業績・採算」タブは発生主義の損益ベースのため、金額は一致しません。"}
+      </p>
+      {cashFlowError && (
+        <p className="text-center text-sm text-[var(--text-muted)]">
+          freeeからのデータ取得に失敗しました（権限不足の場合、freeeアプリの権限設定を
+          変更した後は再接続が必要です。下記から再度お試しください）。
+        </p>
+      )}
+      <MonthlyCashFlowScrollTable columns={cashFlowColumns} />
+      {currentCashFlow && (
+        <ExpenseCompositionSection
+          expenseByCategory={currentCashFlow.expenseByCategory}
+          unclassified={currentCashFlow.outflow?.unclassified}
+          externalExpenseTotal={currentCashFlow.externalExpenseTotal}
+        />
+      )}
+    </>
+  );
+
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
         {authorized ? (
@@ -350,66 +460,14 @@ export default async function ManagementPage() {
             </div>
 
             {connectionStatus?.connected ? (
-              <>
-                {/* ①〜③ 業績(発生主義の損益、freeeの試算表)。ユーザー確定 2026-10-27 */}
-                {performanceMonths && (
-                  <>
-                    <PerformanceSummaryCards months={performanceMonths} currentMonth={currentMonth} />
-                    <MonthlyPerformanceSection months={performanceMonths} fetchedAt={performanceFetchedAt} />
-                    <CostStructureSection months={performanceMonths} />
-                  </>
-                )}
-                {performanceError && (
-                  <p className="text-center text-sm text-[var(--text-muted)]">月次業績・採算の取得に失敗しました。</p>
-                )}
-
-                {/* ④ 財務・資金(従来の計算・取得のまま、並びだけ移動) */}
-                <ManagementSummary
-                  term={currentTerm}
-                  month={currentMonth}
-                  cashFlow={currentCashFlow}
-                  loanStatus={loanStatus}
-                  previousMonthCashClosing={previousCashFlow?.cashClosing ?? null}
-                />
-
-                {loanStatusError && (
-                  <p className="text-center text-sm text-[var(--text-muted)]">借入状況の取得に失敗しました。</p>
-                )}
-                {loanStatus && overdraft && <LoanStatusTable loanStatus={loanStatus} overdraft={overdraft} />}
-
-                {fundReserveError && (
-                  <p className="text-center text-sm text-[var(--text-muted)]">資金の備えの取得に失敗しました。</p>
-                )}
-                {fundReserve && <FundReserveSection fundReserve={fundReserve} />}
-
-                {accountingReports && <AccountingReportsSection view={accountingReports} />}
-                {accountingReportsError && (
-                  <p className="text-center text-sm text-[var(--text-muted)]">
-                    資金繰り見通しの取得に失敗しました。
-                  </p>
-                )}
-
-                {/* ⑤ 詳細(入出金ベース) */}
-                <p className="text-xs text-[var(--text-muted)]">
-                  {"※ 以下の月次資金収支・支出構成は入出金ベース（現金の動き）です。上の業績・採算は発生主義の損益ベースのため、金額は一致しません。"}
-                </p>
-                {cashFlowError && (
-                  <p className="text-center text-sm text-[var(--text-muted)]">
-                    freeeからのデータ取得に失敗しました（権限不足の場合、freeeアプリの権限設定を
-                    変更した後は再接続が必要です。下記から再度お試しください）。
-                  </p>
-                )}
-
-                <MonthlyCashFlowScrollTable columns={cashFlowColumns} />
-
-                {currentCashFlow && (
-                  <ExpenseCompositionSection
-                    expenseByCategory={currentCashFlow.expenseByCategory}
-                    unclassified={currentCashFlow.outflow?.unclassified}
-                    externalExpenseTotal={currentCashFlow.externalExpenseTotal}
-                  />
-                )}
-              </>
+              <ManagementTabs
+                tabs={[
+                  { id: "overview", label: "概要", content: overviewTab },
+                  { id: "performance", label: "業績・採算", content: performanceTab },
+                  { id: "finance", label: "財務・資金繰り", content: financeTab },
+                  { id: "cashflow", label: "入出金明細", content: cashFlowTab },
+                ]}
+              />
             ) : authorizeUrl ? (
               <FreeeConnectForm authorizeUrl={authorizeUrl} mode="connect" />
             ) : (
@@ -418,7 +476,7 @@ export default async function ManagementPage() {
               </p>
             )}
 
-            {/* freee未接続でも資金繰り見通し(経理資料の記録)は表示する。接続済みの場合は④の中に出す */}
+            {/* freee未接続でも資金繰り見通し(経理資料の記録)は表示する。接続済みの場合は「財務・資金繰り」タブに出す */}
             {!connectionStatus?.connected && accountingReports && <AccountingReportsSection view={accountingReports} />}
             {!connectionStatus?.connected && accountingReportsError && (
               <p className="text-center text-sm text-[var(--text-muted)]">

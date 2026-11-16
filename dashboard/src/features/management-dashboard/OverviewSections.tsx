@@ -6,7 +6,7 @@ import type { CashPlan } from "./accountingReports";
 import type { CumulativeAmount, PerformanceColumn, TargetMonth } from "./overviewComparison";
 
 // ---------------------------------------------------------------------------
-// 表示形式
+// 表示形式(経理調整済み・帳簿上の進捗の2段で共通)
 
 function signedYen(value: number): string {
   return value < 0 ? `▲${formatYen(Math.abs(value))}` : formatYen(value);
@@ -98,44 +98,55 @@ function Notes({ notes }: { notes: Note[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// 経営サマリー（帳簿上の進捗: 帯+売上高累積・経常利益累積の2ボックス）
+// 経営サマリー(経理調整済み/帳簿上の進捗の各段: 帯+売上高累計・経常利益累計の2ボックス)
 
 /**
- * 経営サマリー（帳簿上の進捗）(2026-11-16、旧「進捗」段)。当月を含む期首からの累計(freeeに登録済みの当月日付の
- * 取引を含む途中の値)。経理確認済みの値は一番上の「経理報告」に分け、ここは帳簿に登録済みの数値として出す。
- * 経理報告より後の月(月次の経理処理が済んでいない可能性がある月)と、仕掛品振替が未検出の月を明示する。
- * 売上高累積: 前年同期・増減(率)。経常利益累積: 前年同期・増減・営業利益累積。
+ * 経営サマリーの1段。2段で同じ構成・同じ順序にする。
+ * - adjusted(2026-11-16): 期首から経理調整済みの最終月(latestAdjustedMonth)までの累計。業績・採算タブの月次の
+ *   合計で、経理報告の「売上高累計・経常利益累計」と同じ範囲(50期9月で円単位の一致を確認)。締まっているが
+ *   調整前の月は含めず、その月を明示する
+ * - progress: 当月を含む期首からの累計(freeeに登録済みの当月日付の取引を含む途中の値)
+ * 売上高累計: 前年同期・増減(率)。経常利益累計: 前年同期・増減・営業利益累計。
  * 目標との差は、会計の売上高と同じ定義の目標がシステムに無いため出さない(Salesforceの受注・完了目標で代用しない)。
  */
 export function PerformanceSummaryBand({
+  kind,
   column,
   failed,
-  confirmedThrough,
+  excludedMonths = [],
 }: {
-  column: PerformanceColumn;
+  kind: "adjusted" | "progress";
+  /** adjusted で経理調整済みの月が1か月も無ければnull */
+  column: PerformanceColumn | null;
   failed: boolean;
-  /** 経理報告が登録済みの最終月。無ければnull(全月が経理報告前) */
-  confirmedThrough: TargetMonth | null;
+  /** adjusted: 締まっているが経理調整前のため累計に含めなかった月 */
+  excludedMonths?: TargetMonth[];
 }) {
-  const { amounts } = column;
-  const t = column.through;
-  const unconfirmedMonths = column.months.filter((m) => {
-    if (confirmedThrough === null || confirmedThrough.term < t.term) return true;
-    if (confirmedThrough.term > t.term) return false;
-    return FISCAL_MONTH_ORDER.indexOf(m) > FISCAL_MONTH_ORDER.indexOf(confirmedThrough.month);
-  });
   const notes: Note[] = [];
   if (failed) notes.push({ tone: "serious", text: "※ 月次業績の読み込みに失敗しました。" });
-  if (unconfirmedMonths.length > 0) {
+  if (excludedMonths.length > 0) {
     notes.push({
       tone: "serious",
-      text: `※ ${monthList(unconfirmedMonths)}は経理報告前の帳簿の値です（月次の経理処理が済んでいない場合があります）。`,
+      text: `※ ${excludedMonths.map((m) => `${m.term}期${m.month}月`).join("・")}は締まっていますが、freeeで仕掛品振替が未検出のため経理調整前とみなし、累計に含めていません（帳簿上の進捗には含みます）。`,
     });
   }
+  if (column === null) {
+    return (
+      <div className="flex flex-col gap-2">
+        <SectionBanner>経営サマリー（経理調整済みの累計）</SectionBanner>
+        <p className="text-sm text-[var(--status-serious)]">
+          経理調整済み（月末後に取得し、仕掛品振替あり）の月がまだ無いため、累計を表示していません。
+        </p>
+        <Notes notes={notes} />
+      </div>
+    );
+  }
+  const { amounts } = column;
+  const t = column.through;
   if (column.missingMonths.length > 0) {
     notes.push({
       tone: "serious",
-      text: `※ ${monthList(column.missingMonths)}は保存された値が無いため、累積を表示していません（0円や他の値で代用しません）。`,
+      text: `※ ${monthList(column.missingMonths)}は保存された値が無いため、累計を表示していません（0円や他の値で代用しません）。`,
     });
   }
   if (column.previousMissingMonths.length > 0) {
@@ -147,29 +158,31 @@ export function PerformanceSummaryBand({
   if (column.noWipTransferMonths.length > 0) {
     notes.push({
       tone: "serious",
-      text: `※ ${monthList(column.noWipTransferMonths)}はfreeeで仕掛品振替が未検出です。振替が入ると経常利益・営業利益が大きく変わることがあります。`,
+      text: `※ ${monthList(column.noWipTransferMonths)}はfreeeで仕掛品振替が未検出（経理調整前の可能性）です。振替が入ると経常利益・営業利益が大きく変わることがあります。`,
     });
   }
 
   return (
     <div className="flex flex-col gap-2">
       <SectionBanner>
-        経営サマリー（帳簿上の進捗 {periodLabel(column)}）
+        経営サマリー（{periodLabel(column)} {kind === "adjusted" ? "累計・経理調整済み" : "帳簿上の進捗"}）
       </SectionBanner>
       <p className="text-xs text-[var(--text-secondary)]">
-        {periodRange(column)}の累積／{fetchedLabel(column.fetchedFrom, column.fetchedTo)}
+        {periodRange(column)}の累計（{column.months.length}ヶ月）／{fetchedLabel(column.fetchedFrom, column.fetchedTo)}
         <span className="text-[var(--text-muted)]">
-          {`／freeeに登録済みの数値。${t.month}月分は${t.month}月日付の取引を含む途中の値です（確定実績・予測ではありません）`}
+          {kind === "adjusted"
+            ? "／業績・採算タブの月次の合計。期首から、月末後に取得しfreeeで仕掛品振替が入っている月まで（経理調整済みの目印。月次決算の確定はfreeeから取れないため推定）"
+            : `／${t.month}月分はfreeeに登録済みの${t.month}月日付の取引を含む途中の値です（当日までの確定実績・予測ではありません）`}
         </span>
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <SummaryBox title="売上高累積" value={amounts.revenue.current} lines={previousLines(amounts.revenue, true)} />
+        <SummaryBox title="売上高累計" value={amounts.revenue.current} lines={previousLines(amounts.revenue, true)} />
         <SummaryBox
-          title="経常利益累積"
+          title="経常利益累計"
           value={amounts.ordinaryProfit.current}
           lines={[
             ...previousLines(amounts.ordinaryProfit, false),
-            `営業利益累積 ${amounts.operatingProfit.current === null ? "未取得" : signedYen(amounts.operatingProfit.current)}`,
+            `営業利益累計 ${amounts.operatingProfit.current === null ? "未取得" : signedYen(amounts.operatingProfit.current)}`,
           ]}
         />
       </div>

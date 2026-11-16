@@ -203,3 +203,42 @@ export function selectCashPlanOutlook(
 ): { target: TargetMonth; plan: CashPlan | null }[] {
   return months.map((target) => ({ target, plan: plans.find((p) => p.targetMonth === target.key) ?? null }));
 }
+
+/**
+ * 経理調整済みの最終月(2026-11-16、ユーザー確認: 経理報告の「売上高累計・経常利益累計」は期首から経理の月次処理が
+ * 済んだ月までの累計で、50期9月はfreeeの月次業績と円単位で一致)。締まった月(latestClosed)の期の期首から順に、
+ * 「月末後にfreeeから取得済み」かつ「仕掛品振替あり」が途切れずに続く最後の月を返す。当期に1か月も無ければ前期で
+ * 同じように探す。freeeから月次決算の確定は取れないため、仕掛品振替の有無を経理調整の目印にする(推定)。
+ */
+export function latestAdjustedMonth(latestClosed: TargetMonth, lookup: PerformanceLookup): TargetMonth | null {
+  const lastAdjusted = (term: number, months: number[]): number | null => {
+    let last: number | null = null;
+    for (const month of months) {
+      const snapshot = lookup(freeeFiscalYearForTerm(term), month);
+      if (
+        snapshot === null ||
+        snapshot.fetchedAt.getTime() < monthEndBoundary(targetMonth(term, month).key).getTime() ||
+        !snapshot.wipTransferDetected
+      ) {
+        break;
+      }
+      last = month;
+    }
+    return last;
+  };
+  const current = lastAdjusted(latestClosed.term, termMonthsThrough(latestClosed.month));
+  if (current !== null) return targetMonth(latestClosed.term, current);
+  const previous = lastAdjusted(latestClosed.term - 1, FISCAL_MONTH_ORDER);
+  return previous === null ? null : targetMonth(latestClosed.term - 1, previous);
+}
+
+/** after の翌月から through までの月(after が through 以降なら空)。期をまたいでもよい */
+export function monthsAfter(after: TargetMonth, through: TargetMonth): TargetMonth[] {
+  const result: TargetMonth[] = [];
+  let cursor = nextTargetMonth(after);
+  for (let i = 0; i < 24 && cursor.key <= through.key; i++) {
+    result.push(cursor);
+    cursor = nextTargetMonth(cursor);
+  }
+  return result;
+}

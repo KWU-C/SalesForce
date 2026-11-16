@@ -38,10 +38,9 @@ import { CostStructureSection } from "@/features/management-dashboard/CostStruct
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
 import { CashPlanOutlook, PerformanceSummaryBand } from "@/features/management-dashboard/OverviewSections";
-import { AccountingReportSummarySection } from "@/features/management-dashboard/AccountingReportSummarySection";
-import { MonthlyReportForm } from "@/features/management-dashboard/MonthlyReportForm";
-import { summarizeAccountingReport } from "@/features/management-dashboard/accountingReportSummary";
 import {
+  latestAdjustedMonth,
+  monthsAfter,
   nextTargetMonth,
   previousMonthInJst,
   selectCashPlanOutlook,
@@ -141,6 +140,10 @@ export default async function ManagementPage() {
   let currentPerformance: (MonthlyPerformanceSnapshot | null)[] | null = null;
   let previousPerformance: (MonthlyPerformanceSnapshot | null)[] | null = null;
   let performanceError = false;
+  // 概要「経理調整済みの累計」が前期の月になったとき(9月に開いた・当期に調整済みの月が無い)の前年同期に要る、
+  // 前々期の保存済み月次業績(Firestoreのみ)
+  let twoTermsAgoPerformance: (MonthlyPerformanceSnapshot | null)[] = [];
+  let twoTermsAgoPerformanceError = false;
   let cashFlowByMonth: (MonthlyCashFlow | null)[] = [];
   let cashFlowError = false;
   let loanStatus: LoanStatusSnapshot | null = null;
@@ -157,7 +160,7 @@ export default async function ManagementPage() {
 
   const { term: currentTerm, currentMonth } = getCurrentFiscalPeriod();
   const now = new Date();
-  // 締まった月(日本時間の前月)。概要の経理報告はこの月以前の最新の登録月を出す
+  // 概要「前月末までの実績」の対象月(日本時間の前月)
   const previousMonthTarget = previousMonthInJst(now);
   const currentFiscalYear = freeeFiscalYearForTerm(currentTerm);
   const monthList = monthsFromAnchorToCurrent(CASH_FLOW_TABLE_ANCHOR, { term: currentTerm, month: currentMonth });
@@ -266,6 +269,14 @@ export default async function ManagementPage() {
         console.error("[management page] 月次業績・採算の取得に失敗しました");
         performanceError = true;
       }
+      // 経理調整済みの累計が前期の月になることがある(9月に開いた・当期の調整前)ので、その前年同期にあたる前々期も
+      // 読む。保存済みの値を読むだけでfreeeは呼ばない
+      try {
+        twoTermsAgoPerformance = await getStoredTermPerformance(currentFiscalYear - 2, FULL_TERM_LAST_MONTH);
+      } catch {
+        console.error("[management page] 前々期の月次業績の読み込みに失敗しました");
+        twoTermsAgoPerformanceError = true;
+      }
       // 月次P/L(monthlyPlSnapshots)は経理月次報告・資金繰り見通しのfreee比較に使う。画面のグラフは
       // 月次業績の推移へ置き換えたが、当月分の遅延取得は従来どおり行う
       try {
@@ -372,23 +383,23 @@ export default async function ManagementPage() {
     cashFlowError && "当月の月次資金収支",
     loanStatusError && "借入状況",
     fundReserveError && "資金の備え",
-    accountingReportsError && "経理報告・資金繰り見通し",
+    accountingReportsError && "資金繰り見通し",
   ].filter((label): label is string => typeof label === "string");
 
   // 概要の経営サマリー(実績/進捗)・資金サマリーの補足(前月末現預金)。上で読み込んだ保存済みスナップショットから組み立てる
   // (freeeの呼び出しは増やさない)
-  const loadedPerformance = [...(currentPerformance ?? []), ...(previousPerformance ?? [])].filter(
+  const loadedPerformance = [...(currentPerformance ?? []), ...(previousPerformance ?? []), ...twoTermsAgoPerformance].filter(
     (p): p is MonthlyPerformanceSnapshot => p !== null
   );
   const lookupPerformance = (fy: number, month: number) =>
     loadedPerformance.find((p) => p.fiscalYear === fy && p.month === month) ?? null;
-  // 経理報告(経理月次報告の登録値): 締まった月(前月)以前で最新の登録月。照合用に同じ期間のfreee帳簿の累計
-  // (月末後に取得した値だけ)も求める
-  const accountingReportSummary = summarizeAccountingReport(accountingReports?.monthlyReports ?? [], previousMonthTarget);
-  const confirmedThrough = accountingReportSummary.status === "registered" ? accountingReportSummary.target : null;
-  const confirmedFreeeColumn = confirmedThrough
-    ? summarizePerformanceColumn(confirmedThrough, lookupPerformance, { requireMonthEnd: true })
+  // 経理調整済みの累計(期首〜調整済みの最終月。経理報告の売上高累計・経常利益累計と同じ範囲)と、締まっているが
+  // 調整前のため含めなかった月
+  const adjustedThrough = latestAdjustedMonth(previousMonthTarget, lookupPerformance);
+  const adjustedPerformance = adjustedThrough
+    ? summarizePerformanceColumn(adjustedThrough, lookupPerformance, { requireMonthEnd: true })
     : null;
+  const unadjustedClosedMonths = adjustedThrough ? monthsAfter(adjustedThrough, previousMonthTarget) : [];
   const progressPerformance = summarizePerformanceColumn(targetMonth(currentTerm, currentMonth), lookupPerformance, {
     requireMonthEnd: false,
   });
@@ -409,8 +420,7 @@ export default async function ManagementPage() {
     [currentTarget, nextTargetMonth(currentTarget)]
   );
 
-  // 概要(2026-11-16、ユーザー指定): 経理報告(経理確認済みの月まで、経理報告PDFの再現)→経営サマリー(帳簿上の進捗、
-  // 未調整の月を明示)→資金サマリー→収支予定。「前月末まで」と「経理処理が済んでいる」を分ける
+  // 概要(2026-11-13、11-16更新): 経営サマリー(経理調整済みの累計)→経営サマリー(帳簿上の進捗)→資金サマリー→収支予定
   const overviewTab = (
     <>
       {overviewFailures.length > 0 && (
@@ -418,18 +428,14 @@ export default async function ManagementPage() {
           {`取得に失敗した項目があります（${overviewFailures.join("・")}）。該当するタブの表示をご確認ください。`}
         </OverviewNotice>
       )}
-      <AccountingReportSummarySection
-        summary={accountingReportSummary}
-        freeeColumn={confirmedFreeeColumn}
-        failed={accountingReportsError}
-        form={
-          accountingReports && (
-            <MonthlyReportForm reports={accountingReports.monthlyReports} defaultMonth={previousMonthTarget.key} />
-          )
-        }
+      <PerformanceSummaryBand
+        kind="adjusted"
+        column={adjustedPerformance}
+        failed={performanceError || twoTermsAgoPerformanceError}
+        excludedMonths={unadjustedClosedMonths}
       />
       <div className="flex flex-col gap-3">
-        <PerformanceSummaryBand column={progressPerformance} failed={performanceError} confirmedThrough={confirmedThrough} />
+        <PerformanceSummaryBand kind="progress" column={progressPerformance} failed={performanceError} />
         <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る（売上総利益・利益率・月次表）" }]} />
       </div>
       <div className="flex flex-col gap-3">

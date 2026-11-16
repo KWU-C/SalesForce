@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { CashPlanOutlook, PerformanceSummaryBand } from "./OverviewSections";
+import { PerformanceSummaryBand, PreviousMonthEndBalance } from "./OverviewSections";
 import { targetMonth } from "./overviewComparison";
-import type { PerformanceColumn } from "./overviewComparison";
-import type { CashPlan } from "./accountingReports";
+import type { CashColumn, PerformanceColumn } from "./overviewComparison";
 
 // 金額はすべて架空の値
 function column(overrides: Partial<PerformanceColumn> = {}): PerformanceColumn {
@@ -119,36 +118,43 @@ describe("仕掛品振替反映分・経理確認済みの累計", () => {
   });
 });
 
-describe("収支予定", () => {
+describe("資金残高（前月末実績）", () => {
   afterEach(cleanup);
+  const fetched = (amount: number | null): CashColumn => ({
+    status: "fetched",
+    checkingSavings: 700,
+    timeDeposit: 400,
+    depositTotalBeforeCollateral: 1_100,
+    depositTotalAfterCollateral: amount === null ? null : 1_100 - amount,
+    collateral: { amount, asOf: amount === null ? null : "2026-10-05", source: null },
+    cashClosing: 1_103,
+    kindsDifference: 0,
+    fetchedAt: new Date("2026-11-16T05:42:00Z"),
+  });
 
-  it("登録済みの予定がある月だけ金額を出し、無い月は未算出(他の値で埋めない)", () => {
-    const plan = {
-      targetMonth: "2026-11",
-      values: {
-        checkingSavingsTotal: 1_000,
-        timeDepositTotal: 300,
-        collateralDeduction: 200,
-        depositTotalAfterCollateral: 1_100,
-        sourceUpdatedOn: "2026-10-14",
-      },
-    } as unknown as CashPlan;
+  it("freeeの月末残高の内訳を対象月・取得日時つきで出し、担保控除額が未登録なら未設定(予定資料で補わない)", () => {
+    render(<PreviousMonthEndBalance target={targetMonth(50, 10)} cash={fetched(null)} />);
+    expect(screen.getByRole("heading", { name: "資金残高（2026年10月末実績）" })).toBeTruthy();
+    expect(screen.getByText(/50期10月末（2026年10月31日）時点のfreeeの残高／freee取得: 2026\/11\/16 14:42/)).toBeTruthy();
+    expect(screen.getByText("¥700")).toBeTruthy();
+    expect(screen.getByText("¥1,100")).toBeTruthy();
+    expect(screen.getByText("うち定期預金 ¥400")).toBeTruthy();
+    expect(screen.getByText("未設定")).toBeTruthy();
+    expect(screen.getByText(/担保控除額が経理の管理設定に未登録/)).toBeTruthy();
+    expect(screen.queryByText(/予定）/)).toBeNull();
+  });
+
+  it("担保控除額が登録されていれば、その額と基準日で控除後を出す。月末後の取得が無ければ金額を出さない", () => {
+    render(<PreviousMonthEndBalance target={targetMonth(50, 10)} cash={fetched(300)} />);
+    expect(screen.getByText("¥800")).toBeTruthy();
+    expect(screen.getByText("担保控除額 ¥300（2026-10-05時点の経理の管理設定）")).toBeTruthy();
+    cleanup();
     render(
-      <CashPlanOutlook
-        outlook={[
-          { target: targetMonth(50, 11), plan },
-          { target: targetMonth(50, 12), plan: null },
-        ]}
-        failed={false}
+      <PreviousMonthEndBalance
+        target={targetMonth(50, 10)}
+        cash={{ status: "notFetched", collateral: { amount: null, asOf: null, source: null } }}
       />
     );
-    expect(screen.getByText("¥1,000")).toBeTruthy();
-    expect(screen.getByText("¥1,100")).toBeTruthy();
-    expect(screen.getByText("うち担保控除額（予定に記載の額） ¥200")).toBeTruthy();
-    expect(screen.getByText("2026/10/14時点・経理の資金繰り予定")).toBeTruthy();
-    expect(screen.getAllByText("未算出")).toHaveLength(2);
-    expect(screen.getByText(/登録された予定なし/)).toBeTruthy();
-    expect(screen.getByText("2026年12月末（予定）")).toBeTruthy();
-    expect(screen.getByText(/freeeが算出した予測ではありません/)).toBeTruthy();
+    expect(screen.getByText(/月末後にfreeeから取得した値がまだ無い/)).toBeTruthy();
   });
 });

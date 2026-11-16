@@ -12,8 +12,6 @@ interface ManagementSummaryProps {
   loanStatus: LoanStatus | null;
   /** 資金余力は資金の備えと同じ composeFundReserve の結果(capacity.capacity)をそのまま表示する */
   fundReserve: FundReserve | null;
-  /** 補足: 前月末の現預金(月末後に取得した月次資金収支の月末現預金)。無ければnull(未取得) */
-  previousMonthEnd: { label: string; cashClosing: number | null };
   /** 当月の月次資金収支の取得日時 */
   fetchedAt: Date | null;
 }
@@ -78,7 +76,6 @@ export function ManagementSummary({
   cashFlow,
   loanStatus,
   fundReserve,
-  previousMonthEnd,
   fetchedAt,
 }: ManagementSummaryProps) {
   const calendarYear = calendarYearForTermMonth(term, month);
@@ -98,10 +95,8 @@ export function ManagementSummary({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <SummaryBox title="手元資金">
+          {/* 前月末の残高は「資金残高（前月末実績）」欄に分けた(2026-11-16、同じ値を重ねない) */}
           <BigRow label="現預金残高（取得時点）" value={cashClosing} />
-          <div className="mt-3 border-t border-[var(--gridline)] pt-2">
-            <Row label={previousMonthEnd.label} value={previousMonthEnd.cashClosing} emptyLabel="未取得" />
-          </div>
         </SummaryBox>
 
         <SummaryBox title="今月の資金収支">

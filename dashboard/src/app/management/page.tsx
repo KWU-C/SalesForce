@@ -37,13 +37,11 @@ import {
 import { CostStructureSection } from "@/features/management-dashboard/CostStructureSection";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
-import { CashPlanOutlook, PerformanceSummaryBand } from "@/features/management-dashboard/OverviewSections";
+import { PerformanceSummaryBand, PreviousMonthEndBalance } from "@/features/management-dashboard/OverviewSections";
 import {
   monthsAfter,
   resolveSummaryBasis,
-  nextTargetMonth,
   previousMonthInJst,
-  selectCashPlanOutlook,
   summarizePerformanceColumn,
   summarizePreviousMonthCash,
   targetMonth,
@@ -427,14 +425,8 @@ export default async function ManagementPage() {
     ),
     now
   );
-  // 収支予定: 当月末・翌月末の登録済みの経理の資金繰り予定(無い月は未算出)
-  const currentTarget = targetMonth(currentTerm, currentMonth);
-  const cashPlanOutlook = selectCashPlanOutlook(
-    (accountingReports?.cashPlans ?? []).map((c) => c.plan),
-    [currentTarget, nextTargetMonth(currentTarget)]
-  );
 
-  // 概要(2026-11-13、11-16更新): 経営サマリー(経理確認済み/仕掛品振替反映分の累計)→経営サマリー(帳簿上の進捗)→資金サマリー→収支予定
+  // 概要(2026-11-13、11-16更新): 経営サマリー(経理確認済み/仕掛品振替反映分の累計)→経営サマリー(帳簿上の進捗)→資金サマリー(現在)→資金残高(前月末実績)。経理の資金繰り予定は概要に出さない(財務・資金繰りタブで基準日付きで参照)
   const overviewTab = (
     <>
       {overviewFailures.length > 0 && (
@@ -467,10 +459,6 @@ export default async function ManagementPage() {
           cashFlow={currentCashFlow}
           loanStatus={loanStatus}
           fundReserve={fundReserve}
-          previousMonthEnd={{
-            label: `前月末現預金（${previousMonthTarget.calendarYear}年${previousMonthTarget.month}月末）`,
-            cashClosing: previousMonthCash.status === "fetched" ? previousMonthCash.cashClosing : null,
-          }}
           fetchedAt={dataUpdatedAt}
         />
         <OverviewLinks
@@ -480,7 +468,7 @@ export default async function ManagementPage() {
           ]}
         />
       </div>
-      <CashPlanOutlook outlook={cashPlanOutlook} failed={accountingReportsError} />
+      <PreviousMonthEndBalance target={previousMonthTarget} cash={previousMonthCash} />
     </>
   );
 

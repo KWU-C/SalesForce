@@ -30,7 +30,7 @@ describe("経営サマリーの段", () => {
 
   it("帯に期間と実績/進捗を出し、売上高累積→経常利益累積の順に備考を並べる", () => {
     render(<PerformanceSummaryBand kind="adjusted" column={column()} failed={false} />);
-    expect(screen.getByRole("heading", { name: "経営サマリー（9月–10月 累計・仕掛品振替反映分）" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "9月–10月 累計・仕掛品振替反映分" })).toBeTruthy();
     expect(screen.getByText(/50期・2026年9月1日〜2026年10月31日の累計（2ヶ月）/)).toBeTruthy();
     const titles = screen.getAllByText(/^(売上高累計|経常利益累計)$/).map((e) => e.textContent);
     expect(titles).toEqual(["売上高累計", "経常利益累計"]);
@@ -45,11 +45,11 @@ describe("経営サマリーの段", () => {
 
   it("9月に開いたときの実績は前期9月–8月(年をまたぐ)、期首月だけの進捗は「9月」", () => {
     render(<PerformanceSummaryBand kind="adjusted" column={column({ through: targetMonth(49, 8) })} failed={false} />);
-    expect(screen.getByRole("heading", { name: "経営サマリー（9月–8月 累計・仕掛品振替反映分）" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "9月–8月 累計・仕掛品振替反映分" })).toBeTruthy();
     expect(screen.getByText(/49期・2025年9月1日〜2026年8月31日の累計/)).toBeTruthy();
     cleanup();
     render(<PerformanceSummaryBand kind="progress" column={column({ through: targetMonth(51, 9) })} failed={false} />);
-    expect(screen.getByRole("heading", { name: "経営サマリー（9月 帳簿上の進捗）" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "9月 帳簿上の進捗" })).toBeTruthy();
     expect(screen.getByText(/51期・2027年9月1日〜2027年9月30日の累計/)).toBeTruthy();
   });
 
@@ -73,7 +73,7 @@ describe("経営サマリーの段", () => {
         failed={false}
       />
     );
-    expect(screen.getByRole("heading", { name: "経営サマリー（9月–11月 帳簿上の進捗）" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "9月–11月 帳簿上の進捗" })).toBeTruthy();
     expect(screen.getAllByText("未取得")).toHaveLength(2);
     expect(screen.getByText(/11月は保存された値が無いため、累計を表示していません/)).toBeTruthy();
     expect(screen.getByText(/前年同期（49期）の11月が未取得/)).toBeTruthy();
@@ -95,7 +95,7 @@ describe("仕掛品振替反映分・経理確認済みの累計", () => {
         excludedMonths={[targetMonth(50, 11)]}
       />
     );
-    expect(screen.getByRole("heading", { name: "経営サマリー（9月–10月 累計・経理確認済み）" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "9月–10月 累計・経理確認済み" })).toBeTruthy();
     expect(screen.getByText(/経理確認で指定された10月までです/)).toBeTruthy();
     expect(screen.getByText(/50期11月は月末を経過していますが、経理確認の対象月に含まれていないため/)).toBeTruthy();
     expect(screen.getByText(/10月はfreeeで仕掛品振替が未検出ですが、経理確認の指定にもとづき累計に含めています/)).toBeTruthy();
@@ -110,7 +110,7 @@ describe("仕掛品振替反映分・経理確認済みの累計", () => {
         excludedMonths={[targetMonth(50, 10)]}
       />
     );
-    expect(screen.getByRole("heading", { name: "経営サマリー（9月 累計・仕掛品振替反映分）" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "9月 累計・仕掛品振替反映分" })).toBeTruthy();
     expect(screen.getByText(/50期10月は月末を経過していますが、freeeで仕掛品振替が未検出のため/)).toBeTruthy();
     cleanup();
     render(<PerformanceSummaryBand kind="adjusted" column={null} failed={false} />);

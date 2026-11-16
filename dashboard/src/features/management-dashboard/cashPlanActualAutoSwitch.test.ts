@@ -28,6 +28,7 @@ vi.mock("@/repositories/accountingReportRepository", () => ({
   saveAccountingReport: savePlanMock,
 }));
 vi.mock("./termCashFlowTotalService", () => ({ getOrComputeTermCashFlowTotal: async () => null }));
+vi.mock("./loanStatusService", () => ({ getOrFetchLoanStatus: async () => null }));
 vi.mock("@/services/freee/freeeJournalsClient", () => ({ getJournalsCsv: async () => "" }));
 vi.mock("@/services/freee/freeeAccountingClient", () => ({
   getTrialBs: async (_c: number, p: { endMonth: number }) => ({ balances: trialBsByMonth.get(p.endMonth) ?? [] }),

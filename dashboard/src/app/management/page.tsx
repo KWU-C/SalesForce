@@ -11,15 +11,7 @@ import { getOrFetchLoanStatus } from "@/features/management-dashboard/loanStatus
 import type { LoanStatusSnapshot } from "@/features/management-dashboard/loanStatus";
 import { FundReserveSection } from "@/features/management-dashboard/FundReserveSection";
 import { composeFundReserve } from "@/features/management-dashboard/fundReserve";
-import { computeOverdraftStatus } from "@/features/management-dashboard/loanStatus";
-import type { OverdraftStatus } from "@/features/management-dashboard/loanStatus";
-import {
-  collateralDeductionOf,
-  overdraftLimitTotal,
-  selectReserveSettings,
-} from "@/features/management-dashboard/reserveSettings";
-import type { ManagementReserveSettings } from "@/features/management-dashboard/reserveSettings";
-import { listManagementReserveSettings } from "@/repositories/managementReserveSettingsRepository";
+import { getLoanStatusSnapshot } from "@/repositories/loanStatusSnapshotRepository";
 import type { FundReserve } from "@/features/management-dashboard/fundReserve";
 import { getOrFetchFundReserveCore } from "@/features/management-dashboard/fundReserveService";
 import { getOrFetchTermMonthlyPl, termMonthsThrough } from "@/features/management-dashboard/monthlyPlService";
@@ -45,6 +37,7 @@ import {
   previousMonthInJst,
   summarizePerformanceColumn,
   summarizePreviousMonthCash,
+  summarizePreviousMonthLoans,
   targetMonth,
 } from "@/features/management-dashboard/overviewComparison";
 import {
@@ -53,9 +46,6 @@ import {
 } from "@/features/management-dashboard/ManagementOverview";
 import { ExpenseCompositionSection } from "@/features/management-dashboard/ExpenseCompositionSection";
 import { RefreshMonthButton } from "@/features/management-dashboard/RefreshMonthButton";
-import { AccountingReportsSection } from "@/features/management-dashboard/AccountingReportsSection";
-import { getAccountingReportsView } from "@/features/management-dashboard/accountingReportsService";
-import type { AccountingReportsView } from "@/features/management-dashboard/accountingReportsService";
 import { AccountingConfirmationForm } from "@/features/management-dashboard/AccountingConfirmationForm";
 import type { AccountingConfirmation } from "@/features/management-dashboard/accountingConfirmation";
 import { getAccountingConfirmation } from "@/repositories/accountingConfirmationRepository";
@@ -153,15 +143,11 @@ export default async function ManagementPage() {
   let cashFlowError = false;
   let loanStatus: LoanStatusSnapshot | null = null;
   let loanStatusError = false;
-  let reserveSettings: ManagementReserveSettings | null = null;
-  // 全時点の管理設定(前月末の担保控除額は前月末に有効な設定を選ぶため)
-  let allReserveSettings: ManagementReserveSettings[] = [];
-  let overdraft: OverdraftStatus | null = null;
+  // 前月末の借入残高(概要「資金残高（前月末実績）」)。保存済みの値を読むだけでfreeeは呼ばない
+  let previousMonthLoanSnapshot: LoanStatusSnapshot | null = null;
   let fundReserve: FundReserve | null = null;
   let fundReserveError = false;
   const termTotalsByTerm = new Map<number, TermCashFlowTotal>();
-  let accountingReports: AccountingReportsView | null = null;
-  let accountingReportsError = false;
 
   const { term: currentTerm, currentMonth } = getCurrentFiscalPeriod();
   const now = new Date();
@@ -178,14 +164,8 @@ export default async function ManagementPage() {
   }
 
   if (authorized) {
-    // 経理月次報告・資金繰り予定(経理資料の記録、ユーザー確定 2026-10-15)。freee連携の有無に
-    // かかわらず表示する。freee APIは呼ばない(比較値は保存済みの月次P/Lスナップショットから読む)
-    try {
-      accountingReports = await getAccountingReportsView();
-    } catch {
-      console.error("[management page] 経理月次報告・資金繰り予定の取得に失敗しました");
-      accountingReportsError = true;
-    }
+    // 経理の資金繰り予定(PDFからの登録値)は2026-11-16に画面から外した(ユーザー指定: PDFは照合専用で、算出・表示に
+    // 使わない)。Firestoreのデータは残す
     try {
       connectionStatus = await getFreeeConnectionStatus();
     } catch {
@@ -235,18 +215,12 @@ export default async function ManagementPage() {
         console.error("[management page] freeeからの借入状況取得に失敗しました");
         loanStatusError = true;
       }
-      // 準備額・当座貸越枠(経理の管理値)。読めなくても他の表示は止めず「データ未設定」にする
+      // 準備額・当座貸越枠・担保控除額(手入力の管理値)は2026-11-16から読まない(ユーザー指定: 手入力の金額を算出に使わない)
       try {
-        allReserveSettings = await listManagementReserveSettings();
-        reserveSettings = selectReserveSettings(
-          allReserveSettings,
-          currentFiscalYear,
-          currentMonth
-        );
+        previousMonthLoanSnapshot = await getLoanStatusSnapshot(previousMonthTarget.fiscalYear, previousMonthTarget.month);
       } catch {
-        console.error("[management page] 準備額・当座貸越枠の設定の取得に失敗しました");
+        console.error("[management page] 前月末の借入状況の読み込みに失敗しました");
       }
-      overdraft = loanStatus ? computeOverdraftStatus(loanStatus, overdraftLimitTotal(reserveSettings)) : null;
       try {
         const fundReserveCore = await getOrFetchFundReserveCore(currentFiscalYear, currentMonth, {
           forceRefresh: false,
@@ -255,9 +229,10 @@ export default async function ManagementPage() {
         fundReserve = fundReserveCore
           ? composeFundReserve(fundReserveCore, {
               cash: currentCashClosing,
-              settings: reserveSettings,
+              // 資金余力は表示しないので、手入力の準備額・当座貸越の利用額は渡さない
+              settings: null,
               loanTotal: loanStatus?.totalCurrent ?? null,
-              overdraftUsed: overdraft?.used ?? null,
+              overdraftUsed: null,
             })
           : null;
       } catch {
@@ -386,16 +361,12 @@ export default async function ManagementPage() {
   const fundReserveErrorNotice = fundReserveError && (
     <p className="text-center text-sm text-[var(--text-muted)]">資金の備えの取得に失敗しました。</p>
   );
-  const accountingReportsErrorNotice = accountingReportsError && (
-    <p className="text-center text-sm text-[var(--text-muted)]">資金繰り見通しの取得に失敗しました。</p>
-  );
   const overviewFailures = [
     performanceError && "月次業績・採算",
     accountingConfirmationError && "経理確認の対象月",
     cashFlowError && "当月の月次資金収支",
     loanStatusError && "借入状況",
     fundReserveError && "資金の備え",
-    accountingReportsError && "資金繰り見通し",
   ].filter((label): label is string => typeof label === "string");
 
   // 概要の経営サマリー(実績/進捗)・資金サマリーの補足(前月末現預金)。上で読み込んだ保存済みスナップショットから組み立てる
@@ -421,9 +392,8 @@ export default async function ManagementPage() {
     previousMonthTarget,
     cashFlowByMonth.find((c) => c?.fiscalYear === previousMonthTarget.fiscalYear && c.month === previousMonthTarget.month) ??
       null,
-    collateralDeductionOf(
-      selectReserveSettings(allReserveSettings, previousMonthTarget.fiscalYear, previousMonthTarget.month)
-    ),
+    // 担保控除額(手入力)は使わない。担保控除後は表示しない
+    { amount: null, asOf: null, source: null },
     now
   );
 
@@ -462,7 +432,6 @@ export default async function ManagementPage() {
           month={currentMonth}
           cashFlow={currentCashFlow}
           loanStatus={loanStatus}
-          fundReserve={fundReserve}
           fetchedAt={dataUpdatedAt}
         />
         <OverviewLinks
@@ -472,7 +441,11 @@ export default async function ManagementPage() {
           ]}
         />
       </div>
-      <PreviousMonthEndBalance target={previousMonthTarget} cash={previousMonthCash} />
+      <PreviousMonthEndBalance
+        target={previousMonthTarget}
+        cash={previousMonthCash}
+        loans={summarizePreviousMonthLoans(previousMonthTarget, previousMonthLoanSnapshot)}
+      />
     </>
   );
 
@@ -491,11 +464,9 @@ export default async function ManagementPage() {
   const financeTab = (
     <>
       {loanStatusErrorNotice}
-      {loanStatus && overdraft && <LoanStatusTable loanStatus={loanStatus} overdraft={overdraft} />}
+      {loanStatus && <LoanStatusTable loanStatus={loanStatus} />}
       {fundReserveErrorNotice}
       {fundReserve && <FundReserveSection fundReserve={fundReserve} />}
-      {accountingReports && <AccountingReportsSection view={accountingReports} />}
-      {accountingReportsErrorNotice}
     </>
   );
 
@@ -562,14 +533,6 @@ export default async function ManagementPage() {
             ) : (
               <p className="text-center text-sm text-[var(--text-muted)]">
                 freee連携の設定が未完了です（Secret Manager未接続）。
-              </p>
-            )}
-
-            {/* freee未接続でも資金繰り見通し(経理資料の記録)は表示する。接続済みの場合は「財務・資金繰り」タブに出す */}
-            {!connectionStatus?.connected && accountingReports && <AccountingReportsSection view={accountingReports} />}
-            {!connectionStatus?.connected && accountingReportsError && (
-              <p className="text-center text-sm text-[var(--text-muted)]">
-                資金繰り見通しの取得に失敗しました。
               </p>
             )}
 

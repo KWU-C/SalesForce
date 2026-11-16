@@ -5,6 +5,7 @@ const saveMonthlyCashFlowSnapshotMock = vi.fn();
 const getJournalsCsvMock = vi.fn();
 const computeMonthlyCashFlowMock = vi.fn();
 const getOrComputeTermCashFlowTotalMock = vi.fn();
+const getOrFetchLoanStatusMock = vi.fn();
 
 vi.mock("@/repositories/freeeAuthRepository", () => ({ getFreeeCompanyId: getFreeeCompanyIdMock }));
 vi.mock("@/repositories/monthlyCashFlowSnapshotRepository", () => ({
@@ -16,6 +17,7 @@ vi.mock("./journalCsv", () => ({
   parseJournalCsv: () => [{ date: "2026-09-01" }],
 }));
 vi.mock("./monthlyCashFlow", () => ({ computeMonthlyCashFlow: computeMonthlyCashFlowMock }));
+vi.mock("./loanStatusService", () => ({ getOrFetchLoanStatus: getOrFetchLoanStatusMock }));
 vi.mock("./termCashFlowTotalService", () => ({ getOrComputeTermCashFlowTotal: getOrComputeTermCashFlowTotalMock }));
 
 const { refreshPastCashFlows } = await import("./refreshPastCashFlows");
@@ -28,7 +30,7 @@ describe("refreshPastCashFlows", () => {
   it("does nothing when freee is not connected", async () => {
     getFreeeCompanyIdMock.mockResolvedValue(null);
     const result = await refreshPastCashFlows(50, 12);
-    expect(result).toEqual({ connected: false, refreshedMonths: [], refreshedPreviousTerm: null });
+    expect(result).toEqual({ connected: false, refreshedMonths: [], refreshedPreviousTerm: null, refreshedPreviousMonthLoan: false });
     expect(getJournalsCsvMock).not.toHaveBeenCalled();
   });
 
@@ -47,7 +49,7 @@ describe("refreshPastCashFlows", () => {
     expect(saveMonthlyCashFlowSnapshotMock.mock.calls[0][0]).toMatchObject({ fiscalYear: 2026, month: 9, cashClosing: 9 });
     // 1月は期首から5か月目なので前期は取り直さない
     expect(getOrComputeTermCashFlowTotalMock).not.toHaveBeenCalled();
-    expect(result).toEqual({ connected: true, refreshedMonths: [9, 10, 11, 12], refreshedPreviousTerm: null });
+    expect(result).toEqual({ connected: true, refreshedMonths: [9, 10, 11, 12], refreshedPreviousTerm: null, refreshedPreviousMonthLoan: false });
   });
 
   it("saves nothing when one month fails", async () => {
@@ -66,7 +68,7 @@ describe("refreshPastCashFlows", () => {
     const september = await refreshPastCashFlows(50, 9);
     expect(getJournalsCsvMock).not.toHaveBeenCalled(); // 9月は当期の過去月が無い
     expect(getOrComputeTermCashFlowTotalMock).toHaveBeenCalledWith(49, { forceRefresh: true });
-    expect(september).toEqual({ connected: true, refreshedMonths: [], refreshedPreviousTerm: 49 });
+    expect(september).toEqual({ connected: true, refreshedMonths: [], refreshedPreviousTerm: 49, refreshedPreviousMonthLoan: false });
 
     getJournalsCsvMock.mockResolvedValue("csv");
     computeMonthlyCashFlowMock.mockResolvedValue({});
@@ -77,5 +79,22 @@ describe("refreshPastCashFlows", () => {
     getOrComputeTermCashFlowTotalMock.mockClear();
     await refreshPastCashFlows(50, 12);
     expect(getOrComputeTermCashFlowTotalMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("前月の借入状況", () => {
+  it("前月(期をまたぐ場合は前期8月)の借入状況をfreeeから取り直す", async () => {
+    getFreeeCompanyIdMock.mockResolvedValue(1);
+    getJournalsCsvMock.mockResolvedValue("csv");
+    computeMonthlyCashFlowMock.mockResolvedValue({});
+    getOrFetchLoanStatusMock.mockResolvedValue({ totalCurrent: 1 });
+    const november = await refreshPastCashFlows(50, 11);
+    expect(getOrFetchLoanStatusMock).toHaveBeenCalledWith(2026, 10, { forceRefresh: true });
+    expect(november.refreshedPreviousMonthLoan).toBe(true);
+
+    getOrFetchLoanStatusMock.mockClear();
+    getOrComputeTermCashFlowTotalMock.mockResolvedValue({ term: 49 });
+    await refreshPastCashFlows(50, 9);
+    expect(getOrFetchLoanStatusMock).toHaveBeenCalledWith(2025, 8, { forceRefresh: true });
   });
 });

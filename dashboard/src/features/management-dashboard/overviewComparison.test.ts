@@ -9,6 +9,7 @@ import {
   nextTargetMonth,
   summarizePerformanceColumn,
   summarizePreviousMonthCash,
+  summarizePreviousMonthLoans,
   targetMonth,
 } from "./overviewComparison";
 import type { PerformanceLookup } from "./overviewComparison";
@@ -267,5 +268,32 @@ describe("概要上段の累計の最終月", () => {
     expect(future).toEqual({ kind: "wipTransfer", through: targetMonth(50, 9) });
     expect(resolveSummaryBasis({ throughMonth: null, updatedAt: "2026-11-16T01:00:00Z" }, targetMonth(50, 10), lookup).kind).toBe("wipTransfer");
     expect(resolveSummaryBasis(null, targetMonth(50, 10), lookup).through?.key).toBe("2026-09");
+  });
+});
+
+describe("前月末の借入残高", () => {
+  const snapshot = (fetchedAt: string) =>
+    ({
+      fiscalYear: 2026,
+      month: 10,
+      fetchedAt: new Date(fetchedAt),
+      lines: [
+        { key: "shortTerm", label: "短期借入金", openingBalance: 0, currentBalance: 500, newBorrowing: 0, repayment: 0 },
+        { key: "longTerm", label: "長期借入金", openingBalance: 0, currentBalance: 900, newBorrowing: 0, repayment: 0 },
+      ],
+      totalCurrent: 1_400,
+    }) as unknown as import("./loanStatus").LoanStatusSnapshot;
+
+  it("月末後に取得した値だけを使い、無い科目は0円(freeeは残高0の科目行を省略する)", () => {
+    expect(summarizePreviousMonthLoans(targetMonth(50, 10), snapshot("2026-11-01T00:00:00Z"))).toMatchObject({
+      status: "fetched",
+      shortTerm: 500,
+      longTerm: 900,
+      officer: 0,
+      total: 1_400,
+    });
+    // 10/31 23:00(日本時間)の取得は月末前
+    expect(summarizePreviousMonthLoans(targetMonth(50, 10), snapshot("2026-10-31T14:00:00Z")).status).toBe("notFetched");
+    expect(summarizePreviousMonthLoans(targetMonth(50, 10), null).status).toBe("notFetched");
   });
 });

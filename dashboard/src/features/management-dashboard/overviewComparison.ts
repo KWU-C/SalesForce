@@ -8,6 +8,7 @@ import {
 import { actualKindsDifference, monthEndBoundary, resolveCashPlanActual, targetMonthPeriod } from "./accountingReports";
 import type { MonthEndCashSnapshot } from "./accountingReports";
 import type { MonthlyPerformanceSnapshot } from "./monthlyPerformance";
+import type { LoanStatusSnapshot } from "./loanStatus";
 import type { CollateralDeductionSetting } from "./reserveSettings";
 
 /**
@@ -183,6 +184,31 @@ export function summarizePreviousMonthCash(
   const actual = resolveCashPlanActual(target.key, snapshot, now);
   if (actual.status !== "fetched") return { status: "notFetched", collateral };
   return fetchedColumn({ ...actual, fetchedAt: new Date(actual.fetchedAt) }, collateral);
+}
+
+/** 前月末の借入残高(2026-11-16)。月末後に取得したスナップショットだけを使う(月末前の取得は月末残高ではない) */
+export type LoanColumn =
+  | { status: "notFetched" }
+  | {
+      status: "fetched";
+      shortTerm: number;
+      longTerm: number;
+      officer: number;
+      total: number;
+      fetchedAt: Date;
+    };
+
+export function summarizePreviousMonthLoans(target: TargetMonth, snapshot: LoanStatusSnapshot | null): LoanColumn {
+  if (snapshot === null || snapshot.fetchedAt.getTime() < monthEndBoundary(target.key).getTime()) return { status: "notFetched" };
+  const balance = (key: string) => snapshot.lines.find((l) => l.key === key)?.currentBalance ?? 0;
+  return {
+    status: "fetched",
+    shortTerm: balance("shortTerm"),
+    longTerm: balance("longTerm"),
+    officer: balance("officer"),
+    total: snapshot.totalCurrent,
+    fetchedAt: snapshot.fetchedAt,
+  };
 }
 
 /** 翌月(期をまたぐ場合は次期の9月) */

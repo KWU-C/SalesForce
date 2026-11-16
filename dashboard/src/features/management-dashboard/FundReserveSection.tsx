@@ -76,17 +76,14 @@ function negate(value: number | null): number | null {
  * (借入状況と同じ様式、ユーザー確定 2026-09-21/22)。
  *
  * 1. 現預金の内訳: 現預金総額を口座の性格で分けた内訳(すべて口座の実残高)。合計は現預金総額
- * 2. 資金余力: 経理管理上の実質資金 = 現預金総額 − 当座貸越利用額 − 消費税準備 − 賞与準備。
- *    当座貸越は枠ではなく実際の利用額(短期借入金の残高)を引く。消費税準備・賞与準備は経理の
- *    管理値(設定値)で、未設定の間は「データ未設定」。長期借入金は引かない
- * 3. 財務ポジション: ネットキャッシュ = 現預金総額 − 借入残高(短期+長期+役員)
- * 4. その他の備え(参考): 保険積立金。現預金ではないので2・3の計算には含めない
+ * 2. 財務ポジション: 現預金と借入の差額 = 現預金総額 − 借入残高(短期+長期+役員)。使える資金の額ではない
+ * 3. その他の備え(参考): 保険積立金。現預金ではないので1・2の計算には含めない
+ * 資金余力(現預金総額 − 当座貸越利用額 − 消費税準備 − 賞与準備)は2026-11-16に表示を外した(ユーザー指定)。
+ * 準備額は手入力の管理値で、短期借入金を当座貸越と断定できないため
  *
  * 数字はすべてcomposeFundReserveの結果をそのまま表示し、ここでは計算しない。
  */
 export function FundReserveSection({ fundReserve }: FundReserveSectionProps) {
-  const { capacity } = fundReserve;
-
   return (
     <div className="flex flex-col gap-3">
       <SectionBanner>資金の備え</SectionBanner>
@@ -100,30 +97,17 @@ export function FundReserveSection({ fundReserve }: FundReserveSectionProps) {
         <TotalLine label="現預金総額" value={fundReserve.cash} />
 
         <div className="mt-[20px]">
-          <SegmentHeading>資金余力（経理管理上の実質資金）</SegmentHeading>
-          <Line label="現預金総額" value={fundReserve.cash} indent />
-          <Line label="当座貸越利用額" value={negate(capacity.overdraftUsed)} indent />
-          <Line label="消費税準備" value={negate(capacity.consumptionTaxReserve)} indent />
-          <Line label="賞与準備" value={negate(capacity.bonusReserve)} indent />
-          <TotalLine label="資金余力" value={capacity.capacity} />
-          <Caption>
-            当座貸越利用額は短期借入金の残高、消費税準備・賞与準備は経理の管理値です
-            {capacity.settingsAsOf && `（${capacity.settingsAsOf}時点${capacity.settingsSource ? `、${capacity.settingsSource}` : ""}）`}
-            。賞与準備に専用口座はなく、会計上の賞与引当金とは別の金額です。長期借入金は差し引いていません。
-          </Caption>
-        </div>
-
-        <div className="mt-[20px]">
           <SegmentHeading>財務ポジション</SegmentHeading>
           <Line label="現預金総額" value={fundReserve.cash} indent />
           <Line label="借入残高" value={negate(fundReserve.loanTotal)} indent />
-          <TotalLine label="ネットキャッシュ" value={fundReserve.netCash} />
+          <TotalLine label="現預金と借入の差額" value={fundReserve.netCash} />
+          <Caption>現預金総額 − 借入残高（短期・長期・役員借入金）。使える資金の額ではありません。</Caption>
         </div>
 
         <div className="mt-[20px]">
           <SegmentHeading>その他の備え（参考）</SegmentHeading>
           <Line label="保険積立金" value={fundReserve.insuranceAssetReserve} bold />
-          <Caption>現預金ではないため、資金余力・ネットキャッシュには含めていません。</Caption>
+          <Caption>現預金ではないため、現預金総額・差額には含めていません。</Caption>
         </div>
       </div>
     </div>

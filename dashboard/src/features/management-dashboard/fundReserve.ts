@@ -4,8 +4,7 @@ import { getAccountItems } from "@/services/freee/freeeTransactionClient";
 import type { FreeeAccountItem } from "@/services/freee/freeeTransactionClient";
 import { getFreeeCompanyId } from "@/repositories/freeeAuthRepository";
 import { FISCAL_MONTH_ORDER } from "@/config/fiscalPeriods";
-import { WALLETABLE_PURPOSE_MAP } from "@/config/fundReserveClassification";
-import type { FundReservePurpose } from "@/config/fundReserveClassification";
+import { SEPARATELY_SHOWN_WALLETABLE_IDS } from "@/config/fundReserveClassification";
 import type { ManagementReserveSettings } from "./reserveSettings";
 
 /**
@@ -14,17 +13,18 @@ import type { ManagementReserveSettings } from "./reserveSettings";
  *
  * 経理報告「残高表銀行」との照合(2026-10-05)に基づき、次の4つを別々の指標として並べる
  * (ユーザー確定、2026-10-05。互いに定義が違うので1つの数字に統合しない):
- * 1. 現預金の内訳: 口座の性格(担保差入・納税用・その他目的・それ以外)による現預金総額の内訳
- * 2. 資金余力: 経理管理上の実質資金(経理報告の「担保及び消費税・賞与引当分除く実質残」に対応)
+ * 1. 現預金の内訳: 個別に示す口座(freeeの口座名で表示)と、それ以外の口座・現金による現預金総額の内訳
+ * 2. 資金余力: 経理管理上の実質資金(2026-11-16から画面には出さない。手入力の準備額に依存するため)
  * 3. 財務ポジション: 現預金総額 − 借入残高 = ネットキャッシュ
  * 4. その他の備え(参考): 保険積立金。現預金ではないので2・3の計算には含めない
  */
 
 /** スナップショットの算出ロジックの版。保存済みの版が違えばキャッシュを使わず取り直す */
-export const FUND_RESERVE_CALCULATION_VERSION = "fund-reserve-v2-2026-10-05";
+// v3(2026-11-16): 口座の表示名をfreeeの勘定科目名にし、用途区分(purpose)を外した
+export const FUND_RESERVE_CALCULATION_VERSION = "fund-reserve-v3-2026-11-16";
 
 export interface CashEarmarkLine {
-  purpose: FundReservePurpose;
+  /** freeeの勘定科目名(口座名)。対象walletableに対応する科目が見つからなければ口座IDを示す文言 */
   label: string;
   /**
    * 対象walletableに対応するfreee勘定科目が見つからない場合はnull(0円と推測しない)。
@@ -42,7 +42,7 @@ export interface CashEarmarkLine {
 export interface FundReserveCore {
   calculationVersion: string;
   /**
-   * WALLETABLE_PURPOSE_MAPの口座ごとの、選択月末時点の残高。対象はすべてfreeeのwalletable
+   * SEPARATELY_SHOWN_WALLETABLE_IDSの口座ごとの、選択月末時点の残高。対象はすべてfreeeのwalletable
    * (銀行口座)であり、構造的に必ず「現金・預金」カテゴリ=現預金総額の内数になる。
    */
   cashEarmarkLines: CashEarmarkLine[];
@@ -110,16 +110,16 @@ export function extractInsuranceAccountBalance(trialBs: FreeeTrialBalanceRespons
  * 口座残高はgetWalletables()のリアルタイム残高ではなく、account_items(walletable_idを持つ)経由で
  * 勘定科目名を特定し、trial_bsのclosing_balance(選択月末時点)から取る。過去月を表示しても
  * 「現在」の残高が混ざらないようにするため(2026-09-15修正)。
- * WALLETABLE_PURPOSE_MAPの口座分類を変更しても、この関数やUI側の変更は不要。
+ * 表示名はfreeeの勘定科目名(口座名)。SEPARATELY_SHOWN_WALLETABLE_IDSを変更しても、この関数やUI側の変更は不要。
  */
 export function buildFundReserveCore(params: {
   trialBs: FreeeTrialBalanceResponse;
   accountItems: FreeeAccountItem[];
 }): FundReserveCore {
-  const cashEarmarkLines = WALLETABLE_PURPOSE_MAP.map((m) => {
-    const accountItem = params.accountItems.find((i) => i.walletable_id === m.walletableId);
+  const cashEarmarkLines = SEPARATELY_SHOWN_WALLETABLE_IDS.map((walletableId) => {
+    const accountItem = params.accountItems.find((i) => i.walletable_id === walletableId);
     const balance = accountItem ? (findRow(params.trialBs.balances, accountItem.name)?.closing_balance ?? 0) : null;
-    return { purpose: m.purpose, label: m.label, balance };
+    return { label: accountItem?.name ?? `freeeの科目が見つからない口座（ID ${walletableId}）`, balance };
   });
 
   return {

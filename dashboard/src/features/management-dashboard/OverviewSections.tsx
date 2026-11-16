@@ -2,8 +2,7 @@ import { FISCAL_MONTH_ORDER } from "@/config/fiscalPeriods";
 import { formatDateTime, formatPercent, formatYen } from "@/utils/format";
 import { SectionBanner } from "./SectionBanner";
 import { changeRate } from "./performanceView";
-import type { CashPlan } from "./accountingReports";
-import type { CumulativeAmount, PerformanceColumn, SummaryBasis, TargetMonth } from "./overviewComparison";
+import type { CashColumn, CumulativeAmount, PerformanceColumn, SummaryBasis, TargetMonth } from "./overviewComparison";
 
 // ---------------------------------------------------------------------------
 // 表示形式(経理調整済み・帳簿上の進捗の2段で共通)
@@ -213,9 +212,9 @@ export function PerformanceSummaryBand({
 }
 
 // ---------------------------------------------------------------------------
-// 収支予定
+// 資金残高(前月末実績)
 
-function PlanRow({ label, note, value, empty }: { label: string; note?: string; value: string; empty: boolean }) {
+function BalanceRow({ label, note, value, empty }: { label: string; note?: string; value: string; empty: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1">
       <span className="text-sm text-[var(--text-secondary)]">
@@ -233,62 +232,62 @@ function PlanRow({ label, note, value, empty }: { label: string; note?: string; 
   );
 }
 
-function planAmount(value: number | null | undefined): string {
-  return value === null || value === undefined ? "記載なし" : signedYen(value);
-}
-
 /**
- * 収支予定(2026-11-13)。当月末・翌月末について、登録済みの経理の資金繰り予定(cashPlanForecasts)の
- * 当座・普通預金合計と預金総合計(担保控除後)を出す。freeeが算出した予測ではなく、現在残高・前月末残高でも
- * 埋めない。登録が無い月は「未算出」。
+ * 資金残高（前月末実績）(2026-11-16、ユーザー指定)。予測の代わりに、freeeの前月末残高の内訳を独立して出す。
+ * 資金サマリー(現在の状況)とは役割を分け、同じ値を重ねない。経理の資金繰り予定は概要では使わない
+ * (財務・資金繰りタブで基準日付きで参照する)。
+ * - 当座・普通預金合計、預金総合計(当座・普通・定期)はfreeeの月末残高(月末後に取得したもの)
+ * - 担保控除後は、前月末時点に有効な経理の管理設定の担保控除額だけを使う。未設定なら「未設定」で、予定資料の
+ *   控除額では補わない
  */
-export function CashPlanOutlook({
-  outlook,
-  failed,
-}: {
-  outlook: { target: TargetMonth; plan: CashPlan | null }[];
-  failed: boolean;
-}) {
-  const label = (t: TargetMonth) => `${t.calendarYear}年${t.month}月末（予定）`;
+export function PreviousMonthEndBalance({ target, cash }: { target: TargetMonth; cash: CashColumn }) {
+  const title = `資金残高（${target.calendarYear}年${target.month}月末実績）`;
+  if (cash.status !== "fetched") {
+    return (
+      <div className="flex flex-col gap-2">
+        <SectionBanner>{title}</SectionBanner>
+        <p className="text-sm text-[var(--status-serious)]">
+          {target.calendarYear}年{target.month}月末の残高は、月末後にfreeeから取得した値がまだ無いため表示していません。
+        </p>
+      </div>
+    );
+  }
+  const { collateral } = cash;
   return (
     <div className="flex flex-col gap-2">
-      <SectionBanner>収支予定</SectionBanner>
+      <SectionBanner>{title}</SectionBanner>
       <p className="text-xs text-[var(--text-secondary)]">
-        経理の資金繰り予定（登録済みの値）による月末の予定残高です。freeeが算出した予測ではありません。
+        {target.term}期{target.month}月末（{target.calendarYear}年{target.month}月{lastDayOf(target)}日）時点のfreeeの残高／freee取得:{" "}
+        {formatDateTime(cash.fetchedAt)}
+        <span className="text-[var(--text-muted)]">（予測ではありません。現在の残高は資金サマリーを参照）</span>
       </p>
-      {failed ? (
-        <p className="text-sm text-[var(--status-serious)]">資金繰り予定の読み込みに失敗しました。</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {outlook.map(({ target, plan }) => (
-            <div key={target.key} className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-              <p className="mb-2 text-xs font-medium text-[var(--text-muted)]">{label(target)}</p>
-              <PlanRow label="当座・普通預金合計" value={plan ? planAmount(plan.values.checkingSavingsTotal) : "未算出"} empty={!plan} />
-              <PlanRow
-                label="預金総合計（担保控除後）"
-                note="当座・普通＋定期 − 担保控除額"
-                value={plan ? planAmount(plan.values.depositTotalAfterCollateral) : "未算出"}
-                empty={!plan}
-              />
-              <div className="mt-2 flex flex-col gap-0.5 border-t border-[var(--gridline)] pt-2 text-xs text-[var(--text-muted)]">
-                {plan ? (
-                  <>
-                    <p>うち担保控除額（予定に記載の額） {planAmount(plan.values.collateralDeduction)}</p>
-                    <p>
-                      {plan.values.sourceUpdatedOn ? `${plan.values.sourceUpdatedOn.replaceAll("-", "/")}時点` : "基準日なし"}・経理の資金繰り予定
-                    </p>
-                  </>
-                ) : (
-                  <p>登録された予定なし（freeeの予定や現在残高からは算出していません）</p>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
+        <BalanceRow label="当座・普通預金合計" value={formatYen(cash.checkingSavings)} empty={false} />
+        <BalanceRow
+          label="預金総合計（当座・普通・定期）"
+          note={`うち定期預金 ${formatYen(cash.timeDeposit)}`}
+          value={formatYen(cash.depositTotalBeforeCollateral)}
+          empty={false}
+        />
+        <BalanceRow
+          label="預金総合計（担保控除後）"
+          note={
+            collateral.amount === null
+              ? "担保控除額が経理の管理設定に未登録のため算出していません（資金繰り予定の控除額では補いません）"
+              : `担保控除額 ${formatYen(collateral.amount)}（${collateral.asOf ?? "基準日なし"}時点の経理の管理設定）`
+          }
+          value={cash.depositTotalAfterCollateral === null ? "未設定" : signedYen(cash.depositTotalAfterCollateral)}
+          empty={cash.depositTotalAfterCollateral === null}
+        />
+        <p className="mt-2 border-t border-[var(--gridline)] pt-2 text-xs text-[var(--text-muted)]">
+          参考: 月末現預金 {formatYen(cash.cashClosing)}（預金総合計＋現金）
+        </p>
+      </div>
+      {cash.kindsDifference !== 0 && (
+        <p className="text-xs font-medium text-[var(--status-serious)]">
+          ※ 種類別の残高（当座・普通＋定期＋現金）が月末現預金と合いません（差 {formatYen(cash.kindsDifference)}）。分類できない預金科目がある可能性があります。
+        </p>
       )}
-      <p className="text-xs text-[var(--text-muted)]">
-        ※ 消費税準備・賞与準備は預金総合計から差し引いていません。予定と月末後のfreee実績の比較は「財務・資金繰り」タブの資金繰り見通しで確認できます。
-      </p>
     </div>
   );
 }

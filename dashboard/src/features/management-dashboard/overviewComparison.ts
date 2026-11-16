@@ -6,12 +6,12 @@ import {
   previousFiscalTermMonth,
 } from "@/config/fiscalPeriods";
 import { actualKindsDifference, monthEndBoundary, resolveCashPlanActual, targetMonthPeriod } from "./accountingReports";
-import type { CashPlan, MonthEndCashSnapshot } from "./accountingReports";
+import type { MonthEndCashSnapshot } from "./accountingReports";
 import type { MonthlyPerformanceSnapshot } from "./monthlyPerformance";
 import type { CollateralDeductionSetting } from "./reserveSettings";
 
 /**
- * 概要の経営サマリー(実績/進捗)・資金サマリー・収支予定(2026-11-13)の集計。保存済みのfreeeスナップショットから組み立て、freeeは呼ばない。どちらも取得時点の
+ * 概要の経営サマリー・資金残高(前月末実績)の集計(2026-11-13、11-16更新)。保存済みのfreeeスナップショットから組み立て、freeeは呼ばない。どちらも取得時点の
  * freee帳簿の数値で、月次決算の確定は判定しない。
  *
  * - 実績: 日本時間の前月までの期首(9月)からの累計と、前月末の残高。月末前に取得したスナップショットは
@@ -191,17 +191,6 @@ export function nextTargetMonth(target: TargetMonth): TargetMonth {
   return index === FISCAL_MONTH_ORDER.length - 1
     ? targetMonth(target.term + 1, FISCAL_MONTH_ORDER[0])
     : targetMonth(target.term, FISCAL_MONTH_ORDER[index + 1]);
-}
-
-/**
- * 収支予定: 指定した月末ごとに、登録済みの経理の資金繰り予定(cashPlanForecasts)を対応させる。登録が無い月は
- * plan=null(未算出)。現在残高・前月末残高やfreeeの予定からの推計で埋めない。
- */
-export function selectCashPlanOutlook(
-  plans: readonly CashPlan[],
-  months: readonly TargetMonth[]
-): { target: TargetMonth; plan: CashPlan | null }[] {
-  return months.map((target) => ({ target, plan: plans.find((p) => p.targetMonth === target.key) ?? null }));
 }
 
 /**

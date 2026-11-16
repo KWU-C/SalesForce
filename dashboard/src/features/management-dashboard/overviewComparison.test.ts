@@ -5,6 +5,7 @@ import {
   latestAdjustedMonth,
   monthsAfter,
   previousMonthInJst,
+  resolveSummaryBasis,
   nextTargetMonth,
   selectCashPlanOutlook,
   summarizePerformanceColumn,
@@ -261,5 +262,19 @@ describe("経理調整済みの最終月", () => {
 
   it("どこにも無ければnull", () => {
     expect(latestAdjustedMonth(targetMonth(50, 10), lookupOf([]))).toBeNull();
+  });
+});
+
+describe("概要上段の累計の最終月", () => {
+  const lookup = lookupOf([snapshot(2026, 9, { revenue: 1, ordinaryProfit: 1, wip: true }, "2026-11-13T08:00:00Z")]);
+
+  it("経理確認の指定があればその月(仕掛品振替が無くても)、締まった月より後の指定や未指定なら暫定の仕掛品振替判定", () => {
+    const confirmed = resolveSummaryBasis({ throughMonth: "2026-10", updatedAt: "2026-11-16T01:00:00Z" }, targetMonth(50, 10), lookup);
+    expect(confirmed.kind).toBe("confirmed");
+    expect(confirmed.through?.key).toBe("2026-10");
+    const future = resolveSummaryBasis({ throughMonth: "2026-11", updatedAt: "2026-11-16T01:00:00Z" }, targetMonth(50, 10), lookup);
+    expect(future).toEqual({ kind: "wipTransfer", through: targetMonth(50, 9) });
+    expect(resolveSummaryBasis({ throughMonth: null, updatedAt: "2026-11-16T01:00:00Z" }, targetMonth(50, 10), lookup).kind).toBe("wipTransfer");
+    expect(resolveSummaryBasis(null, targetMonth(50, 10), lookup).through?.key).toBe("2026-09");
   });
 });

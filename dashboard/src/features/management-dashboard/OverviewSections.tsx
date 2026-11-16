@@ -3,7 +3,7 @@ import { formatDateTime, formatPercent, formatYen } from "@/utils/format";
 import { SectionBanner } from "./SectionBanner";
 import { changeRate } from "./performanceView";
 import type { CashPlan } from "./accountingReports";
-import type { CumulativeAmount, PerformanceColumn, TargetMonth } from "./overviewComparison";
+import type { CumulativeAmount, PerformanceColumn, SummaryBasis, TargetMonth } from "./overviewComparison";
 
 // ---------------------------------------------------------------------------
 // 表示形式(経理調整済み・帳簿上の進捗の2段で共通)
@@ -98,13 +98,14 @@ function Notes({ notes }: { notes: Note[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// 経営サマリー(経理調整済み/帳簿上の進捗の各段: 帯+売上高累計・経常利益累計の2ボックス)
+// 経営サマリー(経理確認済み・仕掛品振替反映分/帳簿上の進捗の各段: 帯+売上高累計・経常利益累計の2ボックス)
 
 /**
  * 経営サマリーの1段。2段で同じ構成・同じ順序にする。
- * - adjusted(2026-11-16): 期首から経理調整済みの最終月(latestAdjustedMonth)までの累計。業績・採算タブの月次の
- *   合計で、経理報告の「売上高累計・経常利益累計」と同じ範囲(50期9月で円単位の一致を確認)。締まっているが
- *   調整前の月は含めず、その月を明示する
+ * - adjusted(2026-11-16): 期首から、経理確認で指定された月(指定が無い間は暫定で仕掛品振替が確認できた月)までの
+ *   累計。業績・採算タブの月次の合計で、経理報告の「売上高累計・経常利益累計」と同じ範囲(50期9月で円単位の一致を
+ *   確認)。月末を経過していても対象外の月は含めず、その月を明示する。見出しは確認できた事実(経理確認済み/
+ *   仕掛品振替反映分)だけを書く
  * - progress: 当月を含む期首からの累計(freeeに登録済みの当月日付の取引を含む途中の値)
  * 売上高累計: 前年同期・増減(率)。経常利益累計: 前年同期・増減・営業利益累計。
  * 目標との差は、会計の売上高と同じ定義の目標がシステムに無いため出さない(Salesforceの受注・完了目標で代用しない)。
@@ -114,30 +115,40 @@ export function PerformanceSummaryBand({
   column,
   failed,
   excludedMonths = [],
+  basis,
+  action,
 }: {
   kind: "adjusted" | "progress";
-  /** adjusted で経理調整済みの月が1か月も無ければnull */
+  /** adjusted: 累計の最終月の決め方 */
+  basis?: SummaryBasis;
+  /** adjusted: 経理確認の対象月の指定フォーム */
+  action?: React.ReactNode;
+  /** adjusted で対象の月が1か月も無ければnull */
   column: PerformanceColumn | null;
   failed: boolean;
-  /** adjusted: 締まっているが経理調整前のため累計に含めなかった月 */
+  /** adjusted: 月末を経過しているが対象外のため累計に含めなかった月 */
   excludedMonths?: TargetMonth[];
 }) {
   const notes: Note[] = [];
   if (failed) notes.push({ tone: "serious", text: "※ 月次業績の読み込みに失敗しました。" });
+  const confirmed = basis?.kind === "confirmed";
   if (excludedMonths.length > 0) {
     notes.push({
       tone: "serious",
-      text: `※ ${excludedMonths.map((m) => `${m.term}期${m.month}月`).join("・")}は締まっていますが、freeeで仕掛品振替が未検出のため経理調整前とみなし、累計に含めていません（帳簿上の進捗には含みます）。`,
+      text: `※ ${excludedMonths.map((m) => `${m.term}期${m.month}月`).join("・")}は月末を経過していますが、${
+        confirmed ? "経理確認の対象月に含まれていない" : "freeeで仕掛品振替が未検出の"
+      }ため、累計に含めていません（帳簿上の進捗には含みます）。`,
     });
   }
   if (column === null) {
     return (
       <div className="flex flex-col gap-2">
-        <SectionBanner>経営サマリー（経理調整済みの累計）</SectionBanner>
+        <SectionBanner>経営サマリー（仕掛品振替反映分の累計）</SectionBanner>
         <p className="text-sm text-[var(--status-serious)]">
-          経理調整済み（月末後に取得し、仕掛品振替あり）の月がまだ無いため、累計を表示していません。
+          経理確認の対象月が未指定で、仕掛品振替が確認できた月（月末後に取得したもの）も無いため、累計を表示していません。
         </p>
         <Notes notes={notes} />
+        {action}
       </div>
     );
   }
@@ -156,22 +167,31 @@ export function PerformanceSummaryBand({
     });
   }
   if (column.noWipTransferMonths.length > 0) {
-    notes.push({
-      tone: "serious",
-      text: `※ ${monthList(column.noWipTransferMonths)}はfreeeで仕掛品振替が未検出（経理調整前の可能性）です。振替が入ると経常利益・営業利益が大きく変わることがあります。`,
-    });
+    notes.push(
+      kind === "adjusted" && confirmed
+        ? {
+            tone: "secondary",
+            text: `※ ${monthList(column.noWipTransferMonths)}はfreeeで仕掛品振替が未検出ですが、経理確認の指定にもとづき累計に含めています。`,
+          }
+        : {
+            tone: "serious",
+            text: `※ ${monthList(column.noWipTransferMonths)}はfreeeで仕掛品振替が未検出です。振替が入ると経常利益・営業利益が大きく変わることがあります。`,
+          }
+    );
   }
 
   return (
     <div className="flex flex-col gap-2">
       <SectionBanner>
-        経営サマリー（{periodLabel(column)} {kind === "adjusted" ? "累計・経理調整済み" : "帳簿上の進捗"}）
+        経営サマリー（{periodLabel(column)} {kind === "progress" ? "帳簿上の進捗" : confirmed ? "累計・経理確認済み" : "累計・仕掛品振替反映分"}）
       </SectionBanner>
       <p className="text-xs text-[var(--text-secondary)]">
         {periodRange(column)}の累計（{column.months.length}ヶ月）／{fetchedLabel(column.fetchedFrom, column.fetchedTo)}
         <span className="text-[var(--text-muted)]">
           {kind === "adjusted"
-            ? "／業績・採算タブの月次の合計。期首から、月末後に取得しfreeeで仕掛品振替が入っている月まで（経理調整済みの目印。月次決算の確定はfreeeから取れないため推定）"
+            ? basis?.kind === "confirmed"
+              ? `／業績・採算タブの月次の合計。期首から、経理確認で指定された${t.month}月までです（${formatDateTime(basis.updatedAt)} 指定）`
+              : "／業績・採算タブの月次の合計。期首から、月末後に取得しfreeeで仕掛品振替が確認できた月までです（暫定。経理確認の対象月を指定すると、その月までに切り替わります）"
             : `／${t.month}月分はfreeeに登録済みの${t.month}月日付の取引を含む途中の値です（当日までの確定実績・予測ではありません）`}
         </span>
       </p>
@@ -187,6 +207,7 @@ export function PerformanceSummaryBand({
         />
       </div>
       <Notes notes={notes} />
+      {action}
     </div>
   );
 }

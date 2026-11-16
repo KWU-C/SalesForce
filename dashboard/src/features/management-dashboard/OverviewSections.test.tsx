@@ -31,7 +31,7 @@ describe("経営サマリーの段", () => {
 
   it("帯に期間と実績/進捗を出し、売上高累積→経常利益累積の順に備考を並べる", () => {
     render(<PerformanceSummaryBand kind="adjusted" column={column()} failed={false} />);
-    expect(screen.getByRole("heading", { name: "経営サマリー（9月–10月 累計・経理調整済み）" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "経営サマリー（9月–10月 累計・仕掛品振替反映分）" })).toBeTruthy();
     expect(screen.getByText(/50期・2026年9月1日〜2026年10月31日の累計（2ヶ月）/)).toBeTruthy();
     const titles = screen.getAllByText(/^(売上高累計|経常利益累計)$/).map((e) => e.textContent);
     expect(titles).toEqual(["売上高累計", "経常利益累計"]);
@@ -46,7 +46,7 @@ describe("経営サマリーの段", () => {
 
   it("9月に開いたときの実績は前期9月–8月(年をまたぐ)、期首月だけの進捗は「9月」", () => {
     render(<PerformanceSummaryBand kind="adjusted" column={column({ through: targetMonth(49, 8) })} failed={false} />);
-    expect(screen.getByRole("heading", { name: "経営サマリー（9月–8月 累計・経理調整済み）" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "経営サマリー（9月–8月 累計・仕掛品振替反映分）" })).toBeTruthy();
     expect(screen.getByText(/49期・2025年9月1日〜2026年8月31日の累計/)).toBeTruthy();
     cleanup();
     render(<PerformanceSummaryBand kind="progress" column={column({ through: targetMonth(51, 9) })} failed={false} />);
@@ -83,10 +83,26 @@ describe("経営サマリーの段", () => {
   });
 });
 
-describe("経理調整済みの累計", () => {
+describe("仕掛品振替反映分・経理確認済みの累計", () => {
   afterEach(cleanup);
 
-  it("締まっているが調整前の月を明示し、調整済みの月が無ければ累計を出さない", () => {
+  it("経理確認の指定があれば見出しを「経理確認済み」にし、対象外の月・振替未検出を事実どおり書く", () => {
+    render(
+      <PerformanceSummaryBand
+        kind="adjusted"
+        column={column({ noWipTransferMonths: [10] })}
+        failed={false}
+        basis={{ kind: "confirmed", through: targetMonth(50, 10), updatedAt: new Date("2026-11-16T01:00:00Z") }}
+        excludedMonths={[targetMonth(50, 11)]}
+      />
+    );
+    expect(screen.getByRole("heading", { name: "経営サマリー（9月–10月 累計・経理確認済み）" })).toBeTruthy();
+    expect(screen.getByText(/経理確認で指定された10月までです/)).toBeTruthy();
+    expect(screen.getByText(/50期11月は月末を経過していますが、経理確認の対象月に含まれていないため/)).toBeTruthy();
+    expect(screen.getByText(/10月はfreeeで仕掛品振替が未検出ですが、経理確認の指定にもとづき累計に含めています/)).toBeTruthy();
+  });
+
+  it("未指定なら暫定の仕掛品振替反映分。月末を経過した対象外の月を明示し、対象の月が無ければ累計を出さない", () => {
     render(
       <PerformanceSummaryBand
         kind="adjusted"
@@ -95,11 +111,11 @@ describe("経理調整済みの累計", () => {
         excludedMonths={[targetMonth(50, 10)]}
       />
     );
-    expect(screen.getByRole("heading", { name: "経営サマリー（9月 累計・経理調整済み）" })).toBeTruthy();
-    expect(screen.getByText(/50期10月は締まっていますが、freeeで仕掛品振替が未検出のため/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "経営サマリー（9月 累計・仕掛品振替反映分）" })).toBeTruthy();
+    expect(screen.getByText(/50期10月は月末を経過していますが、freeeで仕掛品振替が未検出のため/)).toBeTruthy();
     cleanup();
     render(<PerformanceSummaryBand kind="adjusted" column={null} failed={false} />);
-    expect(screen.getByText(/経理調整済み（月末後に取得し、仕掛品振替あり）の月がまだ無い/)).toBeTruthy();
+    expect(screen.getByText(/経理確認の対象月が未指定で、仕掛品振替が確認できた月/)).toBeTruthy();
   });
 });
 

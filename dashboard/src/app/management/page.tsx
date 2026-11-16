@@ -35,6 +35,7 @@ import {
   latestFetchedAt,
 } from "@/features/management-dashboard/MonthlyPerformanceSection";
 import { CostStructureSection } from "@/features/management-dashboard/CostStructureSection";
+import { SectionBanner } from "@/features/management-dashboard/SectionBanner";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
 import { PerformanceSummaryBand, PreviousMonthEndBalance } from "@/features/management-dashboard/OverviewSections";
@@ -434,21 +435,24 @@ export default async function ManagementPage() {
           {`取得に失敗した項目があります（${overviewFailures.join("・")}）。該当するタブの表示をご確認ください。`}
         </OverviewNotice>
       )}
-      <PerformanceSummaryBand
-        kind="adjusted"
-        column={adjustedPerformance}
-        failed={performanceError || twoTermsAgoPerformanceError}
-        excludedMonths={unadjustedClosedMonths}
-        basis={summaryBasis}
-        action={
-          <AccountingConfirmationForm
-            currentMonth={accountingConfirmation?.throughMonth ?? null}
-            defaultMonth={adjustedThrough?.key ?? previousMonthTarget.key}
-            maxMonth={previousMonthTarget.key}
-          />
-        }
-      />
+      {/* 経営サマリー: 帯は1本。上段(累計)と下段(帳簿上の進捗)は小見出しと区切り線で分ける(2026-11-16、ユーザー指定) */}
       <div className="flex flex-col gap-3">
+        <SectionBanner>経営サマリー</SectionBanner>
+        <PerformanceSummaryBand
+          kind="adjusted"
+          column={adjustedPerformance}
+          failed={performanceError || twoTermsAgoPerformanceError}
+          excludedMonths={unadjustedClosedMonths}
+          basis={summaryBasis}
+          action={
+            <AccountingConfirmationForm
+              currentMonth={accountingConfirmation?.throughMonth ?? null}
+              defaultMonth={adjustedThrough?.key ?? previousMonthTarget.key}
+              maxMonth={previousMonthTarget.key}
+            />
+          }
+        />
+        <hr className="border-[var(--gridline)]" />
         <PerformanceSummaryBand kind="progress" column={progressPerformance} failed={performanceError} />
         <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る（売上総利益・利益率・月次表）" }]} />
       </div>

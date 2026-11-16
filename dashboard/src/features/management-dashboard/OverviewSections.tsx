@@ -100,7 +100,8 @@ function Notes({ notes }: { notes: Note[] }) {
 // 経営サマリー(経理確認済み・仕掛品振替反映分/帳簿上の進捗の各段: 帯+売上高累計・経常利益累計の2ボックス)
 
 /**
- * 経営サマリーの1段。2段で同じ構成・同じ順序にする。
+ * 経営サマリーの1段。2段で同じ構成・同じ順序にする。帯(「経営サマリー」)はページ側に1本だけ置き、各段は
+ * 小見出し(例: 「9月 累計・仕掛品振替反映分」「9月–11月 帳簿上の進捗」)で始める(2026-11-16、ユーザー指定)。
  * - adjusted(2026-11-16): 期首から、経理確認で指定された月(指定が無い間は暫定で仕掛品振替が確認できた月)までの
  *   累計。業績・採算タブの月次の合計で、経理報告の「売上高累計・経常利益累計」と同じ範囲(50期9月で円単位の一致を
  *   確認)。月末を経過していても対象外の月は含めず、その月を明示する。見出しは確認できた事実(経理確認済み/
@@ -142,7 +143,7 @@ export function PerformanceSummaryBand({
   if (column === null) {
     return (
       <div className="flex flex-col gap-2">
-        <SectionBanner>経営サマリー（仕掛品振替反映分の累計）</SectionBanner>
+        <h3 className="text-base font-semibold text-[var(--text-primary)]">仕掛品振替反映分の累計</h3>
         <p className="text-sm text-[var(--status-serious)]">
           経理確認の対象月が未指定で、仕掛品振替が確認できた月（月末後に取得したもの）も無いため、累計を表示していません。
         </p>
@@ -181,9 +182,9 @@ export function PerformanceSummaryBand({
 
   return (
     <div className="flex flex-col gap-2">
-      <SectionBanner>
-        経営サマリー（{periodLabel(column)} {kind === "progress" ? "帳簿上の進捗" : confirmed ? "累計・経理確認済み" : "累計・仕掛品振替反映分"}）
-      </SectionBanner>
+      <h3 className="text-base font-semibold text-[var(--text-primary)]">
+        {periodLabel(column)} {kind === "progress" ? "帳簿上の進捗" : confirmed ? "累計・経理確認済み" : "累計・仕掛品振替反映分"}
+      </h3>
       <p className="text-xs text-[var(--text-secondary)]">
         {periodRange(column)}の累計（{column.months.length}ヶ月）／{fetchedLabel(column.fetchedFrom, column.fetchedTo)}
         <span className="text-[var(--text-muted)]">

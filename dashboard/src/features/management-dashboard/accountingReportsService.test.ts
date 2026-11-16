@@ -25,7 +25,7 @@ const plan = (targetMonth: string) => ({ targetMonth, values: { checkingSavingsT
 
 describe("getAccountingReportsView", () => {
   it("reads the month-end cash snapshot only for ended months and leaves the registered plans untouched", async () => {
-    listMonthlyReportsMock.mockResolvedValue([]);
+    listMonthlyReportsMock.mockResolvedValue([{ targetMonth: "2026-09", values: { revenueCumulative: 900 }, revisions: [] }]);
     listCashPlansMock.mockResolvedValue([plan("2026-11"), plan("2026-10")]);
     getMonthlyCashFlowSnapshotMock.mockResolvedValue({
       cashClosing: 1_005,
@@ -44,8 +44,7 @@ describe("getAccountingReportsView", () => {
       ["2026-10", "fetched"],
     ]);
     expect(view.cashPlans[1].plan).toEqual(plan("2026-10"));
-    // 経理月次報告は画面で使わないので読まない(データは残す)
-    expect(listMonthlyReportsMock).not.toHaveBeenCalled();
-    expect(view).not.toHaveProperty("monthlyReports");
+    // 経理月次報告は登録値のまま返す(概要の経理報告に使う)
+    expect(view.monthlyReports).toEqual([{ targetMonth: "2026-09", values: { revenueCumulative: 900 }, revisions: [] }]);
   });
 });

@@ -1,18 +1,17 @@
 import { formatYen } from "@/utils/format";
 import { SectionBanner } from "./SectionBanner";
-import type { LoanKey, LoanStatus, OverdraftStatus } from "./loanStatus";
+import type { LoanKey, LoanStatus } from "./loanStatus";
 
 interface LoanStatusTableProps {
   loanStatus: LoanStatus;
-  overdraft: OverdraftStatus;
 }
 
 /** 表示用の短縮ラベル。loanStatus.tsのlabel(短期借入金など)はfreeeの科目名検索に
  * そのまま使う実データなので変更できない(ユーザー確定)。表示だけここで短くする */
 const SHORT_LABEL: Record<LoanKey, string> = {
-  shortTerm: "短期",
-  longTerm: "長期",
-  officer: "役員",
+  shortTerm: "短期借入金",
+  longTerm: "長期借入金",
+  officer: "役員借入金",
 };
 
 /**
@@ -33,11 +32,10 @@ const SHORT_LABEL: Record<LoanKey, string> = {
  * 借入残高の表に最小幅は付けない。以前のmin-w-[360px]は390px幅の画面(カード内側は約324px)で
  * 横スクロールになり「現在残高」列が切れていた。3列とも9桁の金額まで324pxに収まる(2026-10-05)。
  *
- * 「当座貸越」は枠(設定値)・利用額(短期借入金の残高)・空き枠の3行。借入残高そのものと
- * 借入枠を混同しないよう別ブロックにする(ユーザー確定、2026-10-05)。枠が未設定の間は
- * 枠・空き枠を「データ未設定」と表示する。
+ * 「当座貸越」の枠・利用額・空き枠の表示は外した(2026-11-16、ユーザー指定)。枠はfreeeに無く手入力の
+ * 管理値だったため。短期借入金は当座貸越と断定せず「短期借入金」の残高として表に出す。
  */
-export function LoanStatusTable({ loanStatus, overdraft }: LoanStatusTableProps) {
+export function LoanStatusTable({ loanStatus }: LoanStatusTableProps) {
   return (
     <div className="flex flex-col gap-3">
       <SectionBanner>借入状況</SectionBanner>
@@ -96,30 +94,6 @@ export function LoanStatusTable({ loanStatus, overdraft }: LoanStatusTableProps)
           </div>
         </div>
 
-        <p className="mt-4 bg-[var(--surface-sunken)] py-[3px] pl-[3px] text-xs font-medium text-[var(--text-muted)]">
-          当座貸越
-        </p>
-        <div className="mt-1 flex flex-col gap-1 text-sm">
-          <div className="flex items-center justify-between py-1.5">
-            <span className="text-[var(--text-secondary)]">枠</span>
-            <span className="tabular-nums text-[var(--text-primary)]">
-              {overdraft.limitTotal === null ? "データ未設定" : formatYen(overdraft.limitTotal)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between border-t border-[var(--gridline)] py-1.5">
-            <span className="text-[var(--text-secondary)]">利用額（短期借入金の残高）</span>
-            <span className="tabular-nums text-[var(--text-primary)]">{formatYen(overdraft.used)}</span>
-          </div>
-          <div className="flex items-center justify-between border-t-2 border-[var(--baseline)] py-1.5 font-semibold">
-            <span className="text-[var(--text-primary)]">空き枠</span>
-            <span className="tabular-nums text-[var(--text-primary)]">
-              {overdraft.available === null ? "データ未設定" : formatYen(overdraft.available)}
-            </span>
-          </div>
-        </div>
-        <p className="mt-1 text-xs text-[var(--text-muted)]">
-          短期借入金の全額が当座貸越である前提の数字です。枠は経理の管理値です。
-        </p>
       </div>
     </div>
   );

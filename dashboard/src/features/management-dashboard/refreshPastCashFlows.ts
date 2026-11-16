@@ -1,8 +1,9 @@
-import { FISCAL_MONTH_ORDER, fiscalMonthIndex, freeeFiscalYearForTerm } from "@/config/fiscalPeriods";
+import { FISCAL_MONTH_ORDER, fiscalMonthIndex, freeeFiscalYearForTerm, previousFiscalTermMonth } from "@/config/fiscalPeriods";
 import { getFreeeCompanyId } from "@/repositories/freeeAuthRepository";
 import { saveMonthlyCashFlowSnapshot } from "@/repositories/monthlyCashFlowSnapshotRepository";
 import { getJournalsCsv } from "@/services/freee/freeeJournalsClient";
 import { journalExportRange, parseJournalCsv } from "./journalCsv";
+import { getOrFetchLoanStatus } from "./loanStatusService";
 import { computeMonthlyCashFlow } from "./monthlyCashFlow";
 import { getOrComputeTermCashFlowTotal } from "./termCashFlowTotalService";
 
@@ -20,6 +21,8 @@ export interface RefreshPastCashFlowsResult {
   refreshedMonths: number[];
   /** 前期を取り直した場合はその事業期番号 */
   refreshedPreviousTerm: number | null;
+  /** 前月の借入状況を取り直したか(概要の「資金残高（前月末実績）」の借入残高を月末後の値にするため) */
+  refreshedPreviousMonthLoan: boolean;
 }
 
 /**
@@ -33,11 +36,14 @@ export interface RefreshPastCashFlowsResult {
  *   一部の月だけ新しくなることはない
  * - 期首からPREVIOUS_TERM_REFRESH_WINDOW_MONTHSか月の間は、前期も12か月+通期合計を同じ計算結果から
  *   取り直す(getOrComputeTermCashFlowTotal。月次と通期が食い違わないよう、前期の月だけを個別に更新しない)
+ * - 前月の借入状況(loanStatusSnapshots)も取り直す(前月末の借入残高を月末後の値にするため)
  * 当月分はrefreshCurrentMonthSnapshotsが別に更新するため、ここでは扱わない。
  */
 export async function refreshPastCashFlows(term: number, currentMonth: number): Promise<RefreshPastCashFlowsResult> {
   const companyId = await getFreeeCompanyId();
-  if (companyId === null) return { connected: false, refreshedMonths: [], refreshedPreviousTerm: null };
+  if (companyId === null) {
+    return { connected: false, refreshedMonths: [], refreshedPreviousTerm: null, refreshedPreviousMonthLoan: false };
+  }
 
   const fiscalYear = freeeFiscalYearForTerm(term);
   const currentIndex = fiscalMonthIndex(currentMonth);
@@ -63,5 +69,10 @@ export async function refreshPastCashFlows(term: number, currentMonth: number): 
     if (total) refreshedPreviousTerm = term - 1;
   }
 
-  return { connected: true, refreshedMonths: pastMonths, refreshedPreviousTerm };
+  // 前月末の借入残高(2026-11-16)。当月分の借入状況は当月中にしか取り直されず、月末前の取得のまま残るため、
+  // 前月分もここで取り直す(期をまたぐ場合は前期の8月)
+  const previous = previousFiscalTermMonth(term, currentMonth);
+  const loan = await getOrFetchLoanStatus(freeeFiscalYearForTerm(previous.term), previous.month, { forceRefresh: true });
+
+  return { connected: true, refreshedMonths: pastMonths, refreshedPreviousTerm, refreshedPreviousMonthLoan: Boolean(loan) };
 }

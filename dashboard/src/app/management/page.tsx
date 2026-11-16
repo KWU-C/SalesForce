@@ -39,8 +39,8 @@ import { ManagementSummary } from "@/features/management-dashboard/ManagementSum
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
 import { CashPlanOutlook, PerformanceSummaryBand } from "@/features/management-dashboard/OverviewSections";
 import {
-  latestAdjustedMonth,
   monthsAfter,
+  resolveSummaryBasis,
   nextTargetMonth,
   previousMonthInJst,
   selectCashPlanOutlook,
@@ -57,6 +57,9 @@ import { RefreshMonthButton } from "@/features/management-dashboard/RefreshMonth
 import { AccountingReportsSection } from "@/features/management-dashboard/AccountingReportsSection";
 import { getAccountingReportsView } from "@/features/management-dashboard/accountingReportsService";
 import type { AccountingReportsView } from "@/features/management-dashboard/accountingReportsService";
+import { AccountingConfirmationForm } from "@/features/management-dashboard/AccountingConfirmationForm";
+import type { AccountingConfirmation } from "@/features/management-dashboard/accountingConfirmation";
+import { getAccountingConfirmation } from "@/repositories/accountingConfirmationRepository";
 import { getRequestIapEmail } from "@/services/iap/getRequestIapEmail";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { getFreeeConnectionStatus } from "@/repositories/freeeAuthRepository";
@@ -144,6 +147,9 @@ export default async function ManagementPage() {
   // 前々期の保存済み月次業績(Firestoreのみ)
   let twoTermsAgoPerformance: (MonthlyPerformanceSnapshot | null)[] = [];
   let twoTermsAgoPerformanceError = false;
+  // 経理確認の対象月(概要上段の累計の最終月の指定)。読めなければ暫定の仕掛品振替判定で出す
+  let accountingConfirmation: AccountingConfirmation | null = null;
+  let accountingConfirmationError = false;
   let cashFlowByMonth: (MonthlyCashFlow | null)[] = [];
   let cashFlowError = false;
   let loanStatus: LoanStatusSnapshot | null = null;
@@ -277,6 +283,12 @@ export default async function ManagementPage() {
         console.error("[management page] 前々期の月次業績の読み込みに失敗しました");
         twoTermsAgoPerformanceError = true;
       }
+      try {
+        accountingConfirmation = await getAccountingConfirmation();
+      } catch {
+        console.error("[management page] 経理確認の対象月の読み込みに失敗しました");
+        accountingConfirmationError = true;
+      }
       // 月次P/L(monthlyPlSnapshots)は経理月次報告・資金繰り見通しのfreee比較に使う。画面のグラフは
       // 月次業績の推移へ置き換えたが、当月分の遅延取得は従来どおり行う
       try {
@@ -380,6 +392,7 @@ export default async function ManagementPage() {
   );
   const overviewFailures = [
     performanceError && "月次業績・採算",
+    accountingConfirmationError && "経理確認の対象月",
     cashFlowError && "当月の月次資金収支",
     loanStatusError && "借入状況",
     fundReserveError && "資金の備え",
@@ -393,9 +406,10 @@ export default async function ManagementPage() {
   );
   const lookupPerformance = (fy: number, month: number) =>
     loadedPerformance.find((p) => p.fiscalYear === fy && p.month === month) ?? null;
-  // 経理調整済みの累計(期首〜調整済みの最終月。経理報告の売上高累計・経常利益累計と同じ範囲)と、締まっているが
-  // 調整前のため含めなかった月
-  const adjustedThrough = latestAdjustedMonth(previousMonthTarget, lookupPerformance);
+  // 概要上段の累計(期首〜最終月。経理報告の売上高累計・経常利益累計と同じ範囲)。最終月は経理確認の指定、
+  // 指定が無い間は暫定で仕掛品振替が確認できた月。月末を経過しているが対象外の月は別に示す
+  const summaryBasis = resolveSummaryBasis(accountingConfirmation, previousMonthTarget, lookupPerformance);
+  const adjustedThrough = summaryBasis.through;
   const adjustedPerformance = adjustedThrough
     ? summarizePerformanceColumn(adjustedThrough, lookupPerformance, { requireMonthEnd: true })
     : null;
@@ -420,7 +434,7 @@ export default async function ManagementPage() {
     [currentTarget, nextTargetMonth(currentTarget)]
   );
 
-  // 概要(2026-11-13、11-16更新): 経営サマリー(経理調整済みの累計)→経営サマリー(帳簿上の進捗)→資金サマリー→収支予定
+  // 概要(2026-11-13、11-16更新): 経営サマリー(経理確認済み/仕掛品振替反映分の累計)→経営サマリー(帳簿上の進捗)→資金サマリー→収支予定
   const overviewTab = (
     <>
       {overviewFailures.length > 0 && (
@@ -433,6 +447,14 @@ export default async function ManagementPage() {
         column={adjustedPerformance}
         failed={performanceError || twoTermsAgoPerformanceError}
         excludedMonths={unadjustedClosedMonths}
+        basis={summaryBasis}
+        action={
+          <AccountingConfirmationForm
+            currentMonth={accountingConfirmation?.throughMonth ?? null}
+            defaultMonth={adjustedThrough?.key ?? previousMonthTarget.key}
+            maxMonth={previousMonthTarget.key}
+          />
+        }
       />
       <div className="flex flex-col gap-3">
         <PerformanceSummaryBand kind="progress" column={progressPerformance} failed={performanceError} />

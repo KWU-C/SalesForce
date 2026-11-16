@@ -5,7 +5,7 @@ import {
   getCurrentFiscalPeriod,
   previousFiscalTermMonth,
 } from "@/config/fiscalPeriods";
-import { actualKindsDifference, monthEndBoundary, resolveCashPlanActual } from "./accountingReports";
+import { actualKindsDifference, monthEndBoundary, resolveCashPlanActual, targetMonthPeriod } from "./accountingReports";
 import type { CashPlan, MonthEndCashSnapshot } from "./accountingReports";
 import type { MonthlyPerformanceSnapshot } from "./monthlyPerformance";
 import type { CollateralDeductionSetting } from "./reserveSettings";
@@ -241,4 +241,26 @@ export function monthsAfter(after: TargetMonth, through: TargetMonth): TargetMon
     cursor = nextTargetMonth(cursor);
   }
   return result;
+}
+
+/**
+ * 概要上段の累計の最終月の決め方(2026-11-16、ユーザー指定)。
+ * - confirmed: 経理確認で指定された月(締まった月以前のときだけ)。仕掛品振替の有無にかかわらずその月まで
+ * - wipTransfer: 指定が無い間の暫定。仕掛品振替が確認できた月まで(latestAdjustedMonth)
+ */
+export type SummaryBasis =
+  | { kind: "confirmed"; through: TargetMonth; updatedAt: Date }
+  | { kind: "wipTransfer"; through: TargetMonth | null };
+
+export function resolveSummaryBasis(
+  confirmation: { throughMonth: string | null; updatedAt: string } | null,
+  latestClosed: TargetMonth,
+  lookup: PerformanceLookup
+): SummaryBasis {
+  const month = confirmation?.throughMonth ?? null;
+  if (confirmation && month !== null && month <= latestClosed.key) {
+    const { term, month: m } = targetMonthPeriod(month);
+    return { kind: "confirmed", through: targetMonth(term, m), updatedAt: new Date(confirmation.updatedAt) };
+  }
+  return { kind: "wipTransfer", through: latestAdjustedMonth(latestClosed, lookup) };
 }

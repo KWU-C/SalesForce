@@ -77,7 +77,7 @@ describe("extractInsuranceAccountBalance", () => {
 });
 
 describe("buildFundReserveCore", () => {
-  it("lists each mapped account with the selected month's trial_bs closing_balance, in config order", () => {
+  it("lists each configured account by its freee account name with the selected month's trial_bs closing_balance, in config order", () => {
     const trialBs = trialBsFixture([
       row({ account_item_name: "保険積立金", closing_balance: 300 }),
       cashRow("定期預金_担保", 3000),
@@ -87,15 +87,16 @@ describe("buildFundReserveCore", () => {
     const core = buildFundReserveCore({ trialBs, accountItems: ALL_ITEMS });
 
     expect(core.calculationVersion).toBe(FUND_RESERVE_CALCULATION_VERSION);
-    expect(core.cashEarmarkLines.map((l) => [l.purpose, l.balance])).toEqual([
-      ["collateral", 3000],
-      ["tax", 550],
-      ["other", 500],
+    // 用途のラベルは付けず、freeeの勘定科目名(口座名)をそのまま出す
+    expect(core.cashEarmarkLines.map((l) => [l.label, l.balance])).toEqual([
+      ["定期預金_担保", 3000],
+      ["普通預金_納税", 550],
+      ["定期預金_尼信1012積立", 500],
     ]);
     expect(core.insuranceAssetReserve).toBe(300);
   });
 
-  it("does not pick up an account that is not in WALLETABLE_PURPOSE_MAP (りそな積立は用途確認まで対象外)", () => {
+  it("does not pick up an account that is not in SEPARATELY_SHOWN_WALLETABLE_IDS", () => {
     const trialBs = trialBsFixture([cashRow("定期預金_りそな", 650)]);
     const core = buildFundReserveCore({ trialBs, accountItems: ALL_ITEMS });
     expect(core.cashEarmarkLines.reduce((sum, l) => sum + (l.balance ?? 0), 0)).toBe(0);
@@ -104,11 +105,12 @@ describe("buildFundReserveCore", () => {
   it("keeps a line's balance null (not 0) when no account_item maps to the walletable", () => {
     const core = buildFundReserveCore({ trialBs: trialBsFixture([]), accountItems: [] });
     expect(core.cashEarmarkLines.every((l) => l.balance === null)).toBe(true);
+    expect(core.cashEarmarkLines[0].label).toBe("freeeの科目が見つからない口座（ID 4469155）");
   });
 
   it("treats a missing trial_bs row as 0 once the account_item is found (freee omits zero-activity rows)", () => {
     const core = buildFundReserveCore({ trialBs: trialBsFixture([]), accountItems: [SAVINGS_ITEM] });
-    expect(core.cashEarmarkLines.find((l) => l.purpose === "other")?.balance).toBe(0);
+    expect(core.cashEarmarkLines.find((l) => l.label === "定期預金_尼信1012積立")?.balance).toBe(0);
   });
 });
 
@@ -190,9 +192,9 @@ describe("computeFundCapacity", () => {
 describe("composeFundReserve", () => {
   const core = coreFixture({
     cashEarmarkLines: [
-      { purpose: "collateral", label: "担保", balance: 3000 },
-      { purpose: "tax", label: "納税", balance: 550 },
-      { purpose: "other", label: "その他", balance: null },
+      { label: "定期預金_A", balance: 3000 },
+      { label: "普通預金_B", balance: 550 },
+      { label: "定期預金_C", balance: null },
     ],
     insuranceAssetReserve: 1960,
   });

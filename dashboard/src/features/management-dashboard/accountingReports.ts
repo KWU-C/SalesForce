@@ -10,7 +10,10 @@ import { getCurrentFiscalPeriod } from "@/config/fiscalPeriods";
  * 上書きするときは、上書き前の値を履歴(revisions)に残す。実額はFirestoreにだけ置き、コード・
  * テスト・Gitには書かない。
  *
- * - 経理月次報告: 対象月までの売上高累計・経常利益累計(実績)。freeeとの差額はそのまま表示する
+ * - 経理月次報告: 対象月までの売上高累計・経常利益累計(実績)。freeeとの差額はそのまま表示する。
+ *   2026-11-16、概要の一番上で経理報告(PDF)を再現するため、営業利益累計・月次/通期の売上目標・資金繰りの
+ *   注視事項を追加した。登録がある月＝経理が月次報告を出した(経理確認済みの)月として扱う。
+ *   追加前に保存した報告には新しい項目が無いので、読むときは未記載(null)とみなす
  * - 資金繰り予定: 対象月末の預金残高・引当の予定値。経理の担保控除額は、freeeの当座貸越利用額とは
  *   別項目として持つ(金額が一致していても同一視しない)
  */
@@ -51,6 +54,14 @@ export interface MonthlyReportValues {
   /** 資料に載っている前期同月累計(任意) */
   prevYearRevenueCumulative: number | null;
   prevYearOrdinaryProfitCumulative: number | null;
+  /** 営業利益累計(円、マイナス可)。資料の「※営業利益」 */
+  operatingProfitCumulative: number | null;
+  /** 資料の月次売上目標(円、例: 月5,333万)。資料に書かれた額をそのまま持つ(通期÷12で計算しない) */
+  monthlyRevenueTarget: number | null;
+  /** 資料の通期売上目標(円、例: 6億4千万) */
+  annualRevenueTarget: number | null;
+  /** 資料の「資金繰り 注視事項」。1行1項目(例: 「11月：労働保険129万8,280」)の自由記述 */
+  cashWatchItems: string | null;
   /** 集計基準日(例: 「9月30日現在」→ 2026-09-30)。資料に無ければnull(推測で補完しない) */
   basisDate: string | null;
   /** 資料の報告日。資料に記載が無ければnull */
@@ -181,6 +192,10 @@ const MONTHLY_REPORT_SPEC: Record<keyof MonthlyReportValues, (v: unknown) => Par
   ordinaryProfitCumulative: signedMoney,
   prevYearRevenueCumulative: signedMoney,
   prevYearOrdinaryProfitCumulative: signedMoney,
+  operatingProfitCumulative: signedMoney,
+  monthlyRevenueTarget: money,
+  annualRevenueTarget: money,
+  cashWatchItems: (v) => parseText(v),
   basisDate: parseDate,
   reportDate: parseDate,
   documentName: (v) => parseText(v, DOCUMENT_NAME_MAX),

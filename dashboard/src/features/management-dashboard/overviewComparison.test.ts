@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { MonthlyPerformanceSnapshot } from "./monthlyPerformance";
 import type { MonthEndCashSnapshot } from "./accountingReports";
 import {
+  latestAdjustedMonth,
+  monthsAfter,
   previousMonthInJst,
   nextTargetMonth,
   selectCashPlanOutlook,
@@ -226,5 +228,38 @@ describe("収支予定の対象月", () => {
       ["2026-11", "2026-11"],
       ["2026-12", null],
     ]);
+  });
+});
+
+describe("経理調整済みの最終月", () => {
+  const v = (wip: boolean) => ({ revenue: 1, ordinaryProfit: 1, wip });
+  const after = "2026-11-13T08:00:00Z";
+
+  it("期首から、月末後に取得済みかつ仕掛品振替ありが続く最後の月(途中で途切れたら以降は含めない)", () => {
+    const lookup = lookupOf([
+      snapshot(2026, 9, v(true), after),
+      snapshot(2026, 10, v(false), after),
+      snapshot(2026, 11, v(true), after),
+    ]);
+    expect(latestAdjustedMonth(targetMonth(50, 10), lookup)?.key).toBe("2026-09");
+    expect(monthsAfter(targetMonth(50, 9), targetMonth(50, 10)).map((m) => m.key)).toEqual(["2026-10"]);
+    expect(monthsAfter(targetMonth(50, 10), targetMonth(50, 10))).toEqual([]);
+  });
+
+  it("月末前に取得した月は調整済みにしない。当期に1か月も無ければ前期で探す(期をまたぐ)", () => {
+    const lookup = lookupOf([
+      snapshot(2025, 7, v(true), after),
+      snapshot(2025, 8, v(true), after),
+      snapshot(2026, 9, v(true), "2026-09-30T10:00:00Z"),
+      ...[9, 10, 11, 12, 1, 2, 3, 4, 5, 6].map((m) => snapshot(2025, m, v(true), after)),
+    ]);
+    const adjusted = latestAdjustedMonth(targetMonth(50, 9), lookup);
+    expect(adjusted?.key).toBe("2026-08");
+    expect(adjusted?.term).toBe(49);
+    expect(monthsAfter(adjusted!, targetMonth(50, 9)).map((m) => m.key)).toEqual(["2026-09"]);
+  });
+
+  it("どこにも無ければnull", () => {
+    expect(latestAdjustedMonth(targetMonth(50, 10), lookupOf([]))).toBeNull();
   });
 });

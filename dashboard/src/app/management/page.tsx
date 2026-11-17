@@ -432,11 +432,13 @@ export default async function ManagementPage() {
             />
           }
         />
-        <hr className="border-[var(--gridline)]" />
+        {/* 区切り線の上は70px(親のgap-3=12px＋58px、2026-11-17ユーザー指定) */}
+        <hr className="mt-[58px] border-[var(--gridline)]" />
         <PerformanceSummaryBand kind="progress" column={progressPerformance} failed={performanceError} />
         <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る（売上総利益・利益率・月次表）" }]} />
       </div>
-      <div className="flex flex-col gap-3">
+      {/* 資金サマリー帯の上は70px(タブパネルのgap-8=32px＋38px、2026-11-17ユーザー指定) */}
+      <div className="mt-[38px] flex flex-col gap-3">
         <ManagementSummary
           term={currentTerm}
           month={currentMonth}
@@ -451,11 +453,14 @@ export default async function ManagementPage() {
           ]}
         />
       </div>
-      <PreviousMonthEndBalance
-        target={previousMonthTarget}
-        cash={previousMonthCash}
-        loans={summarizePreviousMonthLoans(previousMonthTarget, previousMonthLoanSnapshot)}
-      />
+      {/* 資金残高(前月末実績)帯の上は70px(タブパネルのgap-8=32px＋38px、2026-11-17ユーザー指定) */}
+      <div className="mt-[38px]">
+        <PreviousMonthEndBalance
+          target={previousMonthTarget}
+          cash={previousMonthCash}
+          loans={summarizePreviousMonthLoans(previousMonthTarget, previousMonthLoanSnapshot)}
+        />
+      </div>
     </>
   );
 

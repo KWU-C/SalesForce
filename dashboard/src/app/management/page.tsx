@@ -60,6 +60,9 @@ import {
   previousFiscalTermMonth,
 } from "@/config/fiscalPeriods";
 import { formatDateTime } from "@/utils/format";
+import { ReferenceCashForecastSection, ReferencePlSection } from "@/features/management-dashboard/ReferenceForecastSections";
+import type { ReferenceForecastRecord } from "@/features/management-dashboard/referenceForecast";
+import { getLatestReferenceForecast } from "@/repositories/referenceForecastRepository";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +141,7 @@ export default async function ManagementPage() {
   let twoTermsAgoPerformanceError = false;
   // 経理確認の対象月(概要上段の累計の最終月の指定)。読めなければ暫定の仕掛品振替判定で出す
   let accountingConfirmation: AccountingConfirmation | null = null;
+  let referenceForecast: ReferenceForecastRecord | null = null;
   let accountingConfirmationError = false;
   let cashFlowByMonth: (MonthlyCashFlow | null)[] = [];
   let cashFlowError = false;
@@ -256,6 +260,12 @@ export default async function ManagementPage() {
       } catch {
         console.error("[management page] 前々期の月次業績の読み込みに失敗しました");
         twoTermsAgoPerformanceError = true;
+      }
+      // 資金・損益の参考予測(DEVのみ。本番のデータベースでは読まずにnull)。読めなくても他の表示は止めない
+      try {
+        referenceForecast = await getLatestReferenceForecast();
+      } catch {
+        console.error("[management page] 参考予測の読み込みに失敗しました");
       }
       try {
         accountingConfirmation = await getAccountingConfirmation();
@@ -458,6 +468,7 @@ export default async function ManagementPage() {
         </>
       )}
       {performanceErrorNotice}
+      {referenceForecast && <ReferencePlSection record={referenceForecast} />}
     </>
   );
 
@@ -467,6 +478,7 @@ export default async function ManagementPage() {
       {loanStatus && <LoanStatusTable loanStatus={loanStatus} />}
       {fundReserveErrorNotice}
       {fundReserve && <FundReserveSection fundReserve={fundReserve} />}
+      {referenceForecast && <ReferenceCashForecastSection record={referenceForecast} />}
     </>
   );
 

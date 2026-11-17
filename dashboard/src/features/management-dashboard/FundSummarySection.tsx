@@ -146,7 +146,7 @@ function ReserveMonthFormula({ row }: { row: FundComparisonRow }) {
   const b = rm.bonus;
   const taxTerms = [
     t.payable > 0 ? `未払消費税等 ${yen(t.payable)}` : null,
-    `仮受消費税 ${yen(t.received)}`,
+    `${t.payable > 0 ? "＋ " : ""}仮受消費税 ${yen(t.received)}`,
     `− 仮払消費税 ${yen(t.paid)}`,
     t.interimPaid > 0 ? `− 当期の中間納付済み ${yen(t.interimPaid)}` : null,
     t.assumedMonths > 0 ? `＋ 仮定の発生額 ${yen(t.assumedMonthly)} × ${t.assumedMonths}か月` : null,

@@ -25,26 +25,28 @@ function yen(amount: number): string {
   return `${amount.toLocaleString("ja-JP")}円`;
 }
 
-function KindTag({ children, tone }: { children: React.ReactNode; tone: "actual" | "forecast" }) {
+/** 資金サマリーの金額(円、経理資料の資金繰り表と同じ表記)。key=控除後の預金総合計(強調・大)、highlight=当座・普通の月末残高 */
+function yenCell(v: number | null, emphasis: "key" | "highlight" | "strong" | null = null) {
   const cls =
-    tone === "actual"
-      ? "border-[var(--border-hairline)] text-[var(--text-secondary)]"
-      : "border-[var(--series-1)] text-[var(--series-1)]";
-  return <span className={`rounded border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap ${cls}`}>{children}</span>;
-}
-
-function amountCell(v: number | null, strong = false) {
+    emphasis === "key"
+      ? "bg-[var(--surface-highlight)] text-base font-bold"
+      : emphasis === "highlight"
+        ? "bg-[var(--surface-highlight)] font-semibold"
+        : emphasis === "strong"
+          ? "font-semibold"
+          : "";
   return (
-    <td className={`${td} ${strong ? "text-base font-semibold" : ""}`}>
-      {v === null ? <span className="text-[var(--text-muted)]">—</span> : formatManYenInt(v)}
+    <td className={`${td} ${cls}`}>
+      {v === null ? <span className="text-[var(--text-muted)]">—</span> : v.toLocaleString("ja-JP")}
     </td>
   );
 }
 
 /**
  * 概要「資金サマリー」(2026-11-17)。経理資料(資金繰り表)と比べられる計算構成の主表と短い注記だけを置く。
- * 行: 締まった直近2か月の月末(実績)＋当月末(予測・標準ケース)
- * 列: 当座・普通預金合計 / 預金総合計 / 控除額(短期借入) / 短期借入控除後 / 納税・賞与の準備額 / 準備額控除後の参考残高
+ * 表の形は経理資料の資金繰り表に倣う(ユーザー指定 data/sample.png、2026-11-17)。単位は円。
+ * 月(締まった直近2か月＝実績、当月＝予測・標準ケース)ごとに 月末残高 / 納税・賞与の準備額 / 準備額控除後 の3行。
+ * 列: 預金総合計(短期借入控除後) / 当座・普通預金 / 短期借入控除 / 定期預金
  * 計算式・根拠・未算入の支払・ケース比較は財務・資金繰りタブ(FundSummaryDetailSection)へ。
  */
 export function FundSummarySection({
@@ -86,45 +88,66 @@ export function FundSummarySection({
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--border-hairline)]">
-              <th className={thLeft}>月末</th>
-              <th className={thLeft}>区分</th>
-              <th className={th}>当座・普通預金合計</th>
-              <th className={th}>預金総合計（当座・普通・定期）</th>
-              <th className={th}>控除額（短期借入）</th>
-              <th className={th}>短期借入控除後</th>
-              <th className={th}>納税・賞与の準備額</th>
-              <th className={th}>準備額控除後の参考残高</th>
+              <th className={thLeft} colSpan={2}>
+                <span className="sr-only">月・項目</span>
+              </th>
+              <th className={th}>預金総合計（短期借入控除後）</th>
+              <th className={th}>当座・普通預金</th>
+              <th className={th}>短期借入控除</th>
+              <th className={th}>定期預金</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={`${r.kind}-${r.target.key}`} className="border-b border-[var(--gridline)] last:border-b-0">
-                <td className={`${tdLeft} font-medium text-[var(--text-primary)]`}>{monthEndLabel(r.target.month)}</td>
-                <td className={tdLeft}>
-                  {r.kind === "actual" ? <KindTag tone="actual">実績</KindTag> : <KindTag tone="forecast">予測（標準）</KindTag>}
+          {rows.map((r) => (
+            <tbody key={`${r.kind}-${r.target.key}`} className="border-b border-[var(--border-hairline)] last:border-b-0">
+              <tr className="border-b border-[var(--gridline)]">
+                <th
+                  scope="rowgroup"
+                  rowSpan={r.missingReason !== null ? 1 : 3}
+                  className="border-r border-[var(--gridline)] px-3 py-1.5 text-center align-middle font-semibold whitespace-nowrap text-[var(--text-primary)]"
+                >
+                  {`${r.target.month}月`}
+                </th>
+                <td className={`${tdLeft} border-r border-[var(--gridline)]`}>
+                  {`月末残高（${r.kind === "actual" ? "実績" : "予測"}）`}
                 </td>
                 {r.missingReason !== null ? (
-                  <td colSpan={6} className={`${td} text-[var(--text-muted)]`}>
+                  <td colSpan={4} className={`${td} text-[var(--text-muted)]`}>
                     {r.missingReason}
                   </td>
                 ) : (
                   <>
-                    {amountCell(r.checkingSavings)}
-                    {amountCell(r.depositTotal)}
-                    {amountCell(r.deduction === null ? null : -r.deduction)}
-                    {amountCell(r.afterDeduction, true)}
-                    {amountCell(r.reserve === null ? null : -r.reserve)}
-                    {amountCell(r.afterReserve, true)}
+                    {yenCell(r.afterDeduction, "key")}
+                    {yenCell(r.checkingSavings, "highlight")}
+                    {yenCell(r.deduction === null ? null : -r.deduction, "strong")}
+                    {yenCell(r.timeDeposit, "strong")}
                   </>
                 )}
               </tr>
-            ))}
-          </tbody>
+              {r.missingReason === null && (
+                <>
+                  <tr className="border-b border-dashed border-[var(--baseline)]">
+                    <td className={`${tdLeft} border-r border-[var(--gridline)]`}>納税・賞与の準備額</td>
+                    {yenCell(r.reserve)}
+                    {yenCell(r.reserve)}
+                    <td className={td} />
+                    <td className={td} />
+                  </tr>
+                  <tr>
+                    <td className={`${tdLeft} border-r border-[var(--gridline)]`}>準備額控除後</td>
+                    {yenCell(r.afterReserve)}
+                    {yenCell(r.checkingAfterReserve)}
+                    <td className={td} />
+                    <td className={td} />
+                  </tr>
+                </>
+              )}
+            </tbody>
+          ))}
         </table>
       </div>
       <NoteList
         items={[
-          "預金総合計は現金を含みません。控除額はfreeeの短期借入金（当座貸越）の月末残高で、経理資料の「担保」と同じ意味かは確認していません。",
+          "単位：円。預金総合計は現金を含みません。短期借入控除はfreeeの短期借入金（当座貸越）の月末残高で、経理資料の「担保」と同じ意味かは確認していません。",
           "準備額は、発生済みで未納付の消費税と、冬季賞与の見込額の積立分です（支払見込額とは別の計算）。計算式・根拠・算入していない支払・ケース比較は財務・資金繰りタブにあります。",
         ]}
       />

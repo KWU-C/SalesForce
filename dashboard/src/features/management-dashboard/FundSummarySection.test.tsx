@@ -46,15 +46,23 @@ function fundProps() {
 }
 
 describe("資金サマリー（概要の主表）", () => {
-  it("行は9月末・10月末の実績と11月末の予測、列は経理資料と比べられる構成", () => {
+  it("経理資料の資金繰り表に倣い、月ごとに月末残高・準備額・準備額控除後の3行、列は控除後の預金総合計・当座普通・短期借入控除・定期", () => {
     render(<FundSummarySection {...fundProps()} />);
-    for (const name of ["当座・普通預金合計", "預金総合計（当座・普通・定期）", "控除額（短期借入）", "短期借入控除後", "納税・賞与の準備額", "準備額控除後の参考残高"]) {
+    for (const name of ["預金総合計（短期借入控除後）", "当座・普通預金", "短期借入控除", "定期預金"]) {
       expect(screen.getByRole("columnheader", { name })).toBeTruthy();
     }
+    const groups = screen.getAllByRole("rowheader").map((h) => h.textContent);
+    expect(groups).toEqual(["9月", "10月", "11月"]);
     const rows = screen.getAllByRole("row").slice(1).map((r) => Array.from(r.querySelectorAll("td")).map((c) => c.textContent));
-    expect(rows.map((r) => r[0])).toEqual(["9月末", "10月末", "11月末"]);
-    expect(rows.map((r) => r[1])).toEqual(["実績", "実績", "予測（標準）"]);
-    expect(rows.every((r) => r.length === 8)).toBe(true);
+    expect(rows.map((r) => r[0])).toEqual([
+      "月末残高（実績）", "納税・賞与の準備額", "準備額控除後",
+      "月末残高（実績）", "納税・賞与の準備額", "準備額控除後",
+      "月末残高（予測）", "納税・賞与の準備額", "準備額控除後",
+    ]);
+    // 10月: 当座普通1,200＋定期490＝1,690、短期借入800 → 890。準備額160 → 730 / 1,040
+    expect(rows[3]).toEqual(["月末残高（実績）", "890", "1,200", "-800", "490"]);
+    expect(rows[4]).toEqual(["納税・賞与の準備額", "160", "160", "", ""]);
+    expect(rows[5]).toEqual(["準備額控除後", "730", "1,040", "", ""]);
   });
 
   it("概要には長い計算式・ケース比較・支払見込額を出さない", () => {

@@ -143,6 +143,8 @@ export interface FundComparisonRow {
   kind: "actual" | "forecast";
   checkingSavings: number | null;
   depositTotal: number | null;
+  /** 定期預金(預金総合計 − 当座・普通) */
+  timeDeposit: number | null;
   /** 欠けている理由(預金残高が無いとき) */
   missingReason: string | null;
   reserveMonth: ReferenceMonthEndReserveMonth | null;
@@ -150,6 +152,8 @@ export interface FundComparisonRow {
   afterDeduction: number | null;
   reserve: number | null;
   afterReserve: number | null;
+  /** 当座・普通預金 − 準備額(経理資料の「準備金控除後」の当座・普通の欄に当たる) */
+  checkingAfterReserve: number | null;
 }
 
 export function buildComparisonRows(
@@ -174,12 +178,14 @@ export function buildComparisonRows(
       kind,
       checkingSavings: deposits?.checkingSavings ?? null,
       depositTotal: deposits?.depositTotal ?? null,
+      timeDeposit: deposits ? deposits.depositTotal - deposits.checkingSavings : null,
       missingReason,
       reserveMonth: rm,
       deduction,
       afterDeduction,
       reserve,
       afterReserve: afterDeduction !== null && reserve !== null ? afterDeduction - reserve : null,
+      checkingAfterReserve: deposits && reserve !== null ? deposits.checkingSavings - reserve : null,
     };
   };
   const rows = actualRows.map((r) =>

@@ -554,7 +554,9 @@ export default async function ManagementPage() {
             )}
 
             {connectionStatus?.connected && authorizeUrl && (
-              <FreeeConnectForm authorizeUrl={authorizeUrl} mode="reconnect" />
+              <div className="mt-[38px] flex flex-col">
+                <FreeeConnectForm authorizeUrl={authorizeUrl} mode="reconnect" />
+              </div>
             )}
           </>
         ) : (

@@ -29,7 +29,7 @@ import {
 import { CostStructureSection } from "@/features/management-dashboard/CostStructureSection";
 import { SectionBanner } from "@/features/management-dashboard/SectionBanner";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
-import { FundSummarySection, PaymentReserveSection } from "@/features/management-dashboard/FundSummarySection";
+import { FundSummaryDetailSection, FundSummarySection, PaymentReserveSection } from "@/features/management-dashboard/FundSummarySection";
 import { actualTargets, buildActualRow, buildForecastState } from "@/features/management-dashboard/fundSummary";
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
 import { PerformanceSummaryBand, PreviousMonthEndBalance } from "@/features/management-dashboard/OverviewSections";
@@ -447,11 +447,11 @@ export default async function ManagementPage() {
       </div>
       {/* 資金サマリー(2026-11-17、「資金サマリー」「資金残高」を統合)。帯の上は70px(タブパネルのgap-8=32px＋38px) */}
       <div className="mt-[38px] flex flex-col gap-6">
+        {/* 概要は主表と短い注記だけ。計算式・根拠・未算入の支払・ケース比較は財務・資金繰りタブ(2026-11-17、ユーザー指定) */}
         <FundSummarySection actualRows={fundActualRows} forecast={fundForecast} record={referenceForecast} />
-        {referenceForecast && <PaymentReserveSection record={referenceForecast} />}
         <OverviewLinks
           links={[
-            { tab: "finance", label: "財務・資金繰りを見る（借入・現預金と借入の差額・資金の参考予測）" },
+            { tab: "finance", label: "財務・資金繰りを見る（資金サマリーの計算式・支払見込額・借入・資金の参考予測）" },
             { tab: "cashflow", label: "入出金明細を見る（月次の資金収支）" },
           ]}
         />
@@ -475,6 +475,12 @@ export default async function ManagementPage() {
   // 借入・資金収支・現預金と借入の差額は概要から財務・資金繰りタブへ移した(2026-11-17、ユーザー指定)
   const financeTab = (
     <>
+      {referenceForecast && (
+        <div className="flex flex-col gap-6">
+          <FundSummaryDetailSection actualRows={fundActualRows} forecast={fundForecast} record={referenceForecast} />
+          <PaymentReserveSection record={referenceForecast} />
+        </div>
+      )}
       <ManagementSummary
         term={currentTerm}
         month={currentMonth}

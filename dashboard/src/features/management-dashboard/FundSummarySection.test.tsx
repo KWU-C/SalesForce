@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { PaymentReserveSection } from "./FundSummarySection";
+import { FundSummaryDetailSection, FundSummarySection, PaymentReserveSection } from "./FundSummarySection";
+import { buildActualRow, buildForecastState } from "./fundSummary";
+import { targetMonth } from "./overviewComparison";
 import { fixtureRecord } from "./referenceForecast.fixture";
 
 afterEach(cleanup);
 
-describe("納税・賞与の支払準備（参考）", () => {
+describe("納税・賞与の支払見込額（参考）", () => {
   it("予測への反映を月末予測ごとの列に分け、含まれる支払は控除しない", () => {
     render(<PaymentReserveSection record={fixtureRecord()} />);
     expect(screen.getByRole("columnheader", { name: "11月末予測" })).toBeTruthy();
@@ -24,11 +26,49 @@ describe("納税・賞与の支払準備（参考）", () => {
     expect(screen.getByText("会社負担の社会保険料")).toBeTruthy();
   });
 
-  it("予測の計算日時と支払準備の追加日時を分けて出す", () => {
+  it("予測の計算日時と支払見込・準備額の追加日時を分けて出す", () => {
     render(<PaymentReserveSection record={fixtureRecord()} />);
-    const caption = screen.getByText(/支払準備の追加/).textContent ?? "";
+    const caption = screen.getByText(/支払見込・準備額の追加/).textContent ?? "";
     expect(caption).toContain("計算 2026-11-17 09:14");
-    expect(caption).toContain("支払準備の追加：2026-11-17 15:00");
+    expect(caption).toContain("支払見込・準備額の追加：2026-11-17 15:00");
     expect(caption).toContain("予測は再計算していません");
+  });
+});
+
+function fundProps() {
+  const now = new Date("2026-11-17T00:00:00Z");
+  const snap = (cs: number, td: number) => ({ cashClosing: cs + td + 5, checkingSavingsClosing: cs, timeDepositClosing: td, cashOnHandClosing: 5, fetchedAt: new Date("2026-11-16T08:00:00Z") });
+  return {
+    actualRows: [buildActualRow(targetMonth(50, 9), snap(1500, 480), now), buildActualRow(targetMonth(50, 10), snap(1200, 490), now)],
+    forecast: buildForecastState(fixtureRecord(), targetMonth(50, 11)),
+    record: fixtureRecord(),
+  };
+}
+
+describe("資金サマリー（概要の主表）", () => {
+  it("行は9月末・10月末の実績と11月末の予測、列は経理資料と比べられる構成", () => {
+    render(<FundSummarySection {...fundProps()} />);
+    for (const name of ["当座・普通預金合計", "預金総合計（当座・普通・定期）", "控除額（短期借入）", "短期借入控除後", "納税・賞与の準備額", "準備額控除後の参考残高"]) {
+      expect(screen.getByRole("columnheader", { name })).toBeTruthy();
+    }
+    const rows = screen.getAllByRole("row").slice(1).map((r) => Array.from(r.querySelectorAll("td")).map((c) => c.textContent));
+    expect(rows.map((r) => r[0])).toEqual(["9月末", "10月末", "11月末"]);
+    expect(rows.map((r) => r[1])).toEqual(["実績", "実績", "予測（標準）"]);
+    expect(rows.every((r) => r.length === 8)).toBe(true);
+  });
+
+  it("概要には長い計算式・ケース比較・支払見込額を出さない", () => {
+    render(<FundSummarySection {...fundProps()} />);
+    expect(screen.queryByText(/慎重ケース/)).toBeNull();
+    expect(screen.queryByText(/把握済みの将来支払/)).toBeNull();
+    expect(screen.getByText(/経理資料の「担保」と同じ意味かは確認していません/)).toBeTruthy();
+  });
+
+  it("詳細タブ: 月末ごとの計算式(短期借入控除後・消費税・賞与・参考残高)を円で示す", () => {
+    render(<FundSummaryDetailSection {...fundProps()} />);
+    expect(screen.getByText("短期借入控除後 890円 ＝ 預金総合計 1,690円 − 短期借入 800円")).toBeTruthy();
+    expect(screen.getByText("賞与の準備額 120円 ＝ 見込額 160円 × 3/4か月")).toBeTruthy();
+    expect(screen.getByText("準備額控除後の参考残高 730円 ＝ 890円 − 準備額 160円")).toBeTruthy();
+    expect(screen.getByText(/＋ 仮定の発生額 27円 × 1か月/)).toBeTruthy();
   });
 });

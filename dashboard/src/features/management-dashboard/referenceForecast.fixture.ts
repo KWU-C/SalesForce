@@ -53,6 +53,35 @@ export function fixtureRecord(): ReferenceForecastRecord {
       history: { consumptionTax: [], bonus: [] },
       limits: [],
     },
+    monthEndReserve: {
+      fetchedAt: "2026-11-17T16:00:00+09:00",
+      months: [
+        reserveMonth("2026-09", "実績", { amount: 120, payable: 110, received: 30, paid: 20 }, 2, 80),
+        reserveMonth("2026-10", "実績", { amount: 40, payable: 0, received: 70, paid: 30 }, 3, 120),
+        reserveMonth("2026-11", "予測", { amount: 67, payable: 0, received: 70, paid: 30, assumedMonths: 1, assumedMonthly: 27 }, 4, 160),
+      ],
+      assumptions: ["仮定"],
+      deductionCheck: ["確認"],
+    },
   };
 }
 
+
+function reserveMonth(
+  month: string,
+  kind: "実績" | "予測",
+  tax: { amount: number; payable: number; received: number; paid: number; assumedMonths?: number; assumedMonthly?: number },
+  elapsed: number,
+  bonusAmount: number
+) {
+  return {
+    month,
+    kind,
+    shortTermBorrowing: 800,
+    shortTermBorrowingByBank: [{ bank: "A", amount: 500 }, { bank: "B", amount: 300 }],
+    overdraftOnly: true,
+    consumptionTax: { interimPaid: 0, assumedMonths: 0, assumedMonthly: 0, ...tax },
+    bonus: { estimate: 160, elapsedMonths: elapsed, spanMonths: 4, amount: bonusAmount },
+    reserveTotal: tax.amount + bonusAmount,
+  };
+}

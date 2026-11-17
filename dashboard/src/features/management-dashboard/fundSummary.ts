@@ -2,7 +2,7 @@ import { previousFiscalTermMonth } from "@/config/fiscalPeriods";
 import { resolveCashPlanActual } from "./accountingReports";
 import type { MonthEndCashSnapshot } from "./accountingReports";
 import { targetMonth, type TargetMonth } from "./overviewComparison";
-import type { ReferenceForecastRecord, ReferencePaymentReserveItem } from "./referenceForecast";
+import type { ReferenceForecastRecord, ReferenceMonthEndReserveMonth, ReferencePaymentReserveItem } from "./referenceForecast";
 
 /**
  * 概要「資金サマリー」(2026-11-17、ユーザー指定で「資金サマリー」「資金残高」を1つに統合)。
@@ -130,4 +130,67 @@ export function reserveDeductions(record: ReferenceForecastRecord): ReserveDeduc
     const deductedTotal = deducted.reduce((s, i) => s + i.amount, 0);
     return { month: m.month, forecastBalance: m.end, included, deducted, deductedTotal, balanceAfter: m.end - deductedTotal };
   });
+}
+
+/**
+ * 概要の主表の1行(2026-11-17、経理資料と比べられる計算構成)。
+ * 預金総合計 − 控除額(freeeの短期借入金) = 短期借入控除後
+ * 短期借入控除後 − 納税・賞与の準備額 = 準備額控除後の参考残高
+ * 控除額・準備額は保存済みの記録(monthEndReserve)の同じ月末の値。無ければ null(表示しない)
+ */
+export interface FundComparisonRow {
+  target: TargetMonth;
+  kind: "actual" | "forecast";
+  checkingSavings: number | null;
+  depositTotal: number | null;
+  /** 欠けている理由(預金残高が無いとき) */
+  missingReason: string | null;
+  reserveMonth: ReferenceMonthEndReserveMonth | null;
+  deduction: number | null;
+  afterDeduction: number | null;
+  reserve: number | null;
+  afterReserve: number | null;
+}
+
+export function buildComparisonRows(
+  actualRows: FundActualRow[],
+  forecast: FundForecastState,
+  record: ReferenceForecastRecord | null
+): FundComparisonRow[] {
+  const months = record?.monthEndReserve?.months ?? [];
+  const make = (
+    target: TargetMonth,
+    kind: "actual" | "forecast",
+    deposits: { checkingSavings: number; depositTotal: number } | null,
+    missingReason: string | null
+  ): FundComparisonRow => {
+    const expectKind = kind === "actual" ? "実績" : "予測";
+    const rm = months.find((m) => m.month === target.key && m.kind === expectKind) ?? null;
+    const deduction = rm?.shortTermBorrowing ?? null;
+    const reserve = rm?.reserveTotal ?? null;
+    const afterDeduction = deposits && deduction !== null ? deposits.depositTotal - deduction : null;
+    return {
+      target,
+      kind,
+      checkingSavings: deposits?.checkingSavings ?? null,
+      depositTotal: deposits?.depositTotal ?? null,
+      missingReason,
+      reserveMonth: rm,
+      deduction,
+      afterDeduction,
+      reserve,
+      afterReserve: afterDeduction !== null && reserve !== null ? afterDeduction - reserve : null,
+    };
+  };
+  const rows = actualRows.map((r) =>
+    r.status === "fetched"
+      ? make(r.target, "actual", r, null)
+      : make(r.target, "actual", null, "月末後にfreeeから取得した値が無いため表示していません")
+  );
+  rows.push(
+    forecast.status === "available"
+      ? make(forecast.row.target, "forecast", forecast.row, null)
+      : make(forecast.target, "forecast", null, forecast.reason)
+  );
+  return rows;
 }

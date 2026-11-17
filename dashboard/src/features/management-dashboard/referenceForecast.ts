@@ -82,6 +82,45 @@ export interface ReferenceForecastRecord {
   cashComputedAt?: string;
   /** 納税・賞与の支払準備(参考)。freeeの実績・予定からの集計(scripts/reference-forecast/payment_reserve.py) */
   paymentReserve?: ReferencePaymentReserve;
+  /** 資金サマリーの控除額(短期借入)・納税・賞与の準備額。月末ごと(scripts/reference-forecast/month_end_reserve.py、2026-11-17) */
+  monthEndReserve?: ReferenceMonthEndReserve;
+}
+
+/**
+ * 月末の準備額(手元に残しておく額の目安)。支払見込額(次に支払う額)とは別の計算。
+ * - 消費税: 月末までに発生し未納付の額 = 未払消費税等 + 仮受 − 仮払 − 当期の中間納付済み (+ 予測月は仮定の月次発生額 × 月数)
+ * - 賞与: 次回支給見込額 × 経過月数 ÷ 積立月数
+ */
+export interface ReferenceMonthEndReserveMonth {
+  /** YYYY-MM */
+  month: string;
+  kind: "実績" | "予測";
+  /** freeeの短期借入金の月末残高(予測の月は取得時点) */
+  shortTermBorrowing: number;
+  shortTermBorrowingByBank: { bank: string; amount: number }[];
+  /** 短期借入金の品目がすべて当座貸越か */
+  overdraftOnly: boolean;
+  consumptionTax: {
+    payable: number;
+    received: number;
+    paid: number;
+    interimPaid: number;
+    /** 予測の月だけ: 直近の締まった月末から加えた仮定の月数と1か月分の発生額 */
+    assumedMonths: number;
+    assumedMonthly: number;
+    amount: number;
+  };
+  bonus: { estimate: number; elapsedMonths: number; spanMonths: number; amount: number };
+  reserveTotal: number;
+}
+
+export interface ReferenceMonthEndReserve {
+  fetchedAt: string;
+  months: ReferenceMonthEndReserveMonth[];
+  /** 準備額の計算の仮定 */
+  assumptions: string[];
+  /** 控除額(短期借入)の確認。経理資料の「担保」と同じ意味とはしていない理由 */
+  deductionCheck: string[];
 }
 
 /** 将来の支払見込(1件)。会計上の引当金残高・管理上の準備額ではない */
@@ -154,6 +193,12 @@ export function validateReferenceForecastRecord(value: unknown): string[] {
     if (item.reflectedInForecastFrom !== null && !/^\d{4}-\d{2}$/.test(item.reflectedInForecastFrom)) {
       errors.push(`支払準備 ${item.id} の予測への反映月の形式が違います`);
     }
+  }
+  for (const m of r.monthEndReserve?.months ?? []) {
+    if (!/^\d{4}-\d{2}$/.test(m.month)) errors.push(`準備額 ${m.month} の月の形式が違います`);
+    const parts = [m.shortTermBorrowing, m.consumptionTax?.amount, m.bonus?.amount, m.reserveTotal];
+    if (!parts.every((v) => Number.isFinite(v) && v >= 0)) errors.push(`準備額 ${m.month} の金額が正の数値ではありません`);
+    else if (m.consumptionTax.amount + m.bonus.amount !== m.reserveTotal) errors.push(`準備額 ${m.month} の合計が内訳と一致しません`);
   }
   if ((r.pl?.scenarios ?? []).length === 0) errors.push("損益の参考試算がありません");
   const text = JSON.stringify(value);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   actualTargets,
   buildActualRow,
+  buildComparisonRows,
   buildForecastState,
   forecastTimeDeposit,
   reserveDeductions,
@@ -82,5 +83,35 @@ describe("支払準備の控除後残高", () => {
     const bad = fixtureRecord();
     bad.paymentReserve!.items[0] = { ...bad.paymentReserve!.items[0], amount: -1, targetMonth: "2027/01" };
     expect(validateReferenceForecastRecord(bad)).toHaveLength(2);
+  });
+});
+
+describe("資金サマリーの主表(控除額・準備額)", () => {
+  const now = new Date("2026-11-17T00:00:00Z");
+  const snap = (cs: number, td: number) => ({ cashClosing: cs + td, checkingSavingsClosing: cs, timeDepositClosing: td, cashOnHandClosing: 0, fetchedAt: new Date("2026-11-16T08:00:00Z") });
+  const actualRows = [buildActualRow(targetMonth(50, 9), snap(1500, 480), now), buildActualRow(targetMonth(50, 10), snap(1200, 490), now)];
+
+  it("短期借入控除後＝預金総合計−短期借入、参考残高＝控除後−(消費税＋賞与の準備額)", () => {
+    const rows = buildComparisonRows(actualRows, buildForecastState(fixtureRecord(), targetMonth(50, 11)), fixtureRecord());
+    expect(rows.map((r) => [r.target.key, r.depositTotal, r.deduction, r.afterDeduction, r.reserve, r.afterReserve])).toEqual([
+      ["2026-09", 1980, 800, 1180, 200, 980],
+      ["2026-10", 1690, 800, 890, 160, 730],
+      ["2026-11", 2510, 800, 1710, 227, 1483],
+    ]);
+  });
+
+  it("実績の行に予測の値を当てない・記録に無い月は控除額・準備額を出さない", () => {
+    const rec = fixtureRecord();
+    rec.monthEndReserve!.months = rec.monthEndReserve!.months.map((m) => (m.month === "2026-10" ? { ...m, kind: "予測" as const } : m));
+    const rows = buildComparisonRows(actualRows, buildForecastState(rec, targetMonth(50, 11)), rec);
+    expect(rows[1]).toMatchObject({ depositTotal: 1690, deduction: null, afterDeduction: null, reserve: null, afterReserve: null });
+    const none = buildComparisonRows(actualRows, buildForecastState(null, targetMonth(50, 11)), null);
+    expect(none[2].missingReason).toContain("参考予測の記録がありません");
+  });
+
+  it("記録の検査: 準備額の合計が内訳と一致しないものは保存しない", () => {
+    const bad = fixtureRecord();
+    bad.monthEndReserve!.months[0] = { ...bad.monthEndReserve!.months[0], reserveTotal: 1 };
+    expect(validateReferenceForecastRecord(bad)).toEqual(["準備額 2026-09 の合計が内訳と一致しません"]);
   });
 });

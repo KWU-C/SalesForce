@@ -60,7 +60,7 @@ function RecordCaption({ record }: { record: ReferenceForecastRecord }) {
         {`予測：基準日 ${record.baseDate}／計算 ${formatIsoMinute(forecastComputedAt(record))}（記録 ${record.derivedFrom ?? record.id}）／手動計算のため自動更新なし`}
       </p>
       {record.derivedFrom && (
-        <p>{`支払準備の追加：${formatIsoMinute(record.createdAt)}（記録 ${record.id}）。予測は再計算していません`}</p>
+        <p>{`支払見込・準備額の追加：${formatIsoMinute(record.createdAt)}（記録 ${record.id}）。予測は再計算していません`}</p>
       )}
     </div>
   );

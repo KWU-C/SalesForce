@@ -114,6 +114,10 @@ export interface ReferencePaymentReserve {
     bonus: { label: string; payDate: string | null; gross: number; deductions: number; net: number }[];
   };
   limits: string[];
+  /** 集計の確かめ(年度・税目・範囲・決算振替との照合) */
+  verification?: { consumptionTax: string[] };
+  /** 参考残高に含めていない支払(資金余力ではない理由) */
+  notIncluded?: string[];
 }
 
 /** 主表示に出す資金のケース(順序どおり)。それ以外のケースは詳細欄に出す */

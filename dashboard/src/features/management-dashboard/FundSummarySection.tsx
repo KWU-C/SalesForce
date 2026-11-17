@@ -1,13 +1,15 @@
 import { formatDateTime } from "@/utils/format";
 import { SectionBanner } from "./SectionBanner";
-import { DetailsBox, NoteList, SubHeading, td, tdLeft, th, thLeft } from "./ReferenceForecastSections";
+import { DetailsBox, formatIsoMinute, NoteList, SubHeading, td, tdLeft, th, thLeft } from "./ReferenceForecastSections";
 import {
+  isReflectedBy,
+  forecastComputedAt,
   reserveDeductions,
   type FundActualRow,
   type FundForecastState,
   type ReserveDeduction,
 } from "./fundSummary";
-import { formatManYenInt, formatMonthDay, type ReferenceForecastRecord, type ReferencePaymentReserveItem } from "./referenceForecast";
+import { formatManYenInt, formatMonthDay, type ReferenceForecastRecord } from "./referenceForecast";
 
 function monthEndLabel(month: number): string {
   return `${month}月末`;
@@ -57,7 +59,7 @@ export function FundSummarySection({
         </p>
         <p>
           {forecast.status === "available"
-            ? `予測：資金の参考予測の標準ケース（基準日 ${forecast.baseDate}／計算 ${forecast.computedAt.slice(0, 16).replace("T", " ")}）。手動計算のため自動更新なし`
+            ? `予測：資金の参考予測の標準ケース（基準日 ${forecast.baseDate}／計算 ${formatIsoMinute(forecast.computedAt)}）。手動計算のため自動更新なし`
             : `予測：${forecast.reason}`}
         </p>
       </div>
@@ -156,17 +158,15 @@ export function FundSummarySection({
   );
 }
 
-function ReflectionText({ item }: { item: ReferencePaymentReserveItem }) {
-  return item.reflectedInForecastFrom ? <>{`${Number(item.reflectedInForecastFrom.slice(5, 7))}月の予測に計上済み`}</> : <>予測期間外（未反映）</>;
-}
-
 function DeductionFormula({ d }: { d: ReserveDeduction }) {
+  const m = Number(d.month.slice(5, 7));
   const minus = d.deducted.map((i) => `${i.label} ${formatManYenInt(i.amount)}`).join(" ＋ ");
   return (
     <li>
-      {`${Number(d.month.slice(5, 7))}月末：${formatManYenInt(d.forecastBalance)} − （${minus}） ＝ ${formatManYenInt(d.balanceAfter)}`}
+      <span className="font-medium text-[var(--text-primary)]">{`${m}月末：${formatManYenInt(d.balanceAfter)}`}</span>
+      {`（＝ ${m}月末予測 ${formatManYenInt(d.forecastBalance)} − （${minus}））`}
       {d.included.length > 0 && (
-        <span className="text-[var(--text-muted)]">{`（${d.included.map((i) => i.label).join("・")}は${Number(d.month.slice(5, 7))}月末の予測残高に含まれるため差し引かない）`}</span>
+        <span className="text-[var(--text-muted)]">{`。${d.included.map((i) => i.label).join("・")}は${m}月末予測に出金として含まれるため差し引かない`}</span>
       )}
     </li>
   );
@@ -175,9 +175,10 @@ function DeductionFormula({ d }: { d: ReserveDeduction }) {
 /**
  * 「納税・賞与の支払準備（参考）」(2026-11-17)。資金サマリーの主表の下に置く。
  * - 将来の支払見込額(対象月・金額・根拠): freeeの実績・予定から。不足は仮定を明示した推計
- * - 会計上の残高(賞与引当金など)は支払見込額・準備額ではないので、別枠で参考として出す
- * - 管理上の準備額(経理報告PDFの額)は転記しない
- * - 控除後残高は、予測に未反映の支払見込額だけを差し引く(予測に含まれる支払は二重に引かない)
+ * - 予測への反映は予測の月末ごと(11月末予測・12月末予測)に示す。含まれる支払は控除しない
+ * - 控除後の残高は「把握済みの将来支払を控除した参考残高」で、資金余力ではない。未算入の項目をすぐ下に出す
+ * - 会計上の残高(賞与引当金など)は支払見込額・準備額ではないので、別枠で参考として出す。PDFの準備額は転記しない
+ * - 予測は再計算していない。予測の基準日・計算日時と、支払準備の追加日時を分けて出す
  */
 export function PaymentReserveSection({ record }: { record: ReferenceForecastRecord }) {
   const reserve = record.paymentReserve;
@@ -190,14 +191,22 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
     );
   }
   const deductions = reserveDeductions(record);
+  const forecastMonths = deductions.map((d) => d.month);
   const a = reserve.accounting;
   const taxNet = a.consumptionTaxReceived - a.consumptionTaxPaid;
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5 text-xs">
         <h3 className="text-sm font-semibold text-[var(--text-primary)]">納税・賞与の支払準備（参考）</h3>
-        <p className="text-xs text-[var(--text-secondary)]">
-          {`将来の支払見込額（freeeの実績・予定から集計、freee取得 ${reserve.fetchedAt.slice(0, 16).replace("T", " ")}。手動計算のため自動更新なし）。会計上の引当金残高や、経理報告の資金留保のための準備額ではありません。`}
+        <p className="text-[var(--text-secondary)]">
+          将来の支払見込額（freeeの実績・予定から集計）。会計上の引当金残高や、経理報告の資金留保のための準備額ではありません。
+        </p>
+        <p className="text-[var(--text-muted)]">
+          {`予測：基準日 ${record.baseDate}／計算 ${formatIsoMinute(forecastComputedAt(record))}`}
+          {record.derivedFrom
+            ? `／支払準備の追加：${formatIsoMinute(record.createdAt)}（freee取得 ${formatIsoMinute(reserve.fetchedAt)}）。予測は再計算していません`
+            : `／freee取得 ${formatIsoMinute(reserve.fetchedAt)}`}
+          。手動計算のため自動更新なし
         </p>
       </div>
       <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
@@ -208,7 +217,9 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
               <th className={thLeft}>対象月</th>
               <th className={th}>支払見込額</th>
               <th className={thLeft}>区分</th>
-              <th className={thLeft}>資金予測への反映</th>
+              {forecastMonths.map((m) => (
+                <th key={m} className={thLeft}>{`${Number(m.slice(5, 7))}月末予測`}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -221,9 +232,17 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
                 <td className={tdLeft}>{ymLabel(item.targetMonth)}</td>
                 <td className={`${td} font-semibold`}>{formatManYenInt(item.amount)}</td>
                 <td className={tdLeft}>{item.kind}</td>
-                <td className={tdLeft}>
-                  <ReflectionText item={item} />
-                </td>
+                {forecastMonths.map((m) =>
+                  isReflectedBy(item, m) ? (
+                    <td key={m} className={tdLeft}>
+                      含む（控除しない）
+                    </td>
+                  ) : (
+                    <td key={m} className={`${tdLeft} font-medium text-[var(--text-primary)]`}>
+                      含まない → 控除
+                    </td>
+                  )
+                )}
               </tr>
             ))}
           </tbody>
@@ -231,20 +250,28 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
       </div>
 
       {deductions.length > 0 && (
-        <div className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-          <p className="font-medium text-[var(--text-primary)]">準備額を差し引いた残高（参考・当座・普通預金、標準ケース）</p>
+        <div className="flex flex-col gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4 text-xs text-[var(--text-secondary)]">
+          <p className="text-sm font-medium text-[var(--text-primary)]">把握済みの将来支払を控除した参考残高（当座・普通預金、標準ケース）</p>
           <p className="text-[var(--text-muted)]">
-            控除後残高 ＝ 予測の月末残高 − 予測に未反映の支払見込額。予測残高に既に含まれる支払は差し引きません。
+            月末予測 − その予測に含まれない上表の支払見込額。資金余力（自由に使える額）ではありません。
           </p>
           <ul className="list-disc space-y-0.5 pl-5">
             {deductions.map((d) => (
               <DeductionFormula key={d.month} d={d} />
             ))}
           </ul>
+          <div className="mt-2 border-t border-[var(--gridline)] pt-2">
+            <p className="font-medium text-[var(--text-primary)]">この参考残高に算入していない支払</p>
+            <ul className="list-disc space-y-0.5 pl-5">
+              {(reserve.notIncluded ?? ["冬季賞与の会社負担の社会保険料", "法人税・住民税等の納付", "予測期間より後の通常の入出金"]).map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 
-      <DetailsBox summary="会計上の残高・支払実績・限界（支払準備）">
+      <DetailsBox summary="会計上の残高・支払実績・集計の確認・限界（支払準備）">
         <div className="flex flex-col gap-1">
           <SubHeading>{`会計上の残高（freee試算表、${a.asOf}時点）— 支払見込額・準備額ではありません`}</SubHeading>
           <NoteList
@@ -257,6 +284,12 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
             ]}
           />
         </div>
+        {reserve.verification && (
+          <div className="flex flex-col gap-1">
+            <SubHeading>消費税の集計の確認（年度・税目・範囲）</SubHeading>
+            <NoteList items={reserve.verification.consumptionTax} />
+          </div>
+        )}
         <div className="flex flex-col gap-1">
           <SubHeading>支払実績（freee）</SubHeading>
           <NoteList

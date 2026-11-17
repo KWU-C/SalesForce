@@ -47,31 +47,64 @@ accounting = {
     "consumptionTaxPaid": bal.get("仮払消費税", 0),
 }
 
-# ---------- 消費税: 前期の中間納付(仮払税金への支払)と確定納付(未払消費税等の支払) ----------
+# ---------- 消費税: 前期の中間納付(仮払税金)と確定納付(未払消費税等) ----------
+# 同じ年度・税目・範囲で集計する(2026-11-17確認):
+# - 年度: 前期(fy-1年9月〜fy年8月)の中間納付と、その確定納付(当期の10月に支払)
+# - 税目: 仮払税金には中国税(海外分所得税)なども入るため、摘要に「消費税」を含む支払だけを中間納付とする
+# - 範囲: 国・地方の計(未払消費税等・仮払税金は国税と地方消費税をまとめて計上)
+# - 照合: 前期末の決算振替で、仮払税金のうち「消費税予定申告」と相殺した額・「消費税確定分」として未払消費税等に計上した額と一致すること
 since = f"{fy - 1}-09-01"
+prev_end = f"{fy}-08-31"
+
+
+def is_ctax(desc):
+    return "消費税" in (desc or "")
+
+
 interim = []
 for d in pages("/api/1/deals", "deals", {"account_item_id": aid["仮払税金"], "start_issue_date": since, "type": "expense"}):
-    amt = sum(x["amount"] for x in d["details"] if x["account_item_id"] == aid["仮払税金"])
-    # 中間納付は100万円以上の仮払税金(源泉税の還付・少額の印紙等を除く)
-    if amt >= 1_000_000:
-        interim.append({"date": d["issue_date"], "amount": amt, "paid": [p["date"] for p in d.get("payments", [])]})
+    for x in d["details"]:
+        if x["account_item_id"] == aid["仮払税金"] and is_ctax(x.get("description")):
+            interim.append({"date": d["issue_date"], "amount": x["amount"], "paid": [p["date"] for p in d.get("payments", [])]})
 final = []
 for d in pages("/api/1/deals", "deals", {"account_item_id": aid["未払消費税等"], "start_issue_date": since, "type": "expense"}):
-    amt = sum(x["amount"] for x in d["details"] if x["account_item_id"] == aid["未払消費税等"])
-    final.append({"date": d["issue_date"], "amount": amt})
+    for x in d["details"]:
+        if x["account_item_id"] == aid["未払消費税等"]:
+            final.append({"date": d["issue_date"], "amount": x["amount"], "description": x.get("description") or ""})
 for j in pages("/api/1/manual_journals", "manual_journals", {"account_item_id": aid["未払消費税等"], "start_issue_date": since}):
     for x in j["details"]:
         bank = any("預金" in acc.get(y["account_item_id"], "") for y in j["details"] if y is not x)
         if x["account_item_id"] == aid["未払消費税等"] and x["entry_side"] == "debit" and bank:
-            final.append({"date": j["issue_date"], "amount": x["amount"]})
+            final.append({"date": j["issue_date"], "amount": x["amount"], "description": x.get("description") or ""})
 interim.sort(key=lambda x: x["date"])
 final.sort(key=lambda x: x["date"])
-prev_term_interims = [x for x in interim if x["date"] >= f"{fy - 1}-09-01" and x["date"] < f"{fy}-09-01"]
-prev_term_final = [x for x in final if x["date"] >= f"{fy}-09-01"]  # 前期分の確定納付は当期に入ってから
-annual = sum(x["amount"] for x in prev_term_interims) + sum(x["amount"] for x in prev_term_final)
+prev_term_interims = [x for x in interim if since <= x["date"] <= prev_end]
+prev_term_final = [x for x in final if f"{fy}-09-01" <= x["date"] <= f"{fy}-12-31"]  # 前期分の確定納付は当期の期首から申告期限(10月末)まで
+
+# 前期末の決算振替(消費税の整理仕訳)
+closing = {"予定申告": 0, "確定分": 0}
+for j in pages("/api/1/manual_journals", "manual_journals", {"start_issue_date": prev_end, "end_issue_date": prev_end, "account_item_id": aid["仮受消費税"]}):
+    for x in j["details"]:
+        desc = x.get("description") or ""
+        if x["entry_side"] == "credit" and acc.get(x["account_item_id"]) == "仮払税金" and "消費税予定申告" in desc:
+            closing["予定申告"] += x["amount"]
+        if x["entry_side"] == "credit" and acc.get(x["account_item_id"]) == "未払消費税等" and "消費税確定分" in desc:
+            closing["確定分"] += x["amount"]
+sum_interim = sum(x["amount"] for x in prev_term_interims)
+sum_final = sum(x["amount"] for x in prev_term_final)
+checks_ok = closing["予定申告"] == sum_interim and closing["確定分"] == sum_final and len(prev_term_interims) > 0 and len(prev_term_final) == 1
+if not checks_ok:
+    raise SystemExit(f"消費税の納付額が決算振替と一致しません(中間 {sum_interim}/{closing['予定申告']}・確定 {sum_final}/{closing['確定分']})。手で確認してから使うこと")
+annual = sum_interim + sum_final
 interim_est = annual * 3 // 12
 # 当期の中間納付の予定がfreeeに登録済みか(登録済みならその金額を使う)
 registered_interim = [x for x in interim if x["date"] >= f"{fy}-09-01"]
+ctax_verification = [
+    f"年度：{fy - 1976 - 1}期（{since}〜{prev_end}）の中間納付と、その確定納付（{prev_term_final[0]['date']}、摘要「{prev_term_final[0]['description']}」）",
+    "税目：仮払税金のうち摘要に「消費税」を含む支払だけを集計（同じ科目の中国税・海外分所得税は除外）",
+    "範囲：国税と地方消費税の計（未払消費税等・仮払税金の計上単位）",
+    f"照合：{prev_end}の決算振替の「消費税予定申告」{sum_interim:,}円・「消費税確定分」{sum_final:,}円と一致",
+]
 
 # ---------- 賞与: 前年12月・当年7月の支給実績(振替伝票・取引の賞与関係の科目) ----------
 BONUS_ACCTS = {"賞与", "[製]賞与", "役員賞与"}
@@ -148,7 +181,7 @@ else:
                   + "＋".join(yen(x["amount"]) for x in prev_term_interims)
                   + f"＋確定納付 {'＋'.join(yen(x['amount']) for x in prev_term_final)}（{'・'.join(x['date'] for x in prev_term_final)}）。"
                   + f"中間納付1回分＝年税額×3/12＝{yen(interim_est)}。前期の中間納付は{'・'.join(x['date'][5:].replace('-', '/') for x in prev_term_interims)}に支払。"
-                  + "freeeに当期の中間納付は未登録。税務署から届く中間申告の金額で確定する"),
+                  + "freeeに当期の中間納付は未登録。過去の納付実績からの概算。通知額は未確認"),
     })
 
 # 賞与(冬季): 振込(手取り)と、預り分(源泉所得税・社会保険料の本人負担)の翌月納付
@@ -173,11 +206,19 @@ out = {
                           + [{"date": x["date"], "amount": x["amount"], "kind": "確定納付"} for x in final],
         "bonus": [dict(prev_dec, label="前年12月"), dict(prev_jul, label="当年7月")],
     },
+    "verification": {"consumptionTax": ctax_verification},
+    # 把握済みの将来支払を控除した参考残高に含めていない支払(資金余力ではない理由。画面で参考残高のすぐ下に出す)
+    "notIncluded": [
+        "冬季賞与の会社負担の社会保険料（1月末納付。金額を算定していない）",
+        f"消費税の第2回・第3回の中間納付（{fy + 1}年4月・7月）と{fy_term}期の確定納付（{fy + 1}年10月）",
+        "法人税・住民税等の納付",
+        "資金予測の期間（12月末）より後の通常の入出金（給与・社会保険料・借入返済・外注費・売掛金の入金など）",
+        "11月末の参考残高は、12月の通常の入出金（賞与以外）を含まない",
+    ],
     "limits": [
         "会計上の残高（賞与引当金・未払消費税等・仮受／仮払消費税）は帳簿の残高で、支払見込額・準備額ではない",
         "管理上の準備額（経理報告PDFの引当・準備の額）は転記していない",
-        "消費税の中間納付額は前期の年税額からの推計。税務署の通知額と端数が違うことがある",
-        "賞与の会社負担の社会保険料、法人税等の納付はここに含めていない",
+        "消費税の中間納付額は過去の納付実績からの概算。通知額は未確認",
     ],
 }
 json.dump(out, open(OUT, "w"), ensure_ascii=False, indent=1)

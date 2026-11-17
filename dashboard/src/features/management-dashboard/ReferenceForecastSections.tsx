@@ -55,12 +55,20 @@ export function Badge() {
 
 function RecordCaption({ record }: { record: ReferenceForecastRecord }) {
   return (
-    <p className="text-xs text-[var(--text-muted)]">
-      {`基準日 ${record.baseDate}／計算 ${forecastComputedAt(record).slice(0, 16).replace("T", " ")}（記録 ${record.id}${
-        record.derivedFrom ? `。資金・損益は記録 ${record.derivedFrom} の値を引き継ぎ、支払準備を追加` : ""
-      }）／手動計算のため自動更新なし`}
-    </p>
+    <div className="flex flex-col gap-0.5 text-xs text-[var(--text-muted)]">
+      <p>
+        {`予測：基準日 ${record.baseDate}／計算 ${formatIsoMinute(forecastComputedAt(record))}（記録 ${record.derivedFrom ?? record.id}）／手動計算のため自動更新なし`}
+      </p>
+      {record.derivedFrom && (
+        <p>{`支払準備の追加：${formatIsoMinute(record.createdAt)}（記録 ${record.id}）。予測は再計算していません`}</p>
+      )}
+    </div>
   );
+}
+
+/** "2026-11-17T09:14:06+09:00" → "2026-11-17 09:14" */
+export function formatIsoMinute(iso: string): string {
+  return iso.slice(0, 16).replace("T", " ");
 }
 
 function CaseBreakdown({ c }: { c: ReferenceCashCase }) {

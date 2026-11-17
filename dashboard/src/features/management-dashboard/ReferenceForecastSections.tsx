@@ -1,4 +1,5 @@
 import { SectionBanner } from "./SectionBanner";
+import { forecastComputedAt } from "./fundSummary";
 import {
   formatManYenDelta,
   formatManYenInt,
@@ -9,7 +10,7 @@ import {
 } from "./referenceForecast";
 
 /** 開閉欄(初期は閉じる)。業績・採算の範囲の説明と同じ見た目 */
-function DetailsBox({ summary, children }: { summary: string; children: React.ReactNode }) {
+export function DetailsBox({ summary, children }: { summary: string; children: React.ReactNode }) {
   return (
     <details className="group rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] text-xs text-[var(--text-secondary)]">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg p-4 font-medium text-[var(--text-secondary)] focus-visible:ring-2 focus-visible:ring-[var(--series-1)] focus-visible:outline-none [&::-webkit-details-marker]:hidden">
@@ -23,11 +24,11 @@ function DetailsBox({ summary, children }: { summary: string; children: React.Re
   );
 }
 
-function SubHeading({ children }: { children: React.ReactNode }) {
+export function SubHeading({ children }: { children: React.ReactNode }) {
   return <p className="font-medium text-[var(--text-primary)]">{children}</p>;
 }
 
-function NoteList({ items }: { items: string[] }) {
+export function NoteList({ items }: { items: string[] }) {
   return (
     <ul className="list-disc space-y-1 pl-5 leading-relaxed">
       {items.map((t) => (
@@ -37,16 +38,16 @@ function NoteList({ items }: { items: string[] }) {
   );
 }
 
-const th = "px-2 py-1.5 text-right font-medium whitespace-nowrap text-[var(--text-muted)]";
-const thLeft = "px-2 py-1.5 text-left font-medium whitespace-nowrap text-[var(--text-muted)]";
-const td = "px-2 py-1.5 text-right whitespace-nowrap tabular-nums text-[var(--text-primary)]";
-const tdLeft = "px-2 py-1.5 text-left whitespace-nowrap text-[var(--text-secondary)]";
+export const th = "px-2 py-1.5 text-right font-medium whitespace-nowrap text-[var(--text-muted)]";
+export const thLeft = "px-2 py-1.5 text-left font-medium whitespace-nowrap text-[var(--text-muted)]";
+export const td = "px-2 py-1.5 text-right whitespace-nowrap tabular-nums text-[var(--text-primary)]";
+export const tdLeft = "px-2 py-1.5 text-left whitespace-nowrap text-[var(--text-secondary)]";
 
 function monthLabel(month: string): string {
   return `${Number(month.slice(5, 7))}月`;
 }
 
-function Badge() {
+export function Badge() {
   return (
     <span className="rounded bg-white/20 px-2 py-0.5 text-xs font-medium text-white">DEV・参考</span>
   );
@@ -55,7 +56,9 @@ function Badge() {
 function RecordCaption({ record }: { record: ReferenceForecastRecord }) {
   return (
     <p className="text-xs text-[var(--text-muted)]">
-      {`基準日 ${record.baseDate}／計算 ${record.createdAt.slice(0, 16).replace("T", " ")}（記録 ${record.id}）`}
+      {`基準日 ${record.baseDate}／計算 ${forecastComputedAt(record).slice(0, 16).replace("T", " ")}（記録 ${record.id}${
+        record.derivedFrom ? `。資金・損益は記録 ${record.derivedFrom} の値を引き継ぎ、支払準備を追加` : ""
+      }）／手動計算のため自動更新なし`}
     </p>
   );
 }

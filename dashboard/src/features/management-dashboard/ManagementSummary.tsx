@@ -60,7 +60,8 @@ function SummaryBox({ title, children }: { title: string; children: React.ReactN
 }
 
 /**
- * 資金サマリー(概要、2026-11-13にユーザー指定の構成へ整理、11-16更新)。当月末時点のfreee帳簿(取得時点までの登録分)の
+ * 資金収支・借入(当月末の帳簿)。2026-11-17に概要から財務・資金繰りタブへ移した(概要は月末残高の資金サマリーに統合)。
+ * 旧: 資金サマリー(概要、2026-11-13にユーザー指定の構成へ整理、11-16更新)。当月末時点のfreee帳簿(取得時点までの登録分)の
  * 資金状態を3枠にまとめる: 手元資金/今月の資金収支/借入状況。資金余力は手入力の準備額に依存するため外した。
  * いずれも詳細タブ(入出金明細・財務・資金繰り)と同じデータ・同じ計算関数の結果をそのまま使い、ここでは別計算しない
  * (現預金と借入の差額 = 現預金 − 借入残高 のみ、ここで求める。使える資金の額ではない)。
@@ -82,7 +83,7 @@ export function ManagementSummary({
 
   return (
     <div className="flex flex-col gap-2">
-      <SectionBanner>資金サマリー</SectionBanner>
+      <SectionBanner>資金収支・借入（当月末の帳簿）</SectionBanner>
       <p className="text-xs text-[var(--text-secondary)]">
         {calendarYear}年{month}月末時点のfreee帳簿の値（取得時点までに登録された取引。先日付の登録済み取引を含む）
         {fetchedAt ? `／freee取得: ${formatDateTime(fetchedAt)}` : ""}

@@ -29,6 +29,8 @@ import {
 import { CostStructureSection } from "@/features/management-dashboard/CostStructureSection";
 import { SectionBanner } from "@/features/management-dashboard/SectionBanner";
 import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
+import { FundSummarySection, PaymentReserveSection } from "@/features/management-dashboard/FundSummarySection";
+import { actualTargets, buildActualRow, buildForecastState } from "@/features/management-dashboard/fundSummary";
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
 import { PerformanceSummaryBand, PreviousMonthEndBalance } from "@/features/management-dashboard/OverviewSections";
 import {
@@ -39,6 +41,7 @@ import {
   summarizePreviousMonthCash,
   summarizePreviousMonthLoans,
   targetMonth,
+  type TargetMonth,
 } from "@/features/management-dashboard/overviewComparison";
 import {
   OverviewLinks,
@@ -408,6 +411,11 @@ export default async function ManagementPage() {
   );
 
   // 概要(2026-11-13、11-16更新): 経営サマリー(経理確認済み/仕掛品振替反映分の累計)→経営サマリー(帳簿上の進捗)→資金サマリー(現在)→資金残高(前月末実績)。経理の資金繰り予定は概要に出さない(財務・資金繰りタブで基準日付きで参照)
+  // 概要「資金サマリー」: 実績は締まった直近2か月の月末(freee)、予測は当月末(参考予測の標準ケース)
+  const lookupCashFlow = (t: TargetMonth) => cashFlowByMonth.find((c) => c?.fiscalYear === t.fiscalYear && c.month === t.month) ?? null;
+  const fundActualRows = actualTargets(previousMonthTarget).map((t) => buildActualRow(t, lookupCashFlow(t), now));
+  const fundForecast = buildForecastState(referenceForecast, targetMonth(currentTerm, currentMonth));
+
   const overviewTab = (
     <>
       {overviewFailures.length > 0 && (
@@ -437,28 +445,15 @@ export default async function ManagementPage() {
         <PerformanceSummaryBand kind="progress" column={progressPerformance} failed={performanceError} />
         <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る（売上総利益・利益率・月次表）" }]} />
       </div>
-      {/* 資金サマリー帯の上は70px(タブパネルのgap-8=32px＋38px、2026-11-17ユーザー指定) */}
-      <div className="mt-[38px] flex flex-col gap-3">
-        <ManagementSummary
-          term={currentTerm}
-          month={currentMonth}
-          cashFlow={currentCashFlow}
-          loanStatus={loanStatus}
-          fetchedAt={dataUpdatedAt}
-        />
+      {/* 資金サマリー(2026-11-17、「資金サマリー」「資金残高」を統合)。帯の上は70px(タブパネルのgap-8=32px＋38px) */}
+      <div className="mt-[38px] flex flex-col gap-6">
+        <FundSummarySection actualRows={fundActualRows} forecast={fundForecast} record={referenceForecast} />
+        {referenceForecast && <PaymentReserveSection record={referenceForecast} />}
         <OverviewLinks
           links={[
-            { tab: "finance", label: "財務・資金繰りを見る" },
-            { tab: "cashflow", label: "入出金明細を見る" },
+            { tab: "finance", label: "財務・資金繰りを見る（借入・現預金と借入の差額・資金の参考予測）" },
+            { tab: "cashflow", label: "入出金明細を見る（月次の資金収支）" },
           ]}
-        />
-      </div>
-      {/* 資金残高(前月末実績)帯の上は70px(タブパネルのgap-8=32px＋38px、2026-11-17ユーザー指定) */}
-      <div className="mt-[38px]">
-        <PreviousMonthEndBalance
-          target={previousMonthTarget}
-          cash={previousMonthCash}
-          loans={summarizePreviousMonthLoans(previousMonthTarget, previousMonthLoanSnapshot)}
         />
       </div>
     </>
@@ -477,8 +472,21 @@ export default async function ManagementPage() {
     </>
   );
 
+  // 借入・資金収支・現預金と借入の差額は概要から財務・資金繰りタブへ移した(2026-11-17、ユーザー指定)
   const financeTab = (
     <>
+      <ManagementSummary
+        term={currentTerm}
+        month={currentMonth}
+        cashFlow={currentCashFlow}
+        loanStatus={loanStatus}
+        fetchedAt={dataUpdatedAt}
+      />
+      <PreviousMonthEndBalance
+        target={previousMonthTarget}
+        cash={previousMonthCash}
+        loans={summarizePreviousMonthLoans(previousMonthTarget, previousMonthLoanSnapshot)}
+      />
       {loanStatusErrorNotice}
       {loanStatus && <LoanStatusTable loanStatus={loanStatus} />}
       {fundReserveErrorNotice}

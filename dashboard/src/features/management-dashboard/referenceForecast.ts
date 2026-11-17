@@ -76,6 +76,44 @@ export interface ReferenceForecastRecord {
   };
   pl: { scenarios: ReferencePlScenario[] };
   notes: { basis: string[]; estimates: string[]; limits: string[] };
+  /** 元の記録から資金・損益を引き継いだ記録の、元の記録ID(2026-11-17、支払準備の追加) */
+  derivedFrom?: string;
+  /** 資金予測を計算した日時。無ければ createdAt */
+  cashComputedAt?: string;
+  /** 納税・賞与の支払準備(参考)。freeeの実績・予定からの集計(scripts/reference-forecast/payment_reserve.py) */
+  paymentReserve?: ReferencePaymentReserve;
+}
+
+/** 将来の支払見込(1件)。会計上の引当金残高・管理上の準備額ではない */
+export interface ReferencePaymentReserveItem {
+  id: string;
+  label: string;
+  /** 支払う月(YYYY-MM) */
+  targetMonth: string;
+  amount: number;
+  /** 予定: freeeに登録済み・確定の明細 / 推計: 実績からの推計(根拠に式を書く) */
+  kind: "予定" | "推計";
+  /** 資金予測に出金として含まれている場合、その月(YYYY-MM)。含まれていなければ null */
+  reflectedInForecastFrom: string | null;
+  basis: string;
+}
+
+export interface ReferencePaymentReserve {
+  fetchedAt: string;
+  /** 会計上の残高(試算表、前月末)。支払見込額・準備額ではない */
+  accounting: {
+    asOf: string;
+    bonusProvision: number;
+    consumptionTaxPayable: number;
+    consumptionTaxReceived: number;
+    consumptionTaxPaid: number;
+  };
+  items: ReferencePaymentReserveItem[];
+  history: {
+    consumptionTax: { date: string; amount: number; kind: string }[];
+    bonus: { label: string; payDate: string | null; gross: number; deductions: number; net: number }[];
+  };
+  limits: string[];
 }
 
 /** 主表示に出す資金のケース(順序どおり)。それ以外のケースは詳細欄に出す */
@@ -104,6 +142,13 @@ export function validateReferenceForecastRecord(value: unknown): string[] {
       if (![m.start, m.end, m.minEndOfDay?.amount, m.minIntraday].every(Number.isFinite)) errors.push(`${c.id} ${m.month} の金額が数値ではありません`);
       const sum = Object.values(m.byBasis).reduce((a, b) => a + b, 0);
       if (sum !== m.end - m.start) errors.push(`${c.id} ${m.month} の根拠別の合計(${sum})が残高の増減(${m.end - m.start})と一致しません`);
+    }
+  }
+  for (const item of r.paymentReserve?.items ?? []) {
+    if (!Number.isFinite(item.amount) || item.amount < 0) errors.push(`支払準備 ${item.id} の金額が正の数値ではありません`);
+    if (!/^\d{4}-\d{2}$/.test(item.targetMonth)) errors.push(`支払準備 ${item.id} の対象月の形式が違います`);
+    if (item.reflectedInForecastFrom !== null && !/^\d{4}-\d{2}$/.test(item.reflectedInForecastFrom)) {
+      errors.push(`支払準備 ${item.id} の予測への反映月の形式が違います`);
     }
   }
   if ((r.pl?.scenarios ?? []).length === 0) errors.push("損益の参考試算がありません");

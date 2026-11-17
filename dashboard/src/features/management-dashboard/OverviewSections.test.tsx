@@ -118,7 +118,7 @@ describe("仕掛品振替反映分・経理確認済みの累計", () => {
   });
 });
 
-describe("資金残高（前月末実績）", () => {
+describe("現預金と借入（前月末実績）", () => {
   afterEach(cleanup);
   const cash: CashColumn = {
     status: "fetched",
@@ -142,7 +142,7 @@ describe("資金残高（前月末実績）", () => {
 
   it("freeeの前月末の預金・借入の残高を対象月・取得日時つきで出し、差額は計算式を明記する", () => {
     render(<PreviousMonthEndBalance target={targetMonth(50, 10)} cash={cash} loans={loans} />);
-    expect(screen.getByRole("heading", { name: "資金残高（2026年10月末実績）" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "現預金と借入（2026年10月末実績）" })).toBeTruthy();
     expect(screen.getByText(/50期10月末（2026年10月31日）時点のfreeeの残高／freee取得: 預金 2026\/11\/16 14:42・借入 2026\/11\/13 17:00/)).toBeTruthy();
     expect(screen.getByText("¥700")).toBeTruthy();
     expect(screen.getByText("¥1,100")).toBeTruthy();

@@ -254,7 +254,7 @@ const REMOVED_CASH_METRICS: { label: string; reason: string }[] = [
  * - 担保控除後・資金余力など算出できない指標は出さず、理由を詳細説明(REMOVED_CASH_METRICS)にまとめる
  */
 export function PreviousMonthEndBalance({ target, cash, loans }: { target: TargetMonth; cash: CashColumn; loans: LoanColumn }) {
-  const title = `資金残高（${target.calendarYear}年${target.month}月末実績）`;
+  const title = `現預金と借入（${target.calendarYear}年${target.month}月末実績）`;
   const details = (
     <details className="text-xs text-[var(--text-muted)]">
       <summary className="cursor-pointer text-[var(--text-secondary)]">表示していない指標と理由</summary>
@@ -287,7 +287,7 @@ export function PreviousMonthEndBalance({ target, cash, loans }: { target: Targe
         {target.term}期{target.month}月末（{target.calendarYear}年{target.month}月{lastDayOf(target)}日）時点のfreeeの残高／freee取得: 預金{" "}
         {formatDateTime(cash.fetchedAt)}
         {loanFetched ? `・借入 ${formatDateTime(loanFetched.fetchedAt)}` : ""}
-        <span className="text-[var(--text-muted)]">（予測ではありません。当月末の帳簿の値は資金サマリーを参照）</span>
+        <span className="text-[var(--text-muted)]">（予測ではありません。当月末の帳簿の値は上の「資金収支・借入」を参照）</span>
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">

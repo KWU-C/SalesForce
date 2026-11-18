@@ -61,7 +61,7 @@ function SummaryBox({ title, value, lines }: { title: string; value: number | nu
       </p>
       <div className="mt-2 flex flex-col gap-0.5 border-t border-[var(--gridline)] pt-2">
         {lines.map((line) => (
-          <p key={line} className="text-xs text-[var(--text-muted)]">
+          <p key={line} className="text-sm text-[var(--text-secondary)]">
             {line}
           </p>
         ))}

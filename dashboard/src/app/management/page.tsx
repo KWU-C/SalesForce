@@ -32,7 +32,7 @@ import { ManagementSummary } from "@/features/management-dashboard/ManagementSum
 import { FundSummaryDetailSection, FundSummarySection, PaymentReserveSection } from "@/features/management-dashboard/FundSummarySection";
 import { actualTargets, buildActualRow, buildForecastState } from "@/features/management-dashboard/fundSummary";
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
-import { PerformanceSummaryBand, PreviousMonthEndBalance } from "@/features/management-dashboard/OverviewSections";
+import { PerformanceSummaryTable, PreviousMonthEndBalance } from "@/features/management-dashboard/OverviewSections";
 import {
   monthsAfter,
   resolveSummaryBasis,
@@ -423,15 +423,17 @@ export default async function ManagementPage() {
           {`取得に失敗した項目があります（${overviewFailures.join("・")}）。該当するタブの表示をご確認ください。`}
         </OverviewNotice>
       )}
-      {/* 経営サマリー: 帯は1本。上段(累計)と下段(帳簿上の進捗)は小見出しと区切り線で分ける(2026-11-16、ユーザー指定) */}
+      {/* 経営サマリー: 帯は1本。累計と帳簿上の進捗は資金サマリーと同じく1つの表にまとめる(2026-11-18、ユーザー指定) */}
       <div className="flex flex-col gap-3">
         <SectionBanner>経営サマリー</SectionBanner>
-        <PerformanceSummaryBand
-          kind="adjusted"
-          column={adjustedPerformance}
-          failed={performanceError || twoTermsAgoPerformanceError}
-          excludedMonths={unadjustedClosedMonths}
-          basis={summaryBasis}
+        <PerformanceSummaryTable
+          adjusted={{
+            column: adjustedPerformance,
+            failed: performanceError || twoTermsAgoPerformanceError,
+            excludedMonths: unadjustedClosedMonths,
+            basis: summaryBasis,
+          }}
+          progress={{ column: progressPerformance, failed: performanceError }}
           action={
             <AccountingConfirmationForm
               currentMonth={accountingConfirmation?.throughMonth ?? null}
@@ -440,9 +442,6 @@ export default async function ManagementPage() {
             />
           }
         />
-        {/* 区切り線の上は70px(親のgap-3=12px＋58px、2026-11-17ユーザー指定) */}
-        <hr className="mt-[58px] border-[var(--gridline)]" />
-        <PerformanceSummaryBand kind="progress" column={progressPerformance} failed={performanceError} />
         <OverviewLinks links={[{ tab: "performance", label: "業績・採算を見る（売上総利益・利益率・月次表）" }]} />
       </div>
       {/* 資金サマリー(2026-11-17、「資金サマリー」「資金残高」を統合)。帯の上は70px(タブパネルのgap-8=32px＋38px) */}

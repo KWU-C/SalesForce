@@ -18,6 +18,8 @@ export interface BalanceDateColumn {
   /** 対象日の説明(例: 2026年10月31日、2026年11月30日付の帳簿・取得時点までの登録分) */
   asOf: string;
   fetchedAt: Date | null;
+  /** 科目別の内訳・保険積立金の取得日時(残高と別に取得するため分けて示す) */
+  accountsFetchedAt: Date | null;
   cash: { checkingSavings: number; timeDeposit: number; cashOnHand: number; total: number } | null;
   accounts: CashAccountLine[] | null;
   loans: { shortTerm: number; longTerm: number; officer: number; total: number } | null;
@@ -69,7 +71,7 @@ export function BalancesByDateSection({ columns, loanStatus }: { columns: Balanc
       </SectionBanner>
       <ul className="flex flex-col gap-0.5 text-sm text-[var(--text-secondary)]">
         {columns.map((c) => (
-          <li key={c.title}>{`${c.title}：${c.asOf}／データ取得日時（freee） ${c.fetchedAt ? formatDateTime(c.fetchedAt) : "未取得"}`}</li>
+          <li key={c.title}>{`${c.title}：${c.asOf}／データ取得日時（freee） 残高・借入 ${c.fetchedAt ? formatDateTime(c.fetchedAt) : "未取得"}・科目別の内訳と保険積立金 ${c.accountsFetchedAt ? formatDateTime(c.accountsFetchedAt) : "未取得"}`}</li>
         ))}
       </ul>
       <p className="text-sm text-[var(--text-secondary)]">単位：円。▲はマイナス。</p>

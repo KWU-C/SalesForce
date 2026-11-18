@@ -155,6 +155,7 @@ export default async function ManagementPage() {
   let previousMonthLoanSnapshot: LoanStatusSnapshot | null = null;
   let fundReserve: FundReserve | null = null;
   let previousFundReserveCore: FundReserveCoreSnapshot | null = null;
+  let fundReserveFetchedAt: Date | null = null;
   let fundReserveError = false;
   const termTotalsByTerm = new Map<number, TermCashFlowTotal>();
 
@@ -235,6 +236,7 @@ export default async function ManagementPage() {
           forceRefresh: false,
         });
         const currentCashClosing = cashFlowByMonth[cashFlowByMonth.length - 1]?.cashClosing ?? null;
+        fundReserveFetchedAt = fundReserveCore?.fetchedAt ?? null;
         fundReserve = fundReserveCore
           ? composeFundReserve(fundReserveCore, {
               cash: currentCashClosing,
@@ -480,6 +482,7 @@ export default async function ManagementPage() {
               total: previousMonthCash.cashClosing,
             }
           : null,
+      accountsFetchedAt: prevCoreAfterMonthEnd?.fetchedAt ?? null,
       accounts: prevCoreAfterMonthEnd?.cashAccountLines ?? null,
       loans: prevLoans.status === "fetched" ? { shortTerm: prevLoans.shortTerm, longTerm: prevLoans.longTerm, officer: prevLoans.officer, total: prevLoans.total } : null,
       insurance: prevCoreAfterMonthEnd?.insuranceAssetReserve ?? null,
@@ -497,6 +500,7 @@ export default async function ManagementPage() {
               total: currentCashFlow.cashClosing,
             }
           : null,
+      accountsFetchedAt: fundReserveFetchedAt,
       accounts: fundReserve?.cashAccountLines ?? null,
       loans: loansOf(loanStatus),
       insurance: fundReserve?.insuranceAssetReserve ?? null,

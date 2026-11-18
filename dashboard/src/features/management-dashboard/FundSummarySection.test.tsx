@@ -48,7 +48,7 @@ function fundProps() {
 describe("資金サマリー（概要の主表）", () => {
   it("経理資料の資金繰り表に倣い、月ごとに月末残高・準備額・準備額控除後の3行、列は控除後の預金総合計・当座普通・短期借入控除・定期", () => {
     render(<FundSummarySection {...fundProps()} />);
-    for (const name of ["預金総合計（短期借入控除後）", "当座・普通預金", "短期借入控除", "定期預金"]) {
+    for (const name of ["預金総合計（差引）", "当座・普通預金", "短期借入控除", "定期預金"]) {
       expect(screen.getByRole("columnheader", { name })).toBeTruthy();
     }
     const groups = screen.getAllByRole("rowheader").map((h) => h.textContent);

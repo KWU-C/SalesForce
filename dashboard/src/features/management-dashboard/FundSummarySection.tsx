@@ -51,7 +51,7 @@ function yenCell(v: number | null, emphasis: "key" | "highlight" | "strong" | nu
  * 表の形は経理資料の資金繰り表に倣う(ユーザー指定 data/sample.png、2026-11-17)。単位は円。
  * 月(締まった直近2か月＝実績、当月＝予測・標準ケース)ごとに 月末残高 / 納税・賞与の準備額 / 準備額控除後 の3行。
  * 準備額は預金総合計と当座・普通預金の2列にまたがる1セルで1つだけ出す(2026-11-18 ユーザー指定)。
- * 列: 預金総合計(短期借入控除後) / 当座・普通預金 / 短期借入控除 / 定期預金
+ * 列: 預金総合計(差引。2026-11-18 見出しを「短期借入控除後」から変更) / 当座・普通預金 / 短期借入控除 / 定期預金
  * 計算式・根拠・未算入の支払・ケース比較は財務・資金繰りタブ(FundSummaryDetailSection)へ。
  */
 export function FundSummarySection({
@@ -96,7 +96,7 @@ export function FundSummarySection({
               <th className={thLeft} colSpan={2}>
                 <span className="sr-only">月・項目</span>
               </th>
-              <th className={thCenter}>預金総合計（短期借入控除後）</th>
+              <th className={thCenter}>預金総合計（差引）</th>
               <th className={thCenter}>当座・普通預金</th>
               <th className={thCenter}>短期借入控除</th>
               <th className={thCenter}>定期預金</th>

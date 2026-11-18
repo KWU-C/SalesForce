@@ -1,16 +1,19 @@
 """資金・損益の参考予測の保存用記録(JSON)を組み立てる。金額は円のまま持ち、万円への換算は画面で行う。
 
-使い方: python3 -I build_record.py <作業ディレクトリ> <assumptions.json> <出力ファイル> <コードのコミット>
+使い方: python3 -I build_record.py <作業ディレクトリ> <assumptions.json> <出力ファイル> <コードのコミット> [--carry-from <旧record.json>]
 入力: cash_result.json(engine.py)、match_summary.json(match.py)、pl_result.json(pl.py)、freee.json・sf_process.jsonの取得日時
+--carry-from: 損益(pl)・納税賞与の支払見込額(paymentReserve)・資金サマリーの控除額と準備額(monthEndReserve)を旧記録から
+  そのまま引き継ぐ(再計算しない、2026-11-18)。このとき pl_result.json は不要
 取引先名・個人名・口座番号は含めない(件数・金額の集計だけ)。
 """
 import json, sys, os, datetime
 
 B, ASSUME, OUT, COMMIT = sys.argv[1:5]
+CARRY = json.load(open(sys.argv[sys.argv.index("--carry-from") + 1])) if "--carry-from" in sys.argv else None
 A = json.load(open(ASSUME))
 cash = json.load(open(f"{B}/cash_result.json"))
 match = json.load(open(f"{B}/match_summary.json"))
-pl = json.load(open(f"{B}/pl_result.json"))
+pl = None if CARRY else json.load(open(f"{B}/pl_result.json"))
 JST = datetime.timezone(datetime.timedelta(hours=9))
 mtime = lambda p: datetime.datetime.fromtimestamp(os.path.getmtime(p), JST).isoformat(timespec="seconds")
 now = datetime.datetime.now(JST)
@@ -39,14 +42,14 @@ record = {
                   for c in cash["cases"]],
         "dec31Receipts": cash["dec31Receipts"],
         "checks": {"ownTransfers": chk["ownTransfers"], "excludedFromBulk": chk["excludedFromBulk"], "bulkReference": chk["bulkReference"],
-                   "payrollDecember": pay12},
+                   "payrollDecember": pay12, **({"adjustments": chk["adjustments"]} if "adjustments" in chk else {})},
     },
     "matching": {
         "byClass": [{"label": k, "count": v["count"], "amount": v["amount"]} for k, v in match["by_class"].items()],
         "ambiguous": match["ambiguous"],
         "freeeUnmatchedUnsettled": match["freee_unmatched_unsettled"],
     },
-    "pl": {
+    "pl": CARRY["pl"] if CARRY else {
         "scenarios": [{"id": s["id"], "label": s["label"],
                        "months": [{"month": x["month"], "revenue": x["売上高"], "grossProfit": x["粗利"], "ordinaryProfit": x["経常利益"],
                                    "wipChange": x.get("仕掛品増減"), "basis": x["basis"]} for x in s["months"]],
@@ -79,6 +82,40 @@ record = {
         ],
     },
 }
+
+# ---------- 2026-11-18 の仮定・調整(engine.py の adjustments)を注記に反映し、引き継いだ値を付ける ----------
+adj = chk.get("adjustments")
+if adj:
+    std = adj["byCase"]["standard"]
+    cau = adj["byCase"]["cautious"]
+    gb, gp, it = adj["generalBulk"], adj["payrollGap"], adj["interest"]
+    parts = "、".join(f"{b['date'][5:].replace('-', '/')} {man(b['bulk'])}＝外注{man(b['gaichu'])}＋一般{man(b['general'])}" for b in adj["bulkParts"])
+    r11 = std["reimbursement_2026-11"]
+    notes = record["notes"]
+    notes["basis"] = [x for x in notes["basis"] if not x.startswith("月末一括振込：")] + [
+        f"月末一括振込：一般経費と外注に分けて推計し、それぞれ同じ分類の登録済み支払だけを差し引く（{parts}）",
+        f"経費精算：給与明細の振込額に含まれる（明細の振込額＝銀行の給与振込）。11/25期日で登録済みの経費精算{man(r11['registered'])}は明細の経費精算{man(r11['statementExpense'])}と同額のため、給与と重複させない",
+        "12/10前後の推計：11/1〜16の取引先への振込のうち、10/31（土）期日の外注を11/2に払った分（" + "、".join(man(x["amount"]) for x in std["decEarlyCarryoverExcluded"]) + "）は12月に繰り返さないため除く",
+    ]
+    notes["estimates"] = [x for x in notes["estimates"] if not x.startswith("月末一括振込の未登録分")] + [
+        f"一般経費（月末一括振込の未登録分）：8〜10月の一括振込のうち外注以外の平均{man(gb['mean'])}（慎重は最大{man(gb['max'])}）−登録済みの一般経費",
+        f"外注（月末）：11月は登録済みのみ（慎重は未登録外注{man(adj['unregisteredGaichu']['amount'])}を11月末に加え、12/10前後の推計から同額を引く）。12月は8〜10月の月末期日の外注の平均{man(adj['gaichuMonthEndMean'])}−登録済み（慎重は前年12/30の年末一括振込−一般経費の最大）",
+        f"給与振込と明細の差：8〜10月の平均{man(gp['mean'])}（慎重は最大{man(gp['max'])}）を11月に加える",
+        f"当座貸越の利息：8〜10月の月末の引落の平均{man(it['mean'])}（慎重は最大）を11/30・12/30に置く",
+    ]
+    notes["estimates"] = notes["estimates"] + [
+        "仮定（確定情報ではない）：Salesforceの追加分のうち、請求日と入金予定日が同じ11/30の2件（" + "、".join(man(x["amount"]) for x in std.get("sfMoved", [])) + "）は、同じ取引先の過去の入金に合わせて請求の翌月末（12/31）に入金と置く。移動先の月に同じ取引先の同額のfreee取引が無いことを確認（12月の入金と二重に数えない）",
+        "仮定（確定情報ではない）：電子債権で決済する取引先の11/30期日の売上（" + "、".join(man(x["amount"]) for x in std.get("notes", [])) + "）は、過去5回と同じく期日前後に電子債権で受け取り、約2か月後（2027年1月）に現金化すると置き、予測期間に入れない",
+        "慎重の仮定：月末期日の入金を29日遅れた実績と期日超過の未入金がある取引先の11/30期日分（" + man(sum(x["amount"] for x in cau.get("lateSlip", []))) + "）を12/29へずらす",
+        f"慎重の仮定：{adj['unregisteredGaichu']['basis']}の{man(adj['unregisteredGaichu']['amount'])}を11月末に支払う",
+        "年末入金が翌年へずれるケース：12/31予定の入金（12月へ移したSalesforceの2件を含む）を翌年に回す",
+    ]
+    notes["limits"] = notes["limits"] + ["損益・納税賞与の支払見込額・控除額と準備額は、旧記録の値を引き継いでいる（今回は再計算していない。準備額の計算方法も変えていない）"]
+if CARRY:
+    record["carriedFrom"] = CARRY["id"]
+    for f in ("paymentReserve", "monthEndReserve"):
+        if f in CARRY:
+            record[f] = CARRY[f]
 os.umask(0o077)
 json.dump(record, open(OUT, "w"), ensure_ascii=False, indent=1)
 print(record["id"], f"{os.path.getsize(OUT):,} bytes")

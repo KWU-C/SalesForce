@@ -9,6 +9,8 @@
   複数あり件数で割り当てたものを「曖昧」として識別する
 - 「Salesforce追加」の候補のうち、名称の部分一致でしか取引先を特定できないもの、または同じ取引先(部分一致を含む)に
   請求月の違う同額のfreee取引があるものは、二重計上を避けるため「判定保留(曖昧)」にして予測に加えない
+
+2026-11-18: sf_events に請求日(billed)・匿名ID(sfId)・同じ取引先の同額のfreee取引の有無(freeeSameAmountLater)を加えた
 """
 import json, sys, unicodedata, calendar, collections, hashlib, itertools
 
@@ -160,7 +162,11 @@ for x, fs, how, fl in result:
     elif ny < x["s"]:
         ny, kind = month_end_next(x["s"]), "補完(異常日付)"
     if cls == "Salesforce追加":
-        events.append(dict(date=ny, amount=x["amt"], kind="SF予定" if kind == "入力" else f"SF{kind}"))
+        # 請求日(入金予定日と同じ日かを engine.py で見る)と、同じ取引先(部分一致を含む)に同額のfreee取引が
+        # 請求月以降にあるか(移動先の月での二重計上の確認用)
+        later_same = any(partner_rel(x["p"], f["p"]) and abs(f["amt"] - x["amt"]) <= 1 and f["issue"] >= x["s"][:7] + "-01" for f in Fd)
+        events.append(dict(date=ny, amount=x["amt"], kind="SF予定" if kind == "入力" else f"SF{kind}", billed=x["s"],
+                           sfId=anon("SF-", x["id"]), freeeSameAmountLater=later_same))
     rows.append({"SF匿名ID": anon("SF-", x["id"]), "取引先匿名ID": anon("P-", x["p"]), "請求月": x["s"][:7], "税込": x["amt"],
                  "入金予定日(採用)": ny, "入金予定日の扱い": kind, "照合方法": how,
                  "freee匿名ID": " ".join(anon("FR-", f["id"]) for f in fs), "freee状態(基準日)": " ".join(f["status"] for f in fs),

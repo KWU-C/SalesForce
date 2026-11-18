@@ -140,6 +140,31 @@ describe("資金の参考予測(DEVの再計算)", () => {
     expect(out.cases.every((c) => c.missingOutflows === undefined)).toBe(true);
   });
 
+  it("支払条件から支払月を推定できた未登録外注は標準にも置き、同じ支払枠の過去平均の推計から引く(翌月末払いは10日前後の推計で済ませない)", () => {
+    const terms = (pattern: string) => ({ closing: "末日", pattern, holiday: "翌営業日" });
+    const o = computeCash(
+      {
+        ...inputs(),
+        sfCosts: [
+          { purchaseDate: "2026-10-20", amountTaxIncluded: 200_000, vendorName: "翌々月払いの外注", vendorTerms: terms("一）翌々月10日振込") },
+          { purchaseDate: "2026-10-21", amountTaxIncluded: 300_000, vendorName: "翌月末払いの外注", vendorTerms: terms("下）翌月末振込") },
+          { purchaseDate: "2026-10-22", amountTaxIncluded: 50_000, vendorName: "条件なしの外注" },
+        ],
+        sfCostTermsReadable: true,
+      },
+      [sfSameDay]
+    );
+    const a = o.checks.adjustments as { byCase: Record<string, Record<string, Record<string, unknown>>> };
+    const std = o.cases.find((c) => c.id === "standard")!;
+    const cau = o.cases.find((c) => c.id === "cautious")!;
+    const cat = "出金:外注(未登録・支払日は推定)";
+    expect(std.months[0].byCategory[cat]).toBe(-300_000); // 11/30
+    expect(std.months[1].byCategory[cat]).toBe(-200_000); // 12/10
+    expect(cau.months[0].byCategory[cat]).toBe(-350_000); // 条件なしは慎重だけ(既定の翌月末)
+    expect(a.byCase.standard["mid_2026-12"]).toMatchObject({ lessUnregisteredPlacedSamePeriod: 200_000 });
+    expect(a.byCase.cautious["mid_2026-12"]).toMatchObject({ lessUnregisteredPlacedSamePeriod: 200_000 });
+  });
+
   it("原価を取得できないときは0円ではなく未取得とし、慎重ケースに含められていない支出として示す", () => {
     const o = computeCash({ ...inputs(), sfCosts: null }, [sfSameDay]);
     const a = o.checks.adjustments as { unregisteredGaichu: Record<string, unknown> };

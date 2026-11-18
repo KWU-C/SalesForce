@@ -7,7 +7,7 @@ import type { RfDeal, RfSfCost } from "./types";
  *
  * 照合:
  * - 同じ仕入月が基本。Salesforceの仕入月(基準月の前月)の原価と、同じ支払先・同じ月が発生日のfreeeの原価の取引を突き合わせる
- * - 前後の月のfreee取引は、同一の支払と確認できた場合だけ差し引く。freeeに請求書番号・摘要が無く、タグもSalesforceの案件・
+ * - 前後の月のfreee取引は、同一の支払と推定できた場合だけ差し引く(推定として記録し、確定とは扱わない)。freeeに請求書番号・摘要が無く、タグもSalesforceの案件・
  *   管理Noと対応しないため、確認の手がかりは金額だけ。同じ支払先で、未照合の原価1件(またはその月の未照合の合計)と1円単位で一致し、
  *   かつその取引の発生月に同額の原価が無いものに限る。同じ支払先というだけでは差し引かない
  * 支払日(freeeに未登録のため推定。根拠を記録する):
@@ -22,13 +22,19 @@ export interface UnregisteredGaichuItem {
   lines: number;
   sfAmount: number;
   freeeSameMonth: number;
-  /** 前後の月のfreee取引で同一の支払と確認して差し引いたもの */
-  freeeAdjacentConfirmed: { issueDate: string; amount: number; how: string }[];
+  /** 前後の月のfreee取引で、同じ支払先・同額のため同一の支払と推定して差し引いたもの(同一取引の確定ではない) */
+  freeeAdjacentPresumed: { issueDate: string; amount: number; how: string }[];
   /** 前後の月のfreee取引で、同一の支払と確認できず差し引かなかったもの */
   freeeAdjacentNotDeducted: { issueDate: string; amount: number }[];
   unregistered: number;
   payDate: string;
   payDateBasis: string;
+  /** 支払日の根拠の種類 */
+  payDateSource: "Salesforceの支払予定日" | "Salesforceの支払条件" | "freeeの支払実績" | "既定";
+  /** 標準ケースにも置くか(支払予定日・支払条件から支払月を推定できたもの) */
+  inStandard: boolean;
+  /** 慎重ケースだけに置く理由(標準にも置くものは null) */
+  cautiousOnlyReason: string | null;
 }
 
 export type UnregisteredGaichu =
@@ -49,6 +55,18 @@ export type UnregisteredGaichu =
 /** 原価の取引か(外注・製造原価・仕入・支払報酬)。福利厚生費などの一般経費は照合に使わない */
 export function isCostDeal(d: RfDeal): boolean {
   return d.details.some((x) => x.accountName.includes("外注") || x.accountName.startsWith("[製]") || x.accountName.includes("仕入") || x.accountName.includes("支払報酬"));
+}
+
+/** 支払予定日・支払条件から支払月を推定できたものは標準にも置く。それ以外は慎重だけ(理由を記録) */
+function standardOrNot(source: UnregisteredGaichuItem["payDateSource"]): Pick<UnregisteredGaichuItem, "inStandard" | "cautiousOnlyReason"> {
+  if (source === "Salesforceの支払予定日" || source === "Salesforceの支払条件") return { inStandard: true, cautiousOnlyReason: null };
+  return {
+    inStandard: false,
+    cautiousOnlyReason:
+      source === "freeeの支払実績"
+        ? "Salesforceに支払予定日・支払条件が無く、支払月をfreeeの過去の支払の型から推定したため"
+        : "Salesforceに支払予定日・支払条件が無く、freeeにも支払実績が無いため（支払月は既定の翌月末）",
+  };
 }
 
 const related = (a: string, b: string) => !!a && !!b && (a === b || a.includes(b) || b.includes(a));
@@ -111,7 +129,7 @@ export function computeUnregisteredGaichu(args: {
         covered = 0;
       }
     }
-    const confirmed: UnregisteredGaichuItem["freeeAdjacentConfirmed"] = [];
+    const presumed: UnregisteredGaichuItem["freeeAdjacentPresumed"] = [];
     const notDeducted: UnregisteredGaichuItem["freeeAdjacentNotDeducted"] = [];
     for (const d of deals.filter((x) => ym(x.issueDate) === prevM || ym(x.issueDate) === nextM).sort((a, b) => (a.issueDate < b.issueDate ? -1 : 1))) {
       const own = (months.get(ym(d.issueDate)) ?? []).some((c) => Math.round(c.amountTaxIncluded) === d.amount);
@@ -119,10 +137,10 @@ export function computeUnregisteredGaichu(args: {
       const i = open.findIndex((x) => x === d.amount);
       if (!own && i >= 0) {
         open.splice(i, 1);
-        confirmed.push({ issueDate: d.issueDate, amount: d.amount, how: "同じ支払先で未照合の原価1件と金額が一致（発生月に同額の原価なし）" });
+        presumed.push({ issueDate: d.issueDate, amount: d.amount, how: "推定（同一取引の確定ではない）：同じ支払先で未照合の原価1件と金額が一致し、発生月に同額の原価が無い" });
       } else if (!own && openTotal > 0 && d.amount === openTotal) {
         open.length = 0;
-        confirmed.push({ issueDate: d.issueDate, amount: d.amount, how: "同じ支払先で未照合の原価の合計と金額が一致（発生月に同額の原価なし）" });
+        presumed.push({ issueDate: d.issueDate, amount: d.amount, how: "推定（同一取引の確定ではない）：同じ支払先で未照合の原価の合計と金額が一致し、発生月に同額の原価が無い" });
       } else notDeducted.push({ issueDate: d.issueDate, amount: d.amount });
     }
     const unregistered = open.reduce((s, x) => s + x, 0);
@@ -134,12 +152,15 @@ export function computeUnregisteredGaichu(args: {
     const terms = lines.find((c) => c.vendorTerms)?.vendorTerms ?? null;
     let payDate: string;
     let payDateBasis: string;
+    let payDateSource: UnregisteredGaichuItem["payDateSource"];
     const fromPattern = terms?.pattern ? dateFromPattern(terms.pattern, month, latestPurchase) : null;
     if (dated.length > 0) {
       payDate = adjustHoliday(dated[0].paymentDueDate as string, terms?.holiday);
+      payDateSource = "Salesforceの支払予定日";
       payDateBasis = `Salesforceの原価の支払予定日 ${dated[0].paymentDueDate}${payDate !== dated[0].paymentDueDate ? `（休業日のため${payDate}）` : ""}`;
     } else if (fromPattern) {
       payDate = adjustHoliday(fromPattern, terms?.holiday);
+      payDateSource = "Salesforceの支払条件";
       payDateBasis = `Salesforceの支払先の支払パターン「${terms?.pattern}」${terms?.holiday ? `・休日は${terms.holiday}` : ""}`;
     } else {
       const hist = deals
@@ -151,9 +172,11 @@ export function computeUnregisteredGaichu(args: {
         const target = addMonths(month, offset);
         const raw2 = endOfMonth ? lastDayOfMonth(target) : dayInMonth(target, Number(hist.dueDate.slice(8, 10)));
         payDate = nextBusinessDay(raw2);
+        payDateSource = "freeeの支払実績";
         payDateBasis = `freeeの同じ支払先の直近の取引（発生${hist.issueDate}→期日${hist.dueDate}）と同じ型（発生月の${offset}か月後の${endOfMonth ? "月末" : `${Number(hist.dueDate.slice(8, 10))}日`}）`;
       } else {
         payDate = nextBusinessDay(lastDayOfMonth(addMonths(month, 1)));
+        payDateSource = "既定";
         payDateBasis = "既定：支払予定日・支払条件・freeeの支払実績が無いため翌月末（Salesforceの支払パターンで最も多い）";
       }
     }
@@ -165,11 +188,13 @@ export function computeUnregisteredGaichu(args: {
       lines: lines.length,
       sfAmount,
       freeeSameMonth: sameMonth,
-      freeeAdjacentConfirmed: confirmed,
+      freeeAdjacentPresumed: presumed,
       freeeAdjacentNotDeducted: notDeducted,
       unregistered,
       payDate,
       payDateBasis,
+      payDateSource,
+      ...standardOrNot(payDateSource),
     });
   }
   const items = raw

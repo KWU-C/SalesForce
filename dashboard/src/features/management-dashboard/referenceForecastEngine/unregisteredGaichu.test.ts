@@ -34,13 +34,14 @@ describe("未登録外注の照合(同じ仕入月が基本)", () => {
 
   it("前後の月のfreee取引は、同じ支払先というだけでは差し引かない(金額が違えば未照合のまま)", () => {
     const r = run([cost("ベータ", "2026-10-27", 371_800)], [deal(2, "2026-09-30", 132_000, "2026-10-31")]);
-    expect(r.items[0]).toMatchObject({ unregistered: 371_800, freeeAdjacentConfirmed: [], freeeAdjacentNotDeducted: [{ issueDate: "2026-09-30", amount: 132_000 }] });
+    expect(r.items[0]).toMatchObject({ unregistered: 371_800, freeeAdjacentPresumed: [], freeeAdjacentNotDeducted: [{ issueDate: "2026-09-30", amount: 132_000 }] });
   });
 
   it("前後の月のfreee取引は、未照合の原価と金額が一致し、発生月に同額の原価が無いときだけ同一の支払として差し引く", () => {
-    const ok = run([cost("ガンマ", "2026-10-30", 220_000)], [deal(3, "2026-11-02", 220_000, "2026-11-30")]);
-    expect(ok.items).toEqual([]);
-    expect(ok.amount).toBe(0);
+    const ok = run([cost("ガンマ", "2026-10-30", 220_000), cost("ガンマ", "2026-10-31", 10_000)], [deal(3, "2026-11-02", 220_000, "2026-11-30")]);
+    // 同額の照合は推定として記録する(同一取引の確定ではない)
+    expect(ok.items).toEqual([expect.objectContaining({ unregistered: 10_000, freeeAdjacentPresumed: [expect.objectContaining({ amount: 220_000, how: expect.stringContaining("推定（同一取引の確定ではない）") })] })]);
+    expect(ok.amount).toBe(10_000);
     // 発生月(11月)に同額の原価があれば、その月の分として差し引かない
     const own = run([cost("ガンマ", "2026-10-30", 220_000), cost("ガンマ", "2026-11-05", 220_000)], [deal(3, "2026-11-06", 220_000, "2026-12-31")]);
     expect(own.items[0]).toMatchObject({ unregistered: 220_000, freeeAdjacentNotDeducted: [{ issueDate: "2026-11-06", amount: 220_000 }] });
@@ -55,7 +56,7 @@ describe("未登録外注の照合(同じ仕入月が基本)", () => {
 describe("未登録外注の支払日(推定と根拠)", () => {
   it("Salesforceの支払予定日を最優先にする", () => {
     const r = run([cost("アルファ", "2026-10-20", 100_000, { paymentDueDate: "2026-12-10", vendorTerms: { closing: "末日", pattern: "下）翌月末振込", holiday: "翌営業日" } })], []);
-    expect(r.items[0]).toMatchObject({ payDate: "2026-12-10", payDateBasis: expect.stringContaining("支払予定日") });
+    expect(r.items[0]).toMatchObject({ payDate: "2026-12-10", payDateBasis: expect.stringContaining("支払予定日"), payDateSource: "Salesforceの支払予定日", inStandard: true, cautiousOnlyReason: null });
   });
 
   it("次に支払先の支払パターン(翌々月10日・翌月末)と休日の取扱いを使う", () => {
@@ -77,7 +78,9 @@ describe("未登録外注の支払日(推定と根拠)", () => {
     const r = run([cost("デルタ", "2026-10-15", 80_000), cost("ガンマ", "2026-10-15", 60_000)], [deal(4, "2026-09-30", 50_000, "2026-11-10")], false);
     const byAmount = Object.fromEntries(r.items.map((x) => [x.sfAmount, x]));
     expect(byAmount[80_000]).toMatchObject({ payDate: "2026-12-10", payDateBasis: expect.stringContaining("2か月後の10日") });
-    expect(byAmount[60_000]).toMatchObject({ payDate: "2026-11-30", payDateBasis: expect.stringContaining("既定") });
+    expect(byAmount[60_000]).toMatchObject({ payDate: "2026-11-30", payDateBasis: expect.stringContaining("既定"), inStandard: false });
+    // 支払予定日・支払条件が無いものは慎重だけに置き、理由を記録する
+    expect(byAmount[80_000]).toMatchObject({ inStandard: false, cautiousOnlyReason: expect.stringContaining("freeeの過去の支払の型") });
     expect(r.termsReadable).toBe(false);
   });
 

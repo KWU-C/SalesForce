@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { PerformanceSummaryTable, PreviousMonthEndBalance } from "./OverviewSections";
+import { PerformanceSummaryTable } from "./OverviewSections";
 import { targetMonth } from "./overviewComparison";
-import type { CashColumn, LoanColumn, PerformanceColumn } from "./overviewComparison";
+import type { PerformanceColumn } from "./overviewComparison";
 
 // 金額はすべて架空の値
 function column(overrides: Partial<PerformanceColumn> = {}): PerformanceColumn {
@@ -115,62 +115,5 @@ describe("仕掛品振替反映分・経理確認済みの累計", () => {
     render(<PerformanceSummaryTable adjusted={{ column: null, failed: false }} progress={{ column: progressCol(), failed: false }} />);
     expect(screen.getByText(/経理確認の対象月が未指定で、仕掛品振替が確認できた月（月末後に取得したもの）も無い/)).toBeTruthy();
     expect(screen.getByText(/累計を表示していません（経理確認の対象月が未指定/)).toBeTruthy();
-  });
-});
-
-describe("現預金と借入（前月末実績）", () => {
-  afterEach(cleanup);
-  const cash: CashColumn = {
-    status: "fetched",
-    checkingSavings: 700,
-    timeDeposit: 400,
-    depositTotalBeforeCollateral: 1_100,
-    depositTotalAfterCollateral: null,
-    collateral: { amount: null, asOf: null, source: null },
-    cashClosing: 1_103,
-    kindsDifference: 0,
-    fetchedAt: new Date("2026-11-16T05:42:00Z"),
-  };
-  const loans: LoanColumn = {
-    status: "fetched",
-    shortTerm: 500,
-    longTerm: 900,
-    officer: 0,
-    total: 1_400,
-    fetchedAt: new Date("2026-11-13T08:00:00Z"),
-  };
-
-  it("freeeの前月末の預金・借入の残高を対象月・取得日時つきで出し、差額は計算式を明記する", () => {
-    render(<PreviousMonthEndBalance target={targetMonth(50, 10)} cash={cash} loans={loans} />);
-    expect(screen.getByRole("heading", { name: "現預金と借入（2026年10月末実績）" })).toBeTruthy();
-    expect(screen.getByText(/50期10月末（2026年10月31日）時点のfreeeの残高／freee取得: 預金 2026\/11\/16 14:42・借入 2026\/11\/13 17:00/)).toBeTruthy();
-    expect(screen.getByText("¥700")).toBeTruthy();
-    expect(screen.getByText("¥1,100")).toBeTruthy();
-    expect(screen.getByText("うち定期預金 ¥400")).toBeTruthy();
-    expect(screen.getByText("¥1,103")).toBeTruthy();
-    expect(screen.getByText("¥1,400")).toBeTruthy();
-    expect(screen.getByText("短期借入金 ¥500／長期借入金 ¥900／役員借入金 ¥0")).toBeTruthy();
-    expect(screen.getByText("▲¥297")).toBeTruthy();
-    expect(screen.getByText("月末現預金 − 借入残高。使える資金の額ではありません")).toBeTruthy();
-    // 算出できない指標は空のカードにせず、詳細説明に理由をまとめる
-    expect(screen.queryByText("未設定")).toBeNull();
-    expect(screen.queryByText(/当座貸越利用額/)).toBeNull();
-    expect(screen.getByText("表示していない指標と理由")).toBeTruthy();
-    expect(screen.getByText(/資金余力（現預金 − 当座貸越 − 消費税準備 − 賞与準備）/)).toBeTruthy();
-  });
-
-  it("月末後に取得した値が無ければ、その残高・差額は出さない", () => {
-    render(<PreviousMonthEndBalance target={targetMonth(50, 10)} cash={cash} loans={{ status: "notFetched" }} />);
-    expect(screen.getByText(/10月末の借入残高は、月末後にfreeeから取得した値がまだ無い/)).toBeTruthy();
-    expect(screen.queryByText("現預金と借入の差額")).toBeNull();
-    cleanup();
-    render(
-      <PreviousMonthEndBalance
-        target={targetMonth(50, 10)}
-        cash={{ status: "notFetched", collateral: { amount: null, asOf: null, source: null } }}
-        loans={loans}
-      />
-    );
-    expect(screen.getByText(/月末後にfreeeから取得した値がまだ無いため表示していません/)).toBeTruthy();
   });
 });

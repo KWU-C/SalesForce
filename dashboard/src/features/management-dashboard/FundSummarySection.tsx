@@ -11,7 +11,7 @@ import {
   type FundForecastState,
   type ReserveDeduction,
 } from "./fundSummary";
-import { formatManYenInt, formatMonthDay, type ReferenceForecastRecord } from "./referenceForecast";
+import { formatYenInt, formatMonthDay, type ReferenceForecastRecord } from "./referenceForecast";
 
 function monthEndLabel(month: number): string {
   return `${month}月末`;
@@ -25,8 +25,10 @@ function ymLabel(ym: string): string {
 const tdCenter = td.replace("text-right", "text-center");
 const thCenter = th.replace("text-right", "text-center");
 
+/** 財務・資金繰りタブの金額(円・3桁区切り、マイナスは▲。2026-11-18) */
 function yen(amount: number): string {
-  return `${amount.toLocaleString("ja-JP")}円`;
+  const v = Math.round(amount);
+  return `${v < 0 ? `▲${Math.abs(v).toLocaleString("ja-JP")}` : v.toLocaleString("ja-JP")}円`;
 }
 
 /** 資金サマリーの金額(円、経理資料の資金繰り表と同じ表記)。key=控除後の預金総合計(強調・大)、highlight=当座・普通の月末残高 */
@@ -188,10 +190,11 @@ function ReserveMonthFormula({ row }: { row: FundComparisonRow }) {
   return (
     <li className="flex flex-col gap-0.5">
       <span className="font-medium text-[var(--text-primary)]">{`${m}月末（${rm.kind}）`}</span>
-      <span>{`短期借入控除後 ${yen(row.afterDeduction)} ＝ 預金総合計 ${yen(row.depositTotal)} − 短期借入 ${yen(rm.shortTermBorrowing)}`}</span>
+      <span>{`預金合計（控除前） ${yen(row.depositTotal)} ＝ 当座・普通預金 ${yen(row.checkingSavings ?? 0)} ＋ 定期預金 ${yen(row.timeDeposit ?? 0)}`}</span>
+      <span>{`預金総合計（差引） ${yen(row.afterDeduction)} ＝ 預金合計（控除前） ${yen(row.depositTotal)} − 短期借入金 ${yen(rm.shortTermBorrowing)}`}</span>
       <span>{`消費税の準備額 ${yenOrNone(t.amount)} ＝ ${taxTerms.join(" ")}`}</span>
       <span>{`賞与の準備額 ${yenOrNone(b.amount)} ＝ 見込額 ${yen(b.estimate)} × ${b.elapsedMonths}/${b.spanMonths}か月`}</span>
-      <span>{`準備額控除後の参考残高 ${yen(row.afterReserve)} ＝ ${yen(row.afterDeduction)} − 準備額 ${yen(rm.reserveTotal)}`}</span>
+      <span>{`準備額控除後 ${yen(row.afterReserve)} ＝ 預金総合計（差引） ${yen(row.afterDeduction)} − 納税・賞与の準備額（推計） ${yen(rm.reserveTotal)}`}</span>
     </li>
   );
 }
@@ -217,10 +220,10 @@ export function FundSummaryDetailSection({
       <SectionBanner>
         <span id="fund-summary-detail">資金サマリーの計算（控除額・準備額）</span>
       </SectionBanner>
-      <p className="text-xs text-[var(--text-secondary)]">
-        概要の資金サマリーの計算式と根拠です。経理資料（資金繰り表）と比べられるよう、預金総合計 → 控除 → 準備額の順に並べています。経理資料の数値は計算に使っていません。
+      <p className="text-sm text-[var(--text-secondary)]">
+        概要の資金サマリーの計算式と根拠です。預金合計（控除前）→ 預金総合計（差引）→ 準備額控除後の順に並べています。経理資料の数値は計算に使っていません。
       </p>
-      <div className="flex flex-col gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4 text-xs text-[var(--text-secondary)]">
+      <div className="flex flex-col gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4 text-sm text-[var(--text-secondary)]">
         <SubHeading>月末ごとの計算式</SubHeading>
         <ul className="flex flex-col gap-2">
           {rows.map((r) => (
@@ -234,7 +237,7 @@ export function FundSummaryDetailSection({
           items={[
             ...(reserve?.deductionCheck ?? ["控除額が記録に無いため表示していません"]),
             ...(forecastRm
-              ? [`銀行別（${forecastRm.month}、freee）：${forecastRm.shortTermBorrowingByBank.map((x) => `${x.bank} ${formatManYenInt(x.amount)}`).join("／")}`]
+              ? [`銀行別（${forecastRm.month}、freee）：${forecastRm.shortTermBorrowingByBank.map((x) => `${x.bank} ${formatYenInt(x.amount)}`).join("／")}`]
               : []),
           ]}
         />
@@ -247,12 +250,12 @@ export function FundSummaryDetailSection({
           items={
             row
               ? [
-                  `標準ケースの${monthEndLabel(row.target.month)}：当座・普通 ${formatManYenInt(row.checkingSavings)}／預金総合計 ${formatManYenInt(row.depositTotal)}（定期 ${formatManYenInt(row.timeDeposit)}＝起点の定期＋予測期間中の定期積立）`,
+                  `標準ケースの${monthEndLabel(row.target.month)}：当座・普通 ${formatYenInt(row.checkingSavings)}／預金合計（控除前） ${formatYenInt(row.depositTotal)}（定期 ${formatYenInt(row.timeDeposit)}＝起点の定期＋予測期間中の定期積立）`,
                   ...(row.cautious
-                    ? [`慎重ケースの${monthEndLabel(row.target.month)}：当座・普通 ${formatManYenInt(row.cautious.checkingSavings)}／預金総合計 ${formatManYenInt(row.cautious.depositTotal)}`]
+                    ? [`慎重ケースの${monthEndLabel(row.target.month)}：当座・普通 ${formatYenInt(row.cautious.checkingSavings)}／預金合計（控除前） ${formatYenInt(row.cautious.depositTotal)}`]
                     : []),
-                  `${row.target.month}月中の最低残高（日末・当座・普通）：標準 ${formatManYenInt(row.standardMin.amount)}（${formatMonthDay(row.standardMin.date)}）` +
-                    (row.cautiousMin ? `／慎重 ${formatManYenInt(row.cautiousMin.amount)}（${formatMonthDay(row.cautiousMin.date)}）` : ""),
+                  `${row.target.month}月中の最低残高（日末・当座・普通）：標準 ${formatYenInt(row.standardMin.amount)}（${formatMonthDay(row.standardMin.date)}）` +
+                    (row.cautiousMin ? `／慎重 ${formatYenInt(row.cautiousMin.amount)}（${formatMonthDay(row.cautiousMin.date)}）` : ""),
                   "ケースは確認した条件を置き換えた比較で、予測の上限・下限ではありません",
                 ]
               : ["予測が無いため表示していません"]
@@ -262,10 +265,10 @@ export function FundSummaryDetailSection({
       <DetailsBox summary="根拠・限界（資金サマリー）">
         <NoteList
           items={[
-            "実績：freeeの月次資金収支（月末後に取得したもの）の口座種類別の月末残高。当座・普通預金合計＝当座預金・普通預金、預金総合計＝当座・普通＋定期預金（小口現金・保険積立金を含まない）",
+            "実績：freeeの月次資金収支（月末後に取得したもの）の口座種類別の月末残高。当座・普通預金合計＝当座預金・普通預金、預金合計（控除前）＝当座・普通＋定期預金（小口現金・保険積立金を含まない）、預金総合計（差引）＝預金合計（控除前）−短期借入金",
             "予測：保存済みの資金の参考予測（このタブの「資金の参考予測」と同じ記録）の標準ケースの月末残高",
             "予測・控除額・準備額は手動で計算・保存したもので、自動更新しません。実績（freeeの定時更新）とは取得日時が違います",
-            "準備額控除後の参考残高は、自由に使える額（資金余力）ではありません。算入していない支払は下の「支払見込額」を参照",
+            "準備額控除後は、自由に使える額（資金余力）ではありません。算入していない支払は「納税・賞与の支払見込額」と将来支払控除後を参照",
           ]}
         />
       </DetailsBox>
@@ -275,11 +278,11 @@ export function FundSummaryDetailSection({
 
 function DeductionFormula({ d }: { d: ReserveDeduction }) {
   const m = Number(d.month.slice(5, 7));
-  const minus = d.deducted.map((i) => `${i.label} ${formatManYenInt(i.amount)}`).join(" ＋ ");
+  const minus = d.deducted.map((i) => `${i.label} ${yen(i.amount)}`).join(" ＋ ");
   return (
     <li>
-      <span className="font-medium text-[var(--text-primary)]">{`${m}月末：${formatManYenInt(d.balanceAfter)}`}</span>
-      {`（＝ ${m}月末予測 ${formatManYenInt(d.forecastBalance)} − （${minus}））`}
+      <span className="font-medium text-[var(--text-primary)]">{`${m}月末の将来支払控除後：${yen(d.balanceAfter)}`}</span>
+      {`（＝ ${m}月末予測（当座・普通） ${yen(d.forecastBalance)} − （${minus}））`}
       {d.included.length > 0 && (
         <span className="text-[var(--text-muted)]">{`。${d.included.map((i) => i.label).join("・")}は${m}月末予測に出金として含まれるため差し引かない`}</span>
       )}
@@ -301,7 +304,7 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
     return (
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold text-[var(--text-primary)]">納税・賞与の支払見込額（参考）</h3>
-        <p className="text-xs text-[var(--text-muted)]">保存済みの参考予測に支払準備の集計がありません。</p>
+        <p className="text-sm text-[var(--text-secondary)]">保存済みの参考予測に支払準備の集計がありません。</p>
       </div>
     );
   }
@@ -311,18 +314,17 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
   const taxNet = a.consumptionTaxReceived - a.consumptionTaxPaid;
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-0.5 text-xs">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">納税・賞与の支払見込額（参考）</h3>
+      <div className="flex flex-col gap-0.5 text-sm">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)]">納税・賞与の支払見込額（推計）と将来支払控除後</h3>
         <p className="text-[var(--text-secondary)]">
-          次に支払う額と時期（freeeの実績・予定から集計）。資金サマリーの「準備額」（月末に手元に残しておく額の目安）とは別の計算で、会計上の引当金残高でもありません。
+          次に支払う額と時期（freeeの実績・予定から集計）。概要の「納税・賞与の準備額」（月末までに発生した分の積立の目安）とは別の計算で、会計上の引当金残高でもありません。
         </p>
-        <p className="text-[var(--text-muted)]">
-          {`予測：基準日 ${record.baseDate}／計算 ${formatIsoMinute(forecastComputedAt(record))}`}
-          {record.derivedFrom
-            ? `／支払見込・準備額の追加：${formatIsoMinute(record.createdAt)}（freee取得 ${formatIsoMinute(reserve.fetchedAt)}）。予測は再計算していません`
-            : `／freee取得 ${formatIsoMinute(reserve.fetchedAt)}`}
-          {record.computeMode === "devRecompute" ? "。DEVの再計算で更新（自動更新なし）" : "。手動計算のため自動更新なし"}
-        </p>
+        <ul className="text-[var(--text-secondary)]">
+          <li>{`対象：銀行明細の最終同期日 ${record.bankSyncedThrough ?? record.baseDate}（予測の基準日）`}</li>
+          <li>{`支払見込額の計算日時：${formatIsoMinute(record.reserveComputedAt ?? record.createdAt)}／データ取得日時（freee）：${formatIsoMinute(reserve.fetchedAt)}`}</li>
+          <li>{`将来支払控除後に使う月末予測の計算日時：${formatIsoMinute(forecastComputedAt(record))}${record.computeMode === "devRecompute" ? "（DEVの再計算。自動更新なし）" : record.derivedFrom ? "（支払見込額の追加時に予測は再計算していない）" : "（手動計算。自動更新なし）"}`}</li>
+        </ul>
+        <p className="text-[var(--text-secondary)]">単位：円。</p>
       </div>
       <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">
         <table className="min-w-full text-sm">
@@ -345,7 +347,7 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
                   <span className="mt-0.5 block max-w-xl text-xs leading-relaxed text-[var(--text-muted)]">{`根拠：${item.basis}`}</span>
                 </td>
                 <td className={tdLeft}>{ymLabel(item.targetMonth)}</td>
-                <td className={`${td} font-semibold`}>{formatManYenInt(item.amount)}</td>
+                <td className={`${td} font-semibold`}>{yen(item.amount).replace(/円$/, "")}</td>
                 <td className={tdLeft}>{item.kind}</td>
                 {forecastMonths.map((m) =>
                   isReflectedBy(item, m) ? (
@@ -365,10 +367,13 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
       </div>
 
       {deductions.length > 0 && (
-        <div className="flex flex-col gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4 text-xs text-[var(--text-secondary)]">
-          <p className="text-sm font-medium text-[var(--text-primary)]">把握済みの将来支払を控除した参考残高（当座・普通預金、標準ケース）</p>
-          <p className="text-[var(--text-muted)]">
-            月末予測 − その予測に含まれない上表の支払見込額。資金余力（自由に使える額）ではありません。
+        <div className="flex flex-col gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4 text-sm text-[var(--text-secondary)]">
+          <p className="font-medium text-[var(--text-primary)]">将来支払控除後（当座・普通預金、標準ケース）</p>
+          <p>
+            将来支払控除後 ＝ 月末予測（当座・普通） − その予測に含まれない上表の支払見込額（全額）。資金余力（自由に使える額）ではありません。
+          </p>
+          <p>
+            概要の「準備額控除後」とは別の計算です。準備額控除後 ＝ 預金総合計（差引）または当座・普通預金 − 納税・賞与の準備額（推計：月末までに発生した分の積立）。将来支払控除後は、次に支払う額の全額を差し引きます。
           </p>
           <ul className="list-disc space-y-0.5 pl-5">
             {deductions.map((d) => (
@@ -376,7 +381,7 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
             ))}
           </ul>
           <div className="mt-2 border-t border-[var(--gridline)] pt-2">
-            <p className="font-medium text-[var(--text-primary)]">この参考残高に算入していない支払</p>
+            <p className="font-medium text-[var(--text-primary)]">将来支払控除後に算入していない支払</p>
             <ul className="list-disc space-y-0.5 pl-5">
               {(reserve.notIncluded ?? ["冬季賞与の会社負担の社会保険料", "法人税・住民税等の納付", "予測期間より後の通常の入出金"]).map((t) => (
                 <li key={t}>{t}</li>

@@ -235,6 +235,19 @@ export function formatManYenDelta(amount: number): string {
   return `${man < 0 ? "▲" : "＋"}${Math.abs(man).toLocaleString("ja-JP")}万円`;
 }
 
+/** 円・3桁区切り(財務・資金繰り、業績・採算タブ。2026-11-18、万円から円へ)。例: 66,311,876円 / ▲80,000,000円 */
+export function formatYenInt(amount: number): string {
+  const v = Math.round(amount);
+  return `${v < 0 ? "▲" : ""}${Math.abs(v).toLocaleString("ja-JP")}円`;
+}
+
+/** 円の符号付き(増減用)。例: ＋23,260,000円 / ▲875,000円 */
+export function formatYenDelta(amount: number): string {
+  const v = Math.round(amount);
+  if (v === 0) return "±0円";
+  return `${v < 0 ? "▲" : "＋"}${Math.abs(v).toLocaleString("ja-JP")}円`;
+}
+
 /** "2026-12-18" → "12/18" */
 export function formatMonthDay(date: string | null): string {
   if (!date) return "—";

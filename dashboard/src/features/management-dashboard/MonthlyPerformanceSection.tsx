@@ -3,7 +3,7 @@ import { SectionBanner } from "./SectionBanner";
 import { MonthlyPerformanceChart } from "./MonthlyPerformanceChart";
 import type { PerformanceChartPoint } from "./MonthlyPerformanceChart";
 import { PerformanceTable } from "./PerformanceTable";
-import type { PerformanceTableRow } from "./PerformanceTable";
+import type { PerformanceTableHeads, PerformanceTableRow } from "./PerformanceTable";
 import {
   changeRate,
   cumulative,
@@ -75,9 +75,11 @@ export function latestFetchedAt(dates: (Date | null)[]): Date | null {
 export function MonthlyPerformanceSection({
   months,
   fetchedAt,
+  heads,
 }: {
   months: PerformanceMonth[];
   fetchedAt: Date | null;
+  heads?: PerformanceTableHeads;
 }) {
   const chartPoints: PerformanceChartPoint[] = months.map((m, i) => ({
     month: m.month,
@@ -115,10 +117,13 @@ export function MonthlyPerformanceSection({
     <div className="flex flex-col gap-2">
       <SectionBanner>月次業績の推移</SectionBanner>
       <MonthlyPerformanceChart points={chartPoints} />
-      <PerformanceTable months={months.map((m) => m.month)} rows={rows} />
-      <div className="flex flex-col gap-0.5 text-xs text-[var(--text-muted)]">
+      <p className="text-sm text-[var(--text-secondary)]">
+        {`単位：円（比率は%）。▲はマイナス。${heads?.inProgressMonth ? `${heads.inProgressMonth}月は途中の帳簿値（freeeに登録済みの取引まで）です。` : ""}`}
+      </p>
+      <PerformanceTable months={months.map((m) => m.month)} rows={rows} heads={heads} />
+      <div className="flex flex-col gap-0.5 text-sm text-[var(--text-secondary)]">
         <p>
-          {"※ 売上総利益 = 売上高 − 売上原価（仕掛品の期首・期末調整を含む）。営業利益 = 売上総利益 − 販管費。前年同期比は金額の増減率、比率はポイント差。"}
+          {"※ 累計の2列は概要の経営サマリーと同じ対象期間・定義です。前年同期比は増減額を基本とし、前年が赤字・0円のときは増減率を出しません。比率はポイント差。"}
         </p>
         {noWipMonths.length > 0 && (
           <p>
@@ -126,8 +131,17 @@ export function MonthlyPerformanceSection({
             {"は仕掛品振替が未検出のため、単月の売上総利益・粗利益率が大きく振れることがあります。累計の粗利益率を中心にご確認ください。"}
           </p>
         )}
-        {fetchedAt && <p>freeeから取得: {formatDateTime(fetchedAt)}</p>}
+        {fetchedAt && <p>データ取得日時（freee）: {formatDateTime(fetchedAt)}</p>}
       </div>
+      <details className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] text-sm text-[var(--text-secondary)]">
+        <summary className="cursor-pointer px-4 py-2">用語と計算の定義</summary>
+        <div className="flex flex-col gap-1 px-4 pb-3">
+          <p>売上総利益 ＝ 売上高 − 売上原価（仕掛品の期首・期末調整を含む）。営業利益 ＝ 売上総利益 − 販管費。経常利益 ＝ 営業利益 ＋ 営業外損益。</p>
+          <p>累計・仕掛品振替反映分（経理確認済み）：期首から、経理確認で指定された月（指定が無い間は、月末後に取得しfreeeで仕掛品振替が確認できた月）までの月次の合計。概要の経営サマリーの上段と同じ。</p>
+          <p>帳簿上の進捗：期首から当月までの月次の合計。当月はfreeeに登録済みの当月日付の取引を含む途中の値で、確定実績・予測ではない。概要の経営サマリーの下段と同じ。</p>
+          <p>仕掛品振替：freeeの[製]期末仕掛品の当月の仕訳の有無。未検出の月は単月の売上総利益・粗利益率が大きく振れることがある。</p>
+        </div>
+      </details>
     </div>
   );
 }

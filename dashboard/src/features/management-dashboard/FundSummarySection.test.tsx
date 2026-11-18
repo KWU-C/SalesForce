@@ -18,20 +18,19 @@ describe("納税・賞与の支払見込額（参考）", () => {
     expect(cells.slice(-2)).toEqual(["含まない → 控除", "含む（控除しない）"]);
   });
 
-  it("控除後は「把握済みの将来支払を控除した参考残高」とし、資金余力として出さず、未算入の項目をすぐ下に出す", () => {
+  it("控除後は「将来支払控除後」とし、準備額控除後と別の計算であることを示し、資金余力として出さず、未算入の項目をすぐ下に出す", () => {
     render(<PaymentReserveSection record={{ ...fixtureRecord(), paymentReserve: { ...fixtureRecord().paymentReserve!, notIncluded: ["会社負担の社会保険料"] } }} />);
-    expect(screen.getByText("把握済みの将来支払を控除した参考残高（当座・普通預金、標準ケース）")).toBeTruthy();
+    expect(screen.getByText("将来支払控除後（当座・普通預金、標準ケース）")).toBeTruthy();
+    expect(screen.getByText(/概要の「準備額控除後」とは別の計算です/)).toBeTruthy();
     expect(screen.queryByText(/^資金余力/)).toBeNull();
-    expect(screen.getByText("この参考残高に算入していない支払")).toBeTruthy();
+    expect(screen.getByText("将来支払控除後に算入していない支払")).toBeTruthy();
     expect(screen.getByText("会社負担の社会保険料")).toBeTruthy();
   });
 
-  it("予測の計算日時と支払見込・準備額の追加日時を分けて出す", () => {
+  it("支払見込額の計算日時・データ取得日時と、月末予測の計算日時を分けて出す", () => {
     render(<PaymentReserveSection record={fixtureRecord()} />);
-    const caption = screen.getByText(/支払見込・準備額の追加/).textContent ?? "";
-    expect(caption).toContain("計算 2026-11-17 09:14");
-    expect(caption).toContain("支払見込・準備額の追加：2026-11-17 15:00");
-    expect(caption).toContain("予測は再計算していません");
+    expect(screen.getByText(/^支払見込額の計算日時：2026-11-17 15:00／データ取得日時（freee）：/)).toBeTruthy();
+    expect(screen.getByText("将来支払控除後に使う月末予測の計算日時：2026-11-17 09:14（支払見込額の追加時に予測は再計算していない）")).toBeTruthy();
   });
 });
 
@@ -68,15 +67,15 @@ describe("資金サマリー（概要の主表）", () => {
   it("概要には長い計算式・ケース比較・支払見込額を出さない", () => {
     render(<FundSummarySection {...fundProps()} />);
     expect(screen.queryByText(/慎重ケース/)).toBeNull();
-    expect(screen.queryByText(/把握済みの将来支払/)).toBeNull();
+    expect(screen.queryByText(/将来支払控除後/)).toBeNull();
     expect(screen.getByText(/経理資料の「担保」と同じ意味かは確認していません/)).toBeTruthy();
   });
 
-  it("詳細タブ: 月末ごとの計算式(短期借入控除後・消費税・賞与・参考残高)を円で示す", () => {
+  it("詳細タブ: 月末ごとの計算式(預金合計（控除前）→預金総合計（差引）→準備額控除後)を円で示す", () => {
     render(<FundSummaryDetailSection {...fundProps()} />);
-    expect(screen.getByText("短期借入控除後 890円 ＝ 預金総合計 1,690円 − 短期借入 800円")).toBeTruthy();
+    expect(screen.getByText("預金総合計（差引） 890円 ＝ 預金合計（控除前） 1,690円 − 短期借入金 800円")).toBeTruthy();
     expect(screen.getByText("賞与の準備額 120円 ＝ 見込額 160円 × 3/4か月")).toBeTruthy();
-    expect(screen.getByText("準備額控除後の参考残高 730円 ＝ 890円 − 準備額 160円")).toBeTruthy();
+    expect(screen.getByText("準備額控除後 730円 ＝ 預金総合計（差引） 890円 − 納税・賞与の準備額（推計） 160円")).toBeTruthy();
     expect(screen.getByText(/＋ 仮定の発生額 27円 × 1か月/)).toBeTruthy();
   });
 });

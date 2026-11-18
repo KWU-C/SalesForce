@@ -6,6 +6,7 @@ import { getFreeeCompanyId } from "@/repositories/freeeAuthRepository";
 import { FISCAL_MONTH_ORDER } from "@/config/fiscalPeriods";
 import { SEPARATELY_SHOWN_WALLETABLE_IDS } from "@/config/fundReserveClassification";
 import type { ManagementReserveSettings } from "./reserveSettings";
+import { classifyCashAccount, type CashAccountKind } from "@/config/cashAccountKindClassification";
 
 /**
  * 「資金の備え」(ストック)。借入状況と同じく月次資金収支(フロー)とは別枠で、手元資金のうち
@@ -21,7 +22,15 @@ import type { ManagementReserveSettings } from "./reserveSettings";
 
 /** スナップショットの算出ロジックの版。保存済みの版が違えばキャッシュを使わず取り直す */
 // v3(2026-11-16): 口座の表示名をfreeeの勘定科目名にし、用途区分(purpose)を外した
-export const FUND_RESERVE_CALCULATION_VERSION = "fund-reserve-v3-2026-11-16";
+// v4(2026-11-18): 現金・預金の全科目の月末残高(cashAccountLines)を追加。定期預金を全口座の内訳と合計で確認するため
+export const FUND_RESERVE_CALCULATION_VERSION = "fund-reserve-v4-2026-11-18";
+
+/** 現金・預金の科目ごとの月末残高(試算表)。kind は当座・普通/定期/現金(どれでもなければ null) */
+export interface CashAccountLine {
+  label: string;
+  kind: CashAccountKind | null;
+  balance: number;
+}
 
 export interface CashEarmarkLine {
   /** freeeの勘定科目名(口座名)。対象walletableに対応する科目が見つからなければ口座IDを示す文言 */
@@ -46,6 +55,8 @@ export interface FundReserveCore {
    * (銀行口座)であり、構造的に必ず「現金・預金」カテゴリ=現預金総額の内数になる。
    */
   cashEarmarkLines: CashEarmarkLine[];
+  /** 現金・預金の全科目の月末残高(v4以降。旧キャッシュには無い) */
+  cashAccountLines?: CashAccountLine[];
   /**
    * 保険積立金(freee勘定科目「保険積立金」、account_category_name="投資その他の資産")の
    * 選択月末時点の残高。trial_bsの「現金・預金」カテゴリには一切含まれない(実データ確認済み)。
@@ -122,9 +133,13 @@ export function buildFundReserveCore(params: {
     return { label: accountItem?.name ?? `freeeの科目が見つからない口座（ID ${walletableId}）`, balance };
   });
 
+  const cashAccountLines: CashAccountLine[] = params.trialBs.balances
+    .filter((b) => b.account_category_name === "現金・預金" && !!b.account_item_name)
+    .map((b) => ({ label: b.account_item_name as string, kind: classifyCashAccount(b.account_item_name ?? ""), balance: b.closing_balance ?? 0 }));
   return {
     calculationVersion: FUND_RESERVE_CALCULATION_VERSION,
     cashEarmarkLines,
+    cashAccountLines,
     insuranceAssetReserve: extractInsuranceAccountBalance(params.trialBs),
   };
 }

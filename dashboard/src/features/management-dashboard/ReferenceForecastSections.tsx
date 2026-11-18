@@ -2,8 +2,8 @@ import { ReferenceForecastRecomputeButton } from "./ReferenceForecastRecomputeBu
 import { SectionBanner } from "./SectionBanner";
 import { forecastComputedAt } from "./fundSummary";
 import {
-  formatManYenDelta,
-  formatManYenInt,
+  formatYenDelta,
+  formatYenInt,
   formatMonthDay,
   MAIN_CASH_CASE_IDS,
   type ReferenceCashCase,
@@ -67,7 +67,7 @@ export function recordTimes(record: ReferenceForecastRecord) {
 function RecordCaption({ record }: { record: ReferenceForecastRecord }) {
   const t = recordTimes(record);
   return (
-    <div className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
+    <div className="flex flex-col gap-1 text-sm text-[var(--text-secondary)]">
       <ul className="flex flex-col gap-0.5">
         <li>{`銀行明細の最終同期日：${t.bankSyncedThrough}（予測の基準日）`}</li>
         <li>{`予測の計算日時：${formatIsoMinute(t.cashComputedAt)}（${t.mode}、記録 ${record.derivedFrom ?? record.id}）`}</li>
@@ -105,19 +105,19 @@ function CaseBreakdown({ c }: { c: ReferenceCashCase }) {
         <div key={m.month} className="overflow-x-auto">
           <table className="min-w-full text-xs">
             <caption className="py-1 text-left text-[var(--text-muted)]">
-              {`${monthLabel(m.month)}：${formatManYenInt(m.start)} → ${formatManYenInt(m.end)}（増減 ${formatManYenDelta(m.end - m.start)}）`}
+              {`${monthLabel(m.month)}：${formatYenInt(m.start)} → ${formatYenInt(m.end)}（増減 ${formatYenDelta(m.end - m.start)}）`}
             </caption>
             <tbody>
               {Object.entries(m.byBasis).map(([k, v]) => (
                 <tr key={`b-${k}`} className="border-t border-[var(--gridline)]">
                   <td className={tdLeft}>{`根拠：${k}`}</td>
-                  <td className={td}>{formatManYenDelta(v)}</td>
+                  <td className={td}>{formatYenDelta(v)}</td>
                 </tr>
               ))}
               {Object.entries(m.byCategory).map(([k, v]) => (
                 <tr key={`c-${k}`} className="border-t border-[var(--gridline)]">
                   <td className={`${tdLeft} text-[var(--text-muted)]`}>{`分類：${k}`}</td>
-                  <td className={td}>{formatManYenDelta(v)}</td>
+                  <td className={td}>{formatYenDelta(v)}</td>
                 </tr>
               ))}
             </tbody>
@@ -144,6 +144,7 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
         <span id="reference-cash-forecast">資金の参考予測（当座・普通預金）</span>
       </SectionBanner>
       <RecordCaption record={record} />
+      <p className="text-sm text-[var(--text-secondary)]">単位：円。▲はマイナス。</p>
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
@@ -166,13 +167,13 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
                 </td>
                 {c.months.map((m) => (
                   <td key={`e-${m.month}`} className={`${td} font-semibold`}>
-                    {formatManYenInt(m.end)}
+                    {formatYenInt(m.end).replace(/円$/, "")}
                     {c.missingOutflows?.length ? <span className="text-[var(--status-serious)]">※</span> : null}
                   </td>
                 ))}
                 {c.months.map((m) => (
                   <td key={`l-${m.month}`} className={td}>
-                    {`${formatManYenInt(m.minEndOfDay.amount)}（${formatMonthDay(m.minEndOfDay.date)}）`}
+                    {`${formatYenInt(m.minEndOfDay.amount).replace(/円$/, "")}（${formatMonthDay(m.minEndOfDay.date)}）`}
                   </td>
                 ))}
               </tr>
@@ -180,8 +181,8 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-[var(--text-muted)]">
-        {`起点 ${formatManYenInt(record.cash.startBalance)}（${record.baseDate}）。ケースの違いは条件を置き換えた比較で、予測の幅（上限・下限）ではありません。定期預金・現金は含みません。`}
+      <p className="text-sm text-[var(--text-secondary)]">
+        {`起点 ${formatYenInt(record.cash.startBalance)}（${record.baseDate}）。ケースの違いは条件を置き換えた比較で、予測の幅（上限・下限）ではありません。定期預金・現金は含みません。`}
       </p>
 
       <DetailsBox summary="根拠・推計・限界">
@@ -199,23 +200,23 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
             `自社振替（基準日の月の1日〜基準日の出金）：振替記録で確認 ${chk.ownTransfers.confirmed ?? 0}件／保留 ${chk.ownTransfers.pending ?? 0}件`,
             ...chk.bulkReference.map(
               (r) =>
-                `${formatMonthDay(r.date)}の月末一括振込 ${formatManYenInt(r.bulk)}：同日の外注・一般経費の支払 ${formatManYenInt(r.bulkClassesTotal)}`
+                `${formatMonthDay(r.date)}の月末一括振込 ${formatYenInt(r.bulk)}：同日の外注・一般経費の支払 ${formatYenInt(r.bulkClassesTotal)}`
             ),
             chk.excludedFromBulk.length === 0
               ? "一括振込の推計で、分類が違うため差し引かなかった登録済み支払：なし"
               : `一括振込の推計で、分類が違うため差し引かなかった登録済み支払：${chk.excludedFromBulk
-                  .map((x) => `${x.case} ${x.month} ${x.class} ${formatManYenInt(x.amount)}`)
+                  .map((x) => `${x.case} ${x.month} ${x.class} ${formatYenInt(x.amount)}`)
                   .join("、")}`,
             pay
-              ? `${months[1] ? monthLabel(months[1]) : "翌月"}の給与明細：${pay.count}件（確定 ${pay.fixed}件、勤怠0日 ${pay.workedZero}件、${pay.calculatedAt}計算）、振込額 ${formatManYenInt(pay.transfer)}、経費精算 ${formatManYenInt(pay.expense)}`
+              ? `${months[1] ? monthLabel(months[1]) : "翌月"}の給与明細：${pay.count}件（確定 ${pay.fixed}件、勤怠0日 ${pay.workedZero}件、${pay.calculatedAt}計算）、振込額 ${formatYenInt(pay.transfer)}、経費精算 ${formatYenInt(pay.expense)}`
               : `${months[1] ? monthLabel(months[1]) : "翌月"}の給与明細：未作成`,
-            `12/31予定の入金：Salesforce追加 ${formatManYenInt(record.cash.dec31Receipts.sfAdded)}（標準で採用する種類 ${formatManYenInt(record.cash.dec31Receipts.sfAddedStandardKinds)}）／freee未決済 ${formatManYenInt(record.cash.dec31Receipts.freeeUnsettled)}`,
+            `12/31予定の入金：Salesforce追加 ${formatYenInt(record.cash.dec31Receipts.sfAdded)}（標準で採用する種類 ${formatYenInt(record.cash.dec31Receipts.sfAddedStandardKinds)}）／freee未決済 ${formatYenInt(record.cash.dec31Receipts.freeeUnsettled)}`,
             ...otherCases.map(
               (c) =>
-                `${c.label}${missingMark(c)}：${c.months.map((m) => `${monthLabel(m.month)}末 ${formatManYenInt(m.end)}・日末最低 ${formatManYenInt(m.minEndOfDay.amount)}（${formatMonthDay(m.minEndOfDay.date)}）`).join("／")}`
+                `${c.label}${missingMark(c)}：${c.months.map((m) => `${monthLabel(m.month)}末 ${formatYenInt(m.end)}・日末最低 ${formatYenInt(m.minEndOfDay.amount)}（${formatMonthDay(m.minEndOfDay.date)}）`).join("／")}`
             ),
             ...mainCases.map(
-              (c) => `${c.label}：同じ日に出金が入金より先に起きた場合の最低 ${c.months.map((m) => `${monthLabel(m.month)} ${formatManYenInt(m.minIntraday)}`).join("／")}`
+              (c) => `${c.label}：同じ日に出金が入金より先に起きた場合の最低 ${c.months.map((m) => `${monthLabel(m.month)} ${formatYenInt(m.minIntraday)}`).join("／")}`
             ),
           ]}
         />
@@ -236,7 +237,7 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
                 <tr key={x.label} className="border-t border-[var(--gridline)]">
                   <td className={tdLeft}>{x.label}</td>
                   <td className={td}>{x.count}</td>
-                  <td className={td}>{formatManYenInt(x.amount)}</td>
+                  <td className={td}>{formatYenInt(x.amount)}</td>
                 </tr>
               ))}
             </tbody>
@@ -259,14 +260,14 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
                   <td className={tdLeft}>{x.class}</td>
                   <td className={tdLeft}>{x.reason}</td>
                   <td className={td}>{x.count}</td>
-                  <td className={td}>{formatManYenInt(x.amount)}</td>
+                  <td className={td}>{formatYenInt(x.amount)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <p>
-          {`「freee採用」の曖昧なものは、freeeの未決済額をそのまま使うため予測額には影響しません。「判定保留（曖昧）」は予測に加えていません。freeeの未決済でSalesforceと照合されなかったもの ${record.matching.freeeUnmatchedUnsettled.count}件・${formatManYenInt(record.matching.freeeUnmatchedUnsettled.amount)} はfreeeの値を使っています。`}
+          {`「freee採用」の曖昧なものは、freeeの未決済額をそのまま使うため予測額には影響しません。「判定保留（曖昧）」は予測に加えていません。freeeの未決済でSalesforceと照合されなかったもの ${record.matching.freeeUnmatchedUnsettled.count}件・${formatYenInt(record.matching.freeeUnmatchedUnsettled.amount)} はfreeeの値を使っています。`}
         </p>
       </DetailsBox>
 
@@ -280,8 +281,23 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
 }
 
 /** 業績・採算タブ: 損益の仮定別の参考試算(A〜C)。予測の上限・下限ではない */
+/**
+ * 損益の参考試算の計算日時・対象(2026-11-18)。DEVの再計算(資金)では損益を再計算せず、元の記録の値を引き継ぐため、
+ * 資金の計算日時ではなく、損益を計算した記録の日時・基準日を出す。記録IDは「基準日_計算日時(YYYYMMDDTHHMMSS)」
+ */
+export function plTimes(record: ReferenceForecastRecord): { recordId: string; baseDate: string; computedAt: string; carried: boolean } {
+  const id = record.plCarriedFrom ?? record.id;
+  const m = id.match(/^(\d{4}-\d{2}-\d{2})_(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/);
+  const carried = !!record.plCarriedFrom && record.plCarriedFrom !== record.id;
+  if (!carried || !m) return { recordId: record.id, baseDate: record.baseDate, computedAt: formatIsoMinute(record.createdAt), carried: false };
+  return { recordId: id, baseDate: m[1], computedAt: `${m[2]}-${m[3]}-${m[4]} ${m[5]}:${m[6]}`, carried: true };
+}
+
+const yenPl = (v: number) => (v < 0 ? `▲${Math.abs(Math.round(v)).toLocaleString("ja-JP")}` : Math.round(v).toLocaleString("ja-JP"));
+
 export function ReferencePlSection({ record }: { record: ReferenceForecastRecord }) {
   const scenarios = record.pl.scenarios;
+  const t = plTimes(record);
   const months = scenarios[0]?.months.map((m) => m.month) ?? [];
   const plLimits = record.notes.limits.filter((t) => t.includes("損益") || t.includes("PDF"));
   return (
@@ -289,7 +305,11 @@ export function ReferencePlSection({ record }: { record: ReferenceForecastRecord
       <SectionBanner right={<Badge />}>
         <span id="reference-pl">損益の参考試算（仮定別、9〜12月の経常利益）</span>
       </SectionBanner>
-      <RecordCaption record={record} />
+      <ul className="flex flex-col gap-0.5 text-sm text-[var(--text-secondary)]">
+        <li>{`損益の参考試算の計算日時：${t.computedAt}（記録 ${t.recordId}、freeeの基準日 ${t.baseDate}）`}</li>
+        <li>資金の参考予測の再計算では更新されません（損益は再計算せず、上の記録の値を表示しています）。</li>
+      </ul>
+      <p className="text-sm text-[var(--text-secondary)]">単位：円。▲はマイナス。</p>
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
@@ -309,17 +329,17 @@ export function ReferencePlSection({ record }: { record: ReferenceForecastRecord
                 <td className={`${tdLeft} font-medium text-[var(--text-primary)]`}>{`${s.id}：${s.label}`}</td>
                 {s.months.map((m) => (
                   <td key={m.month} className={td}>
-                    {formatManYenInt(m.ordinaryProfit)}
+                    {yenPl(m.ordinaryProfit)}
                   </td>
                 ))}
-                <td className={`${td} font-semibold`}>{formatManYenInt(s.cumulative.ordinaryProfit)}</td>
+                <td className={`${td} font-semibold`}>{yenPl(s.cumulative.ordinaryProfit)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-[var(--text-muted)]">
-        仮定を変えた参考試算です。予測の上限・下限ではありません。9月は実績、10月は帳簿の実績に未計上の月末処理の仮定を加えたものです。
+      <p className="text-sm text-[var(--text-secondary)]">
+        {`仮定を変えた参考試算で、予測の上限・下限ではありません（推計）。基準日 ${t.baseDate} 時点のfreeeの帳簿から計算しています。月ごとの根拠は下の詳細欄にあります。`}
       </p>
       <DetailsBox summary="根拠・推計・限界（損益）">
         <SubHeading>限界</SubHeading>
@@ -327,12 +347,12 @@ export function ReferencePlSection({ record }: { record: ReferenceForecastRecord
         <SubHeading>月ごとの根拠</SubHeading>
         {scenarios.map((s) => (
           <div key={s.id} className="flex flex-col gap-1">
-            <p className="text-[var(--text-primary)]">{`${s.id}：${s.label}（9〜12月の売上高 ${formatManYenInt(s.cumulative.revenue)}）`}</p>
+            <p className="text-[var(--text-primary)]">{`${s.id}：${s.label}（9〜12月の売上高 ${formatYenInt(s.cumulative.revenue)}）`}</p>
             <ul className="list-disc space-y-1 pl-5 leading-relaxed">
               {s.months.map((m) => (
                 <li key={m.month}>
-                  {`${monthLabel(m.month)}：売上高 ${formatManYenInt(m.revenue)}・粗利 ${formatManYenInt(m.grossProfit)}${
-                    m.wipChange !== null ? `・仕掛品増減 ${formatManYenDelta(m.wipChange)}` : ""
+                  {`${monthLabel(m.month)}：売上高 ${formatYenInt(m.revenue)}・粗利 ${formatYenInt(m.grossProfit)}${
+                    m.wipChange !== null ? `・仕掛品増減 ${formatYenDelta(m.wipChange)}` : ""
                   }。${m.basis}`}
                 </li>
               ))}

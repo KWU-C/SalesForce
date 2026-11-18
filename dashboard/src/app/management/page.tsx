@@ -6,13 +6,13 @@ import { getOrFetchMonthlyCashFlow } from "@/features/management-dashboard/month
 import type { MonthlyCashFlow } from "@/features/management-dashboard/types";
 import { getOrComputeTermCashFlowTotal } from "@/features/management-dashboard/termCashFlowTotalService";
 import type { TermCashFlowTotal } from "@/features/management-dashboard/termCashFlowTotal";
-import { LoanStatusTable } from "@/features/management-dashboard/LoanStatusTable";
 import { getOrFetchLoanStatus } from "@/features/management-dashboard/loanStatusService";
 import type { LoanStatusSnapshot } from "@/features/management-dashboard/loanStatus";
-import { FundReserveSection } from "@/features/management-dashboard/FundReserveSection";
+import { BalancesByDateSection, loansOf, type BalanceDateColumn } from "@/features/management-dashboard/BalancesByDateSection";
+import { monthEndBoundary } from "@/features/management-dashboard/accountingReports";
 import { composeFundReserve } from "@/features/management-dashboard/fundReserve";
 import { getLoanStatusSnapshot } from "@/repositories/loanStatusSnapshotRepository";
-import type { FundReserve } from "@/features/management-dashboard/fundReserve";
+import type { FundReserve, FundReserveCoreSnapshot } from "@/features/management-dashboard/fundReserve";
 import { getOrFetchFundReserveCore } from "@/features/management-dashboard/fundReserveService";
 import { getOrFetchTermMonthlyPl, termMonthsThrough } from "@/features/management-dashboard/monthlyPlService";
 import {
@@ -28,11 +28,11 @@ import {
 } from "@/features/management-dashboard/MonthlyPerformanceSection";
 import { CostStructureSection } from "@/features/management-dashboard/CostStructureSection";
 import { SectionBanner } from "@/features/management-dashboard/SectionBanner";
-import { ManagementSummary } from "@/features/management-dashboard/ManagementSummary";
 import { FundSummaryDetailSection, FundSummarySection, PaymentReserveSection } from "@/features/management-dashboard/FundSummarySection";
 import { actualTargets, buildActualRow, buildForecastState } from "@/features/management-dashboard/fundSummary";
 import { ManagementTabs } from "@/features/management-dashboard/ManagementTabs";
-import { PerformanceSummaryTable, PreviousMonthEndBalance } from "@/features/management-dashboard/OverviewSections";
+import { PerformanceSummaryTable, periodLabel } from "@/features/management-dashboard/OverviewSections";
+import type { PerformanceTableHeads } from "@/features/management-dashboard/PerformanceTable";
 import {
   monthsAfter,
   resolveSummaryBasis,
@@ -153,6 +153,7 @@ export default async function ManagementPage() {
   // 前月末の借入残高(概要「資金残高（前月末実績）」)。保存済みの値を読むだけでfreeeは呼ばない
   let previousMonthLoanSnapshot: LoanStatusSnapshot | null = null;
   let fundReserve: FundReserve | null = null;
+  let previousFundReserveCore: FundReserveCoreSnapshot | null = null;
   let fundReserveError = false;
   const termTotalsByTerm = new Map<number, TermCashFlowTotal>();
 
@@ -245,6 +246,14 @@ export default async function ManagementPage() {
       } catch {
         console.error("[management page] freeeからの資金の備え取得に失敗しました");
         fundReserveError = true;
+      }
+      // 前月末の現金・預金の科目別残高(定期預金の全口座の内訳、2026-11-18)。月末後に取得したものだけ使う
+      try {
+        previousFundReserveCore = await getOrFetchFundReserveCore(previousMonthTarget.fiscalYear, previousMonthTarget.month, {
+          forceRefresh: false,
+        });
+      } catch {
+        console.error("[management page] 前月末の現金・預金の科目別残高の取得に失敗しました");
       }
       // 月次業績・採算(②③と経営サマリー、ユーザー確定 2026-10-27)。当期は期首〜当月で、保存済みの月は
       // Firestoreのみを読み、未保存の月(月替わり直後の新しい月)だけfreeeから取得する。前期はFirestoreだけを読み、
@@ -416,6 +425,54 @@ export default async function ManagementPage() {
   const fundActualRows = actualTargets(previousMonthTarget).map((t) => buildActualRow(t, lookupCashFlow(t), now));
   const fundForecast = buildForecastState(referenceForecast, targetMonth(currentTerm, currentMonth));
 
+  // 財務・資金繰り「残高・借入（対象日別）」(2026-11-18): 前月末(実績、月末後の取得のみ)と当月末の帳簿残高(登録済み分)
+  const ymdLabel = (term: number, month: number) => {
+    const y = calendarYearForTermMonth(term, month);
+    return `${y}年${month}月${new Date(Date.UTC(y, month, 0)).getUTCDate()}日`;
+  };
+  const prevCashFlow = lookupCashFlow(previousMonthTarget);
+  const prevLoans = summarizePreviousMonthLoans(previousMonthTarget, previousMonthLoanSnapshot);
+  const prevCoreAfterMonthEnd =
+    previousFundReserveCore && previousFundReserveCore.fetchedAt.getTime() >= monthEndBoundary(previousMonthTarget.key).getTime()
+      ? previousFundReserveCore
+      : null;
+  const balanceColumns: BalanceDateColumn[] = [
+    {
+      title: `${previousMonthTarget.month}月末（実績）`,
+      asOf: ymdLabel(previousMonthTarget.term, previousMonthTarget.month),
+      fetchedAt: previousMonthCash.status === "fetched" ? previousMonthCash.fetchedAt : null,
+      cash:
+        previousMonthCash.status === "fetched"
+          ? {
+              checkingSavings: previousMonthCash.checkingSavings,
+              timeDeposit: previousMonthCash.timeDeposit,
+              cashOnHand: prevCashFlow?.cashOnHandClosing ?? previousMonthCash.cashClosing - previousMonthCash.depositTotalBeforeCollateral,
+              total: previousMonthCash.cashClosing,
+            }
+          : null,
+      accounts: prevCoreAfterMonthEnd?.cashAccountLines ?? null,
+      loans: prevLoans.status === "fetched" ? { shortTerm: prevLoans.shortTerm, longTerm: prevLoans.longTerm, officer: prevLoans.officer, total: prevLoans.total } : null,
+      insurance: prevCoreAfterMonthEnd?.insuranceAssetReserve ?? null,
+    },
+    {
+      title: `${currentMonth}月末の帳簿残高（登録済み分）`,
+      asOf: `${ymdLabel(currentTerm, currentMonth)}付の帳簿（取得時点までに登録された取引。先日付の登録済み取引を含む）`,
+      fetchedAt: dataUpdatedAt,
+      cash:
+        currentCashFlow && currentCashFlow.cashClosing !== null && currentCashFlow.checkingSavingsClosing != null && currentCashFlow.timeDepositClosing != null
+          ? {
+              checkingSavings: currentCashFlow.checkingSavingsClosing,
+              timeDeposit: currentCashFlow.timeDepositClosing,
+              cashOnHand: currentCashFlow.cashOnHandClosing ?? 0,
+              total: currentCashFlow.cashClosing,
+            }
+          : null,
+      accounts: fundReserve?.cashAccountLines ?? null,
+      loans: loansOf(loanStatus),
+      insurance: fundReserve?.insuranceAssetReserve ?? null,
+    },
+  ];
+
   const overviewTab = (
     <>
       {overviewFailures.length > 0 && (
@@ -458,12 +515,24 @@ export default async function ManagementPage() {
     </>
   );
 
+  // 業績・採算の表の累計列は概要の経営サマリーと対応させる(2026-11-18)。当月は途中の帳簿値
+  const performanceHeads: PerformanceTableHeads = {
+    inProgressMonth: currentMonth,
+    adjusted: adjustedPerformance
+      ? {
+          label: summaryBasis?.kind === "confirmed" ? "累計・経理確認済み" : "累計・仕掛品振替反映分",
+          period: periodLabel(adjustedPerformance),
+          monthCount: adjustedPerformance.months.length,
+        }
+      : null,
+    progress: { label: "帳簿上の進捗", period: periodLabel(progressPerformance) },
+  };
   const performanceTab = (
     <>
       {performanceMonths && (
         <>
-          <MonthlyPerformanceSection months={performanceMonths} fetchedAt={performanceFetchedAt} />
-          <CostStructureSection months={performanceMonths} />
+          <MonthlyPerformanceSection months={performanceMonths} fetchedAt={performanceFetchedAt} heads={performanceHeads} />
+          <CostStructureSection months={performanceMonths} heads={performanceHeads} />
         </>
       )}
       {performanceErrorNotice}
@@ -472,31 +541,20 @@ export default async function ManagementPage() {
   );
 
   // 借入・資金収支・現預金と借入の差額は概要から財務・資金繰りタブへ移した(2026-11-17、ユーザー指定)
+  // 財務・資金繰り(2026-11-18、ユーザー指定): 最初に概要の資金サマリーに対応する計算内訳・予測、次に将来支払控除後、
+  // 最後に残高・借入を対象日別に1つの表へ集約(旧: 資金収支・借入/現預金と借入/借入状況/資金の備え)
   const financeTab = (
     <>
       {referenceForecast && (
         <div className="flex flex-col gap-6">
           <FundSummaryDetailSection actualRows={fundActualRows} forecast={fundForecast} record={referenceForecast} />
+          <ReferenceCashForecastSection record={referenceForecast} />
           <PaymentReserveSection record={referenceForecast} />
         </div>
       )}
-      <ManagementSummary
-        term={currentTerm}
-        month={currentMonth}
-        cashFlow={currentCashFlow}
-        loanStatus={loanStatus}
-        fetchedAt={dataUpdatedAt}
-      />
-      <PreviousMonthEndBalance
-        target={previousMonthTarget}
-        cash={previousMonthCash}
-        loans={summarizePreviousMonthLoans(previousMonthTarget, previousMonthLoanSnapshot)}
-      />
       {loanStatusErrorNotice}
-      {loanStatus && <LoanStatusTable loanStatus={loanStatus} />}
       {fundReserveErrorNotice}
-      {fundReserve && <FundReserveSection fundReserve={fundReserve} />}
-      {referenceForecast && <ReferenceCashForecastSection record={referenceForecast} />}
+      <BalancesByDateSection columns={balanceColumns} loanStatus={loanStatus} />
     </>
   );
 

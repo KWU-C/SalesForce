@@ -1,8 +1,7 @@
 import { BUILDING_CANDIDATE_ACCOUNTS, BUILDING_ITEM_PREFIX } from "@/config/performanceClassification";
-import { formatYen } from "@/utils/format";
 import { SectionBanner } from "./SectionBanner";
-import { PerformanceTable } from "./PerformanceTable";
-import type { PerformanceTableRow } from "./PerformanceTable";
+import { formatYenAmount, PerformanceTable } from "./PerformanceTable";
+import type { PerformanceTableHeads, PerformanceTableRow } from "./PerformanceTable";
 import { amountRows, ratioRows } from "./MonthlyPerformanceSection";
 import { changeRate, sumValues } from "./performanceView";
 import type { PerformanceMonth } from "./performanceView";
@@ -26,7 +25,7 @@ function totalsByLabel(months: PerformanceMonth[], pick: (p: MonthlyPerformance)
 }
 
 function signedYen(v: number): string {
-  return v < 0 ? `▲${formatYen(Math.abs(v))}` : formatYen(v);
+  return `${formatYenAmount(v)}円`;
 }
 
 /**
@@ -54,7 +53,7 @@ function DetailsBox({ summary, children }: { summary: string; children: React.Re
  * - 営業外損益は月次と累計(営業利益には含めない)
  * 建物関連費用とマザー関連支出は一部重なる(芦屋オフィスの地代)ため、別の指標として並べ、合算しない。
  */
-export function CostStructureSection({ months }: { months: PerformanceMonth[] }) {
+export function CostStructureSection({ months, heads }: { months: PerformanceMonth[]; heads?: PerformanceTableHeads }) {
   const balanceCurrent = months.map((m) => nonOperatingBalance(m.current));
   const balancePrevious = months.map((m) => nonOperatingBalance(m.previous));
   const balanceCumulative = sumValues(balanceCurrent);
@@ -98,9 +97,10 @@ export function CostStructureSection({ months }: { months: PerformanceMonth[] })
   return (
     <div className="flex flex-col gap-2">
       <SectionBanner>採算・固定費</SectionBanner>
-      <PerformanceTable months={months.map((m) => m.month)} rows={rows} />
+      <p className="text-sm text-[var(--text-secondary)]">単位：円（比率は%）。▲はマイナス。</p>
+      <PerformanceTable months={months.map((m) => m.month)} rows={rows} heads={heads} />
       <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
-        <DetailsBox summary="建物関連費用の範囲と品目別内訳（当期累計）">
+        <DetailsBox summary="建物関連費用の範囲と品目別内訳（期首〜当月の帳簿値）">
           <p className="mb-2 text-[var(--text-muted)]">
             {`${BUILDING_CANDIDATE_ACCOUNTS.join("・")}のうち、品目が「${BUILDING_ITEM_PREFIX}」のものだけ。[製]賃借料のリース料（複合機・PC等）や修繕費の設備保全費は含めない。`}
           </p>
@@ -120,7 +120,7 @@ export function CostStructureSection({ months }: { months: PerformanceMonth[] })
             </p>
           )}
         </DetailsBox>
-        <DetailsBox summary="マザー関連支出の範囲と科目別内訳（当期累計）">
+        <DetailsBox summary="マザー関連支出の範囲と科目別内訳（期首〜当月の帳簿値）">
           <p className="mb-2 text-[var(--text-muted)]">
             取引先「有限会社ティーシーディマザー」の費用すべて（科目別）。マザーからの雑収入は相殺せず、営業外収益に含む。
           </p>
@@ -136,7 +136,7 @@ export function CostStructureSection({ months }: { months: PerformanceMonth[] })
           )}
         </DetailsBox>
       </div>
-      <p className="text-xs text-[var(--text-muted)]">
+      <p className="text-sm text-[var(--text-secondary)]">
         {"※ 建物関連費用とマザー関連支出は芦屋オフィスの地代（マザー所有）が両方に入るため、合算しないでください。費用は発生額（製造原価の分は仕掛品へ振り替わる前の額）。資産計上した建物・設備は含めない。"}
       </p>
     </div>

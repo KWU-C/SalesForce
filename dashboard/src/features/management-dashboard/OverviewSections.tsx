@@ -1,15 +1,10 @@
 import { FISCAL_MONTH_ORDER } from "@/config/fiscalPeriods";
-import { formatDateTime, formatPercent, formatYen } from "@/utils/format";
-import { SectionBanner } from "./SectionBanner";
+import { formatDateTime, formatPercent } from "@/utils/format";
 import { changeRate } from "./performanceView";
-import type { CashColumn, CumulativeAmount, LoanColumn, PerformanceColumn, SummaryBasis, TargetMonth } from "./overviewComparison";
+import type { CumulativeAmount, PerformanceColumn, SummaryBasis, TargetMonth } from "./overviewComparison";
 
 // ---------------------------------------------------------------------------
 // 表示形式(経理調整済み・帳簿上の進捗の2段で共通)
-
-function signedYen(value: number): string {
-  return value < 0 ? `▲${formatYen(Math.abs(value))}` : formatYen(value);
-}
 
 function monthList(months: number[]): string {
   return months.map((m) => `${m}月`).join("・");
@@ -268,129 +263,6 @@ export function PerformanceSummaryTable({
       <p className="text-sm text-[var(--text-secondary)]">単位：円。▲はマイナス。前年同期は前期の同じ月までの累計です。</p>
       <Notes notes={notes} />
       {action}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 資金残高(前月末実績)
-
-function BalanceRow({ label, note, value, empty }: { label: string; note?: string; value: string; empty: boolean }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 py-1">
-      <span className="text-sm text-[var(--text-secondary)]">
-        {label}
-        {note && <span className="block text-xs text-[var(--text-muted)]">{note}</span>}
-      </span>
-      <span
-        className={`whitespace-nowrap text-xl font-semibold tabular-nums ${
-          empty ? "text-[var(--text-muted)]" : "text-[var(--text-primary)]"
-        }`}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-/** 表示しなくなった資金の指標と、その理由・不足情報(2026-11-16、ユーザー指定: 空のカードは置かず詳細説明にまとめる) */
-const REMOVED_CASH_METRICS: { label: string; reason: string }[] = [
-  {
-    label: "資金余力（現預金 − 当座貸越 − 消費税準備 − 賞与準備）",
-    reason:
-      "消費税準備・賞与準備は手入力の管理値で、freeeの帳簿から必要額を確定できないため。仮受消費税−仮払消費税は中間納付・確定税額と一致せず、賞与引当金は支給額・社会保険料を表さない",
-  },
-  { label: "当座貸越の枠・空き枠", reason: "枠の金額がfreeeに無いため。短期借入金は当座貸越と断定せず「短期借入金」として表示" },
-  { label: "預金総合計（担保控除後）", reason: "担保控除額の意味（何を控除するか）を経理に確認中のため" },
-  { label: "資金繰りの見通し（月末残高の予測）", reason: "将来の入出金をfreeeの登録情報だけでは把握しきれないため。予測は出さず前月末実績を表示" },
-];
-
-/**
- * 資金残高（前月末実績）(2026-11-16、ユーザー指定)。予測の代わりに、freeeの前月末残高の内訳を独立して出す。
- * 資金サマリー(現在の状況)とは役割を分け、同じ値を重ねない。経理の資金繰り予定は概要では使わない
- * (財務・資金繰りタブで基準日付きで参照する)。
- * - 当座・普通預金合計、預金総合計(当座・普通・定期)はfreeeの月末残高(月末後に取得したもの)
- * - 借入残高(短期・長期・役員)も前月末の値(月末後に取得したもの)を並べ、差額は「月末現預金 − 借入残高」と明記する
- * - 担保控除後・資金余力など算出できない指標は出さず、理由を詳細説明(REMOVED_CASH_METRICS)にまとめる
- */
-export function PreviousMonthEndBalance({ target, cash, loans }: { target: TargetMonth; cash: CashColumn; loans: LoanColumn }) {
-  const title = `現預金と借入（${target.calendarYear}年${target.month}月末実績）`;
-  const details = (
-    <details className="text-xs text-[var(--text-muted)]">
-      <summary className="cursor-pointer text-[var(--text-secondary)]">表示していない指標と理由</summary>
-      <ul className="mt-1 flex list-disc flex-col gap-1 pl-5">
-        {REMOVED_CASH_METRICS.map((m) => (
-          <li key={m.label}>
-            <span className="text-[var(--text-secondary)]">{m.label}</span>：{m.reason}
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-  if (cash.status !== "fetched") {
-    return (
-      <div className="flex flex-col gap-2">
-        <SectionBanner>{title}</SectionBanner>
-        <p className="text-sm text-[var(--status-serious)]">
-          {target.calendarYear}年{target.month}月末の残高は、月末後にfreeeから取得した値がまだ無いため表示していません。
-        </p>
-        {details}
-      </div>
-    );
-  }
-  const loanFetched = loans.status === "fetched" ? loans : null;
-  const difference = loanFetched ? cash.cashClosing - loanFetched.total : null;
-  return (
-    <div className="flex flex-col gap-2">
-      <SectionBanner>{title}</SectionBanner>
-      <p className="text-xs text-[var(--text-secondary)]">
-        {target.term}期{target.month}月末（{target.calendarYear}年{target.month}月{lastDayOf(target)}日）時点のfreeeの残高／freee取得: 預金{" "}
-        {formatDateTime(cash.fetchedAt)}
-        {loanFetched ? `・借入 ${formatDateTime(loanFetched.fetchedAt)}` : ""}
-        <span className="text-[var(--text-muted)]">（予測ではありません。当月末の帳簿の値は上の「資金収支・借入」を参照）</span>
-      </p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-          <p className="mb-2 text-xs font-medium text-[var(--text-muted)]">預金・現金</p>
-          <BalanceRow label="当座・普通預金合計" value={formatYen(cash.checkingSavings)} empty={false} />
-          <BalanceRow
-            label="預金総合計（当座・普通・定期）"
-            note={`うち定期預金 ${formatYen(cash.timeDeposit)}`}
-            value={formatYen(cash.depositTotalBeforeCollateral)}
-            empty={false}
-          />
-          <BalanceRow label="月末現預金（預金総合計＋現金）" value={formatYen(cash.cashClosing)} empty={false} />
-        </div>
-        <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
-          <p className="mb-2 text-xs font-medium text-[var(--text-muted)]">借入</p>
-          {loanFetched ? (
-            <>
-              <BalanceRow
-                label="借入残高"
-                note={`短期借入金 ${formatYen(loanFetched.shortTerm)}／長期借入金 ${formatYen(loanFetched.longTerm)}／役員借入金 ${formatYen(loanFetched.officer)}`}
-                value={formatYen(loanFetched.total)}
-                empty={false}
-              />
-              <BalanceRow
-                label="現預金と借入の差額"
-                note="月末現預金 − 借入残高。使える資金の額ではありません"
-                value={difference === null ? "未取得" : signedYen(difference)}
-                empty={difference === null}
-              />
-            </>
-          ) : (
-            <p className="text-sm text-[var(--text-muted)]">
-              {target.month}月末の借入残高は、月末後にfreeeから取得した値がまだ無いため表示していません。
-            </p>
-          )}
-        </div>
-      </div>
-      {cash.kindsDifference !== 0 && (
-        <p className="text-xs font-medium text-[var(--status-serious)]">
-          ※ 種類別の残高（当座・普通＋定期＋現金）が月末現預金と合いません（差 {formatYen(cash.kindsDifference)}）。分類できない預金科目がある可能性があります。
-        </p>
-      )}
-      {details}
     </div>
   );
 }

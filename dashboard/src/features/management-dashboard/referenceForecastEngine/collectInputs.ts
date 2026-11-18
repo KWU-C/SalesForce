@@ -126,14 +126,33 @@ export async function collectReferenceForecastInputs(deps: CollectDeps = {}): Pr
     `SELECT Id, phase__c, juchukakudo__c, seikyuubi__c, nyuukin_yoteibi__c, uriage_tax__c, seikyuusakimei__r.Name FROM Process__c WHERE seikyuubi__c >= ${sinceBilled}`
   );
   // 原価(Cost__c)は慎重ケースの未登録外注にだけ使う。読めない(権限不足・取得失敗)ときは止めずに null(未取得。0円ではない)にし、慎重ケースに含められていない支出として示す
-  type CostRow = { shiirebi__c: string | null; zeikomikingaku__c: number | null; shiharaisakimei__r: { Name: string | null } | null };
+  // 仕入月(前月)と、前後の月のfreee取引が同一の支払か確かめるためにその前後の月も読む。
+  // 支払予定日・支払先の支払条件は、読めなければ(項目の参照権限が無いなど)基本の項目だけで読み直し、支払日はfreeeの実績から推定する
+  type CostRow = {
+    shiirebi__c: string | null;
+    zeikomikingaku__c: number | null;
+    shiharaiyoteibi__c?: string | null;
+    shiharaisakimei__r: {
+      Name: string | null;
+      shimebi__c?: string | null;
+      shiharaipatammei__c?: string | null;
+      kyuujitsunotoriatsukai_shiharai__c?: string | null;
+    } | null;
+  };
+  const costWhere = `WHERE shiirebi__c >= ${addMonths(M, -2)}-01 AND shiirebi__c <= ${lastDayOfMonth(M)}`;
   let costs: CostRow[] | null = null;
+  let sfCostTermsReadable = false;
   try {
     costs = await sf.query<CostRow>(
-      `SELECT shiirebi__c, zeikomikingaku__c, shiharaisakimei__r.Name FROM Cost__c WHERE shiirebi__c >= ${addMonths(M, -1)}-01 AND shiirebi__c <= ${lastDayOfMonth(addMonths(M, -1))}`
+      `SELECT shiirebi__c, zeikomikingaku__c, shiharaiyoteibi__c, shiharaisakimei__r.Name, shiharaisakimei__r.shimebi__c, shiharaisakimei__r.shiharaipatammei__c, shiharaisakimei__r.kyuujitsunotoriatsukai_shiharai__c FROM Cost__c ${costWhere}`
     );
+    sfCostTermsReadable = true;
   } catch {
-    costs = null;
+    try {
+      costs = await sf.query<CostRow>(`SELECT shiirebi__c, zeikomikingaku__c, shiharaisakimei__r.Name FROM Cost__c ${costWhere}`);
+    } catch {
+      costs = null;
+    }
   }
   const sfProcesses: RfSfProcess[] = processes.map((r) => ({
     id: r.Id,
@@ -144,7 +163,22 @@ export async function collectReferenceForecastInputs(deps: CollectDeps = {}): Pr
     amountTaxIncluded: r.uriage_tax__c ?? 0,
     billToName: r.seikyuusakimei__r?.Name ?? "",
   }));
-  const sfCosts: RfSfCost[] | null = costs === null ? null : costs.map((r) => ({ purchaseDate: r.shiirebi__c, amountTaxIncluded: r.zeikomikingaku__c ?? 0, vendorName: r.shiharaisakimei__r?.Name ?? "" }));
+  const sfCosts: RfSfCost[] | null =
+    costs === null
+      ? null
+      : costs.map((r) => {
+          const a = r.shiharaisakimei__r;
+          const hasTerms = !!(a?.shimebi__c || a?.shiharaipatammei__c || a?.kyuujitsunotoriatsukai_shiharai__c);
+          return {
+            purchaseDate: r.shiirebi__c,
+            amountTaxIncluded: r.zeikomikingaku__c ?? 0,
+            vendorName: a?.Name ?? "",
+            paymentDueDate: r.shiharaiyoteibi__c ?? null,
+            vendorTerms: hasTerms
+              ? { closing: a?.shimebi__c ?? null, pattern: a?.shiharaipatammei__c ?? null, holiday: a?.kyuujitsunotoriatsukai_shiharai__c ?? null }
+              : null,
+          };
+        });
 
   return {
     computedAt,
@@ -162,6 +196,7 @@ export async function collectReferenceForecastInputs(deps: CollectDeps = {}): Pr
     bonusHistory,
     sfProcesses,
     sfCosts,
+    sfCostTermsReadable,
     reserve: { trialBsByMonth, provisionalTaxDeals, consumptionTaxPayableDeals, consumptionTaxPayableJournals, closingJournals },
   };
 }

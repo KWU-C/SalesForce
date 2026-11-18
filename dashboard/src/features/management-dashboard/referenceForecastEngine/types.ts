@@ -27,6 +27,10 @@ export interface RfSfCost {
   purchaseDate: string | null;
   amountTaxIncluded: number;
   vendorName: string;
+  /** 原価の支払予定日(読めない・空欄なら null) */
+  paymentDueDate?: string | null;
+  /** 支払先(取引先)の支払条件(読めない・空欄なら null) */
+  vendorTerms?: { closing: string | null; pattern: string | null; holiday: string | null } | null;
 }
 
 /** 参考予測の計算に使う入力(freee・Salesforceから集めたもの)。計算は純粋関数で行う */
@@ -53,8 +57,10 @@ export interface RfInputs {
   /** 賞与の支給実績(前年の同じ月の振替伝票・取引から) */
   bonusHistory: Record<string, { payDate: string | null; gross: number; deductions: number; net: number }>;
   sfProcesses: RfSfProcess[];
-  /** 前月の仕入日の原価。読めなかったとき(連携ユーザーに参照権限が無いなど)は null */
+  /** 前月(とその前後の月)の仕入日の原価。読めなかったとき(連携ユーザーに参照権限が無いなど)は null */
   sfCosts: RfSfCost[] | null;
+  /** 原価の支払予定日・支払先の支払条件をSalesforceから読めたか */
+  sfCostTermsReadable?: boolean;
   reserve: RfReserveInputs;
 }
 

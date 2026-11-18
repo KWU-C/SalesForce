@@ -12,8 +12,9 @@ import {
   previousBusinessDay,
   ym,
 } from "./calendar";
-import { normalizeName, type SfReceiptEvent } from "./salesMatching";
+import type { SfReceiptEvent } from "./salesMatching";
 import type { RfDeal, RfInputs, RfPayrollMonth, RfWalletTxn } from "./types";
+import { computeUnregisteredGaichu } from "./unregisteredGaichu";
 
 /**
  * 資金の参考予測(当月の基準日の翌日〜翌月末、日別)。scripts/reference-forecast/engine.py(2026-11-18版)の移植で、
@@ -358,42 +359,18 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
     for (const pid of [...lateLag.keys()]) if (!overdue.has(pid)) lateLag.delete(pid);
   }
 
-  // ---------- Salesforce原価でfreee未登録の外注(慎重) ----------
-  const unregisteredGaichu = (() => {
-    const prev = addMonths(M, -1);
-    // 取得できないときは0円ではなく「未取得」。計算上は0円だが、慎重ケースに含められていない支出として表示する
-    if (inp.sfCosts === null) return { month: prev, status: "未取得" as const, amount: null, vendors: null, lines: null, costLines: null, costTotal: null };
-    const sf = new Map<string, number>();
-    const sfLines = new Map<string, number>();
-    let costLines = 0;
-    let costTotal = 0;
-    for (const c of inp.sfCosts) {
-      if ((c.purchaseDate ?? "").slice(0, 7) !== prev) continue;
-      const v = normalizeName(c.vendorName);
-      sf.set(v, (sf.get(v) ?? 0) + Math.round(c.amountTaxIncluded));
-      sfLines.set(v, (sfLines.get(v) ?? 0) + 1);
-      costLines += 1;
-      costTotal += Math.round(c.amountTaxIncluded);
-    }
-    const fr = new Map<string, number>();
-    for (const d of inp.expenseDeals) {
-      if (d.issueDate < addDays(`${prev}-01`, -6)) continue;
-      const p = normalizeName(inp.partners.get(d.partnerId ?? -1) ?? "");
-      if (p) fr.set(p, (fr.get(p) ?? 0) + d.amount);
-    }
-    let amount = 0;
-    let vendors = 0;
-    let lines = 0;
-    for (const [v, s] of sf) {
-      const f = [...fr.entries()].filter(([k]) => v && (k === v || k.includes(v) || v.includes(k))).reduce((a, [, x]) => a + x, 0);
-      if (s > f) {
-        amount += s - f;
-        vendors += 1;
-        lines += sfLines.get(v) ?? 0;
-      }
-    }
-    return { month: prev, status: "取得" as const, amount, vendors, lines, costLines, costTotal };
-  })();
+  // ---------- Salesforce原価でfreee未登録の外注(慎重の支払候補。同じ仕入月で照合し、支払日を推定) ----------
+  const unregisteredGaichu = computeUnregisteredGaichu({
+    month: addMonths(M, -1),
+    baseDate: BASE,
+    sfCosts: inp.sfCosts,
+    termsReadable: inp.sfCostTermsReadable ?? false,
+    expenseDeals: inp.expenseDeals,
+    partners: inp.partners,
+  });
+  /** 慎重で、その月の1〜16日に置く未登録外注(10日前後の振込の推計から同額を引く) */
+  const unregEarly = (month: string) =>
+    unregisteredGaichu.items.filter((x) => x.payDate.startsWith(month) && Number(x.payDate.slice(8, 10)) <= 16).reduce((s2, x) => s2 + x.unregistered, 0);
 
   // ---------- 統計 ----------
   const generalStat = { mean: mean(bulkParts.map((b) => b.general)), max: max(bulkParts.map((b) => b.general)) };
@@ -617,14 +594,13 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
 
     // 10日前後の取引先への振込(未登録分)
     const day10 = nextBusinessDay(dayInMonth(month, 10));
-    const gaichuUnreg = k === "慎重" ? (unregisteredGaichu.amount ?? 0) : 0;
     if (inWin(day10)) {
       const reg = registered("外注", `${month}-01`, `${month}-16`) + registered("一般経費", `${month}-01`, `${month}-16`);
-      const less = !isM ? gaichuUnreg : 0;
+      const less = k === "慎重" ? unregEarly(month) : 0;
       const amount = Math.max(0, vendorMidMean - reg - less);
-      rec[`mid_${month}`] = { vendorMidMean, registered: reg, lessUnregisteredGaichuPaidInPrevMonth: less, amount };
+      rec[`mid_${month}`] = { vendorMidMean, registered: reg, lessUnregisteredGaichuPlacedOnOwnDate: less, amount };
       ev(day10, -amount, "出金:外注・一般(10日前後の振込の未登録分)", "推計・仮定",
-        `推計(直近3回の1〜16日の取引先への振込(前月末分の繰越を除く)の中央値−同じ支払分類の登録済み${less ? "−前月末に支払うと置いた未登録外注" : ""})`);
+        `推計(直近3回の1〜16日の取引先への振込(前月末分の繰越を除く)の中央値−同じ支払分類の登録済み${less ? "−支払日を推定して別に置いた未登録外注" : ""})`);
     }
 
     // 月末一括振込(一般経費と外注を分ける)
@@ -640,11 +616,8 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
       let gaiEst = 0;
       let gaiBasis = "";
       if (isM) {
-        gaiEst = gaichuUnreg + regGai;
-        gaiBasis =
-          k === "慎重" && unregisteredGaichu.status === "未取得"
-            ? "未取得(慎重: Salesforceの原価を取得できず、前月の仕入でfreee未登録の外注を含めていない。登録済みの外注のみ)"
-            : "仮定(慎重: Salesforceの前月の仕入でfreee未登録の外注を月末に支払う)";
+        gaiEst = regGai;
+        gaiBasis = "登録済みの外注のみ(慎重の未登録外注は支払日を推定して別に置く)";
       } else if (k === "慎重" && prevYearBulkTxn) {
         gaiEst = prevYearBulkTxn.amount - generalStat.max;
         gaiBasis = `推計(慎重: 前年${monthLabel(month)}の月末一括振込−一般経費の最大を外注分とし、登録済みの外注を差し引く)`;
@@ -655,6 +628,15 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
       const gaiUnreg = Math.max(0, gaiEst - regGai);
       ev(lb, -gaiUnreg, isM ? "出金:外注(未登録)" : "出金:外注(月末の未登録分)", "推計・仮定", gaiBasis);
       rec[`bulk_${month}`] = { general, registeredGeneral: regGen, gaichuEstimate: gaiEst, registeredGaichu: regGai, unregisteredGaichu: gaiUnreg };
+    }
+
+    // 慎重: Salesforceの原価でfreee未登録の外注を、推定した支払日に置く(根拠は記録の unregisteredGaichu.items)
+    if (k === "慎重") {
+      for (const x of unregisteredGaichu.items) {
+        if (!inWin(x.payDate)) continue;
+        ev(x.payDate, -x.unregistered, "出金:外注(未登録・支払日は推定)", "推計・仮定",
+          `仮定(慎重: Salesforceの${monthLabel(unregisteredGaichu.month)}仕入の原価でfreee未登録。支払日の根拠: ${x.payDateBasis})`);
+      }
     }
     return E.sort((a, b) => (a.date === b.date ? b.amount - a.amount : a.date < b.date ? -1 : 1));
   };
@@ -740,7 +722,7 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
     estimates: [
       `給与：振込日は支給日の${payOffset}営業日前（直近の振込から推定）。振込と明細の差は直近3か月の平均${man(gapStat.mean)}（慎重は最大${man(gapStat.max)}${prevYearGap ? `、前年${monthLabel(N)}の差${man(prevYearGap.gap)}を含む` : ""}）。下書きの明細には直近3か月の経費精算の平均${man(recentExpense)}を加える`,
       `一般経費（月末一括振込の未登録分）：外注以外の平均${man(generalStat.mean)}（慎重は最大${man(generalStat.max)}）−登録済みの一般経費`,
-      `外注（月末）：${monthLabel(M)}は登録済みのみ（慎重はSalesforceの${monthLabel(unregisteredGaichu.month)}の仕入でfreee未登録の外注${unregisteredGaichu.status === "未取得" ? "（Salesforceの原価を取得できず未取得。慎重ケースはこの支出を含めていない）" : `${man(unregisteredGaichu.amount ?? 0)}（${unregisteredGaichu.vendors}社・原価${unregisteredGaichu.lines}件）`}を月末に加え、翌月10日前後の推計から同額を引く）。${monthLabel(N)}は直近3か月の月末期日の外注の平均${man(gaichuMeMean)}−登録済み（慎重は${prevYearBulkTxn ? `前年${monthLabel(N)}の月末一括振込${man(prevYearBulkTxn.amount)}−一般経費の最大` : "最大"}）`,
+      `外注（月末）：${monthLabel(M)}は登録済みのみ（慎重はSalesforceの${monthLabel(unregisteredGaichu.month)}の仕入でfreee未登録の外注${unregisteredGaichu.status === "未取得" ? "（Salesforceの原価を取得できず未取得。慎重ケースはこの支出を含めていない）" : `${man(unregisteredGaichu.amount ?? 0)}（${unregisteredGaichu.vendors}社・原価${unregisteredGaichu.lines}件。同じ仕入月で照合し、前後の月のfreee取引は金額で同一の支払と確認できたものだけ差し引く）`}を、支払予定日→支払先の支払条件→freeeの同じ支払先の支払実績→翌月末の順で推定した日に置き${unregisteredGaichu.termsReadable ? "" : "（Salesforceの支払予定日・支払条件は読めないため、freeeの実績・既定で推定）"}、1〜16日に置いた分は10日前後の推計から同額を引く）。${monthLabel(N)}は直近3か月の月末期日の外注の平均${man(gaichuMeMean)}−登録済み（慎重は${prevYearBulkTxn ? `前年${monthLabel(N)}の月末一括振込${man(prevYearBulkTxn.amount)}−一般経費の最大` : "最大"}）`,
       `10日前後の取引先への振込：直近3回の1〜16日の振込（前月末分の繰越を除く）の中央値${man(vendorMidMean)}−登録済み`,
       "賞与：賞与明細が確定していればその額、無ければ前年の同じ月の支給実績（慎重は＋10%）",
       ...(sfMoved.length > 0

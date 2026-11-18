@@ -46,6 +46,7 @@ function yenCell(v: number | null, emphasis: "key" | "highlight" | "strong" | nu
  * 概要「資金サマリー」(2026-11-17)。経理資料(資金繰り表)と比べられる計算構成の主表と短い注記だけを置く。
  * 表の形は経理資料の資金繰り表に倣う(ユーザー指定 data/sample.png、2026-11-17)。単位は円。
  * 月(締まった直近2か月＝実績、当月＝予測・標準ケース)ごとに 月末残高 / 納税・賞与の準備額 / 準備額控除後 の3行。
+ * 準備額は預金総合計と当座・普通預金の2列にまたがる1セルで1つだけ出す(2026-11-18 ユーザー指定)。
  * 列: 預金総合計(短期借入控除後) / 当座・普通預金 / 短期借入控除 / 定期預金
  * 計算式・根拠・未算入の支払・ケース比較は財務・資金繰りタブ(FundSummaryDetailSection)へ。
  */
@@ -127,8 +128,10 @@ export function FundSummarySection({
                 <>
                   <tr className="border-b border-dashed border-[var(--baseline)]">
                     <td className={`${tdLeft} border-r border-[var(--gridline)]`}>納税・賞与の準備額</td>
-                    {yenCell(r.reserve)}
-                    {yenCell(r.reserve)}
+                    {/* 準備額は両列に共通の1つの額なので、預金総合計と当座・普通預金の2列にまたがって1つだけ出す */}
+                    <td colSpan={2} className={`${td} text-center`}>
+                      {r.reserve === null ? <span className="text-[var(--text-muted)]">—</span> : r.reserve.toLocaleString("ja-JP")}
+                    </td>
                     <td className={td} />
                     <td className={td} />
                   </tr>

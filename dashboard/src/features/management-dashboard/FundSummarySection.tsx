@@ -318,7 +318,7 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
           {record.derivedFrom
             ? `／支払見込・準備額の追加：${formatIsoMinute(record.createdAt)}（freee取得 ${formatIsoMinute(reserve.fetchedAt)}）。予測は再計算していません`
             : `／freee取得 ${formatIsoMinute(reserve.fetchedAt)}`}
-          。手動計算のため自動更新なし
+          {record.computeMode === "devRecompute" ? "。DEVの再計算で更新（自動更新なし）" : "。手動計算のため自動更新なし"}
         </p>
       </div>
       <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)]">

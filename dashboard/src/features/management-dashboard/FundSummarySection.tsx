@@ -21,6 +21,10 @@ function ymLabel(ym: string): string {
   return `${Number(ym.slice(0, 4))}年${Number(ym.slice(5, 7))}月`;
 }
 
+/** 資金サマリーの主表の数値セル・見出し(中央揃え、2026-11-18 ユーザー指定)。共通の td/th は右揃えのため置き換える */
+const tdCenter = td.replace("text-right", "text-center");
+const thCenter = th.replace("text-right", "text-center");
+
 function yen(amount: number): string {
   return `${amount.toLocaleString("ja-JP")}円`;
 }
@@ -36,7 +40,7 @@ function yenCell(v: number | null, emphasis: "key" | "highlight" | "strong" | nu
           ? "font-semibold"
           : "";
   return (
-    <td className={`${td} ${cls}`}>
+    <td className={`${tdCenter} ${cls}`}>
       {v === null ? <span className="text-[var(--text-muted)]">—</span> : v.toLocaleString("ja-JP")}
     </td>
   );
@@ -92,10 +96,10 @@ export function FundSummarySection({
               <th className={thLeft} colSpan={2}>
                 <span className="sr-only">月・項目</span>
               </th>
-              <th className={th}>預金総合計（短期借入控除後）</th>
-              <th className={th}>当座・普通預金</th>
-              <th className={th}>短期借入控除</th>
-              <th className={th}>定期預金</th>
+              <th className={thCenter}>預金総合計（短期借入控除後）</th>
+              <th className={thCenter}>当座・普通預金</th>
+              <th className={thCenter}>短期借入控除</th>
+              <th className={thCenter}>定期預金</th>
             </tr>
           </thead>
           {rows.map((r) => (
@@ -129,7 +133,7 @@ export function FundSummarySection({
                   <tr className="border-b border-dashed border-[var(--baseline)]">
                     <td className={`${tdLeft} border-r border-[var(--gridline)]`}>納税・賞与の準備額</td>
                     {/* 準備額は両列に共通の1つの額なので、預金総合計と当座・普通預金の2列にまたがって1つだけ出す */}
-                    <td colSpan={2} className={`${td} text-center`}>
+                    <td colSpan={2} className={tdCenter}>
                       {r.reserve === null ? <span className="text-[var(--text-muted)]">—</span> : r.reserve.toLocaleString("ja-JP")}
                     </td>
                     <td className={td} />

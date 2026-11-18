@@ -1,6 +1,6 @@
 import { formatDateTime } from "@/utils/format";
 import { SectionBanner } from "./SectionBanner";
-import { DetailsBox, formatIsoMinute, NoteList, SubHeading, td, tdLeft, th, thLeft } from "./ReferenceForecastSections";
+import { DetailsBox, formatIsoMinute, NoteList, recordTimes, SubHeading, td, tdLeft, th, thLeft } from "./ReferenceForecastSections";
 import {
   buildComparisonRows,
   isReflectedBy,
@@ -66,6 +66,7 @@ export function FundSummarySection({
   const fetchedActuals = actualRows.filter((r): r is Extract<FundActualRow, { status: "fetched" }> => r.status === "fetched");
   const rows = buildComparisonRows(actualRows, forecast, record);
   const reserve = record?.monthEndReserve ?? null;
+  const times = record ? recordTimes(record) : null;
   return (
     <section className="flex flex-col gap-3" aria-labelledby="fund-summary">
       <SectionBanner>
@@ -79,13 +80,13 @@ export function FundSummarySection({
         </p>
         <p>
           {forecast.status === "available"
-            ? `予測：資金の参考予測の標準ケース（基準日 ${forecast.baseDate}／計算 ${formatIsoMinute(forecast.computedAt)}）`
+            ? `予測：資金の参考予測の標準ケース（銀行明細の最終同期日 ${times?.bankSyncedThrough ?? forecast.baseDate}／予測の計算 ${formatIsoMinute(forecast.computedAt)}）`
             : `予測：${forecast.reason}`}
         </p>
         <p>
           {reserve
-            ? `控除額・準備額：freee取得 ${formatIsoMinute(reserve.fetchedAt)}（記録に保存）。予測・控除額・準備額は手動計算のため自動更新なし`
-            : "控除額・準備額：保存済みの記録に無いため表示していません"}
+            ? `準備額（推計）・控除額：計算 ${formatIsoMinute(times?.reserveComputedAt ?? reserve.fetchedAt)}（freeeの値から算出し記録に保存）。自動更新はせず、財務・資金繰りタブの再計算で更新`
+            : "準備額（推計）・控除額：保存済みの記録に無いため表示していません"}
         </p>
       </div>
 
@@ -131,7 +132,7 @@ export function FundSummarySection({
               {r.missingReason === null && (
                 <>
                   <tr className="border-b border-dashed border-[var(--baseline)]">
-                    <td className={`${tdLeft} border-r border-[var(--gridline)]`}>納税・賞与の準備額</td>
+                    <td className={`${tdLeft} border-r border-[var(--gridline)]`}>納税・賞与の準備額（推計）</td>
                     {/* 準備額は両列に共通の1つの額なので、預金総合計と当座・普通預金の2列にまたがって1つだけ出す */}
                     <td colSpan={2} className={tdCenter}>
                       {r.reserve === null ? <span className="text-[var(--text-muted)]">—</span> : r.reserve.toLocaleString("ja-JP")}
@@ -155,7 +156,7 @@ export function FundSummarySection({
       <NoteList
         items={[
           "単位：円。預金総合計は現金を含みません。短期借入控除はfreeeの短期借入金（当座貸越）の月末残高で、経理資料の「担保」と同じ意味かは確認していません。",
-          "準備額は、発生済みで未納付の消費税と、冬季賞与の見込額の積立分です（支払見込額とは別の計算）。計算式・根拠・算入していない支払・ケース比較は財務・資金繰りタブにあります。",
+          "準備額は推計です。発生済みで未納付の消費税と、次回賞与の見込額の積立分です（支払見込額とは別の計算）。計算式・根拠・算入していない支払・ケース比較は財務・資金繰りタブにあります。",
         ]}
       />
     </section>
@@ -235,7 +236,7 @@ export function FundSummaryDetailSection({
           ]}
         />
       </DetailsBox>
-      <DetailsBox summary="納税・賞与の準備額の計算方法と仮定">
+      <DetailsBox summary="納税・賞与の準備額（推計）の計算方法と仮定">
         <NoteList items={reserve?.assumptions ?? ["準備額が記録に無いため表示していません"]} />
       </DetailsBox>
       <DetailsBox summary="予測のケース比較・月中の最低残高">

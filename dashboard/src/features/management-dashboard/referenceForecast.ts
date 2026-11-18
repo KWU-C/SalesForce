@@ -1,9 +1,9 @@
 /**
  * 資金・損益の参考予測(DEVのみ、2026-11-17)。
  *
- * 計算はローカルの scripts/reference-forecast(freee・Salesforceの取得データから日別の出来事を積み上げる)で行い、
- * 結果の集計だけを referenceForecasts に1件ずつ追加保存する(既存の記録は上書きしない)。画面は最新の1件を表示するだけで、
- * ここでは計算しない。取引先名・個人名・口座番号は持たない。
+ * 計算はローカルの scripts/reference-forecast(Python)か、DEVの画面の再計算(referenceForecastEngine、2026-11-18)で行い、
+ * 結果の集計だけを referenceForecasts に1件ずつ追加保存する(既存の記録は上書きしない。月末後に予測と実績を照合できるよう過去の記録は残す)。
+ * 画面は最新の1件を表示する。取引先名・個人名・口座番号は持たない。
  *
  * 表示の方針(ユーザー確定、2026-11-17):
  * - 資金は標準・慎重・年末入金が翌年へずれるケース。ケースの違いは条件の比較で、予測誤差の範囲ではない
@@ -67,6 +67,8 @@ export interface ReferenceForecastRecord {
       excludedFromBulk: { case: string; month: string; class: string; amount: number }[];
       bulkReference: { date: string; bulk: number; byClass: Record<string, number>; bulkClassesTotal: number }[];
       payrollDecember: { count: number; fixed: number; transfer: number; expense: number; calculatedAt: string; workedZero: number } | null;
+      /** 推計に使った過去明細からの集計・ケースごとの仮定(2026-11-18) */
+      adjustments?: Record<string, unknown>;
     };
   };
   matching: {
@@ -84,6 +86,18 @@ export interface ReferenceForecastRecord {
   paymentReserve?: ReferencePaymentReserve;
   /** 資金サマリーの控除額(短期借入)・納税・賞与の準備額。月末ごと(scripts/reference-forecast/month_end_reserve.py、2026-11-17) */
   monthEndReserve?: ReferenceMonthEndReserve;
+  /** 計算の方法(2026-11-18)。devRecompute=DEVの画面の再計算。無ければローカルの手動計算 */
+  computeMode?: "devRecompute";
+  /** 銀行明細の最終日(連携口座の明細がある最後の日)。予測の基準日 */
+  bankSyncedThrough?: string;
+  /** freeeの口座の最終更新日の範囲(銀行口座) */
+  walletableUpdateRange?: { min: string | null; max: string | null };
+  /** 準備額・支払見込額を計算した日時 */
+  reserveComputedAt?: string;
+  /** 損益(pl)を引き継いだ元の記録ID(DEVの再計算では損益を再計算しない) */
+  plCarriedFrom?: string;
+  /** 損益・準備額を引き継いだ元の記録ID(ローカルの再計算、2026-11-18) */
+  carriedFrom?: string;
 }
 
 /**

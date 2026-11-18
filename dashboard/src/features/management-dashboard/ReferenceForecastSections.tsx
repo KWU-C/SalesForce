@@ -1,3 +1,4 @@
+import { ReferenceForecastRecomputeButton } from "./ReferenceForecastRecomputeButton";
 import { SectionBanner } from "./SectionBanner";
 import { forecastComputedAt } from "./fundSummary";
 import {
@@ -53,15 +54,27 @@ export function Badge() {
   );
 }
 
+/** 予測の記録の日時(2026-11-18、ユーザー指定で3つを分けて出す): 銀行明細の最終同期日・予測の計算日時・準備額(推計)の計算日時 */
+export function recordTimes(record: ReferenceForecastRecord) {
+  return {
+    bankSyncedThrough: record.bankSyncedThrough ?? record.baseDate,
+    cashComputedAt: forecastComputedAt(record),
+    reserveComputedAt: record.reserveComputedAt ?? record.monthEndReserve?.fetchedAt ?? null,
+    mode: record.computeMode === "devRecompute" ? "DEVの再計算" : "手動計算（ローカル）",
+  };
+}
+
 function RecordCaption({ record }: { record: ReferenceForecastRecord }) {
+  const t = recordTimes(record);
   return (
-    <div className="flex flex-col gap-0.5 text-xs text-[var(--text-muted)]">
-      <p>
-        {`予測：基準日 ${record.baseDate}／計算 ${formatIsoMinute(forecastComputedAt(record))}（記録 ${record.derivedFrom ?? record.id}）／手動計算のため自動更新なし`}
-      </p>
-      {record.derivedFrom && (
-        <p>{`支払見込・準備額の追加：${formatIsoMinute(record.createdAt)}（記録 ${record.id}）。予測は再計算していません`}</p>
-      )}
+    <div className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
+      <ul className="flex flex-col gap-0.5">
+        <li>{`銀行明細の最終同期日：${t.bankSyncedThrough}（予測の基準日）`}</li>
+        <li>{`予測の計算日時：${formatIsoMinute(t.cashComputedAt)}（${t.mode}、記録 ${record.derivedFrom ?? record.id}）`}</li>
+        <li>{`準備額（推計）の計算日時：${t.reserveComputedAt ? formatIsoMinute(t.reserveComputedAt) : "—"}`}</li>
+      </ul>
+      <p>自動更新はしません。再計算すると新しい記録を追加し、過去の記録は残します（月末後に予測と実績を照合するため）。</p>
+      <ReferenceForecastRecomputeButton />
     </div>
   );
 }
@@ -102,7 +115,7 @@ function CaseBreakdown({ c }: { c: ReferenceCashCase }) {
   );
 }
 
-/** 財務・資金繰りタブ: 資金の参考予測(当座・普通預金、11〜12月) */
+/** 財務・資金繰りタブ: 資金の参考予測(当座・普通預金、基準日の月と翌月) */
 export function ReferenceCashForecastSection({ record }: { record: ReferenceForecastRecord }) {
   const mainCases = MAIN_CASH_CASE_IDS.map((id) => record.cash.cases.find((c) => c.id === id)).filter(
     (c): c is ReferenceCashCase => c !== undefined
@@ -166,7 +179,7 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
       <DetailsBox summary="確認した数値（自社振替・一括振込・給与明細・年末・同日内の最低）">
         <NoteList
           items={[
-            `自社振替（11/1〜16の出金）：振替記録で確認 ${chk.ownTransfers.confirmed ?? 0}件／保留 ${chk.ownTransfers.pending ?? 0}件`,
+            `自社振替（基準日の月の1日〜基準日の出金）：振替記録で確認 ${chk.ownTransfers.confirmed ?? 0}件／保留 ${chk.ownTransfers.pending ?? 0}件`,
             ...chk.bulkReference.map(
               (r) =>
                 `${formatMonthDay(r.date)}の月末一括振込 ${formatManYenInt(r.bulk)}：同日の外注・一般経費の支払 ${formatManYenInt(r.bulkClassesTotal)}`
@@ -177,8 +190,8 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
                   .map((x) => `${x.case} ${x.month} ${x.class} ${formatManYenInt(x.amount)}`)
                   .join("、")}`,
             pay
-              ? `12月の給与明細：${pay.count}件（確定 ${pay.fixed}件、勤怠0日 ${pay.workedZero}件、${pay.calculatedAt}計算）、振込額 ${formatManYenInt(pay.transfer)}、経費精算 ${formatManYenInt(pay.expense)}`
-              : "12月の給与明細：未作成",
+              ? `${months[1] ? monthLabel(months[1]) : "翌月"}の給与明細：${pay.count}件（確定 ${pay.fixed}件、勤怠0日 ${pay.workedZero}件、${pay.calculatedAt}計算）、振込額 ${formatManYenInt(pay.transfer)}、経費精算 ${formatManYenInt(pay.expense)}`
+              : `${months[1] ? monthLabel(months[1]) : "翌月"}の給与明細：未作成`,
             `12/31予定の入金：Salesforce追加 ${formatManYenInt(record.cash.dec31Receipts.sfAdded)}（標準で採用する種類 ${formatManYenInt(record.cash.dec31Receipts.sfAddedStandardKinds)}）／freee未決済 ${formatManYenInt(record.cash.dec31Receipts.freeeUnsettled)}`,
             ...otherCases.map(
               (c) =>

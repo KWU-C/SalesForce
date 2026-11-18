@@ -9,9 +9,9 @@ import { getValidFreeeAccessToken } from "@/repositories/freeeAuthRepository";
  * それ以外を分けて画面に出せるようにする。
  */
 
-const ACCOUNTING_BASE_URL = "https://api.freee.co.jp";
-const HR_BASE_URL = "https://api.freee.co.jp/hr";
-const PAGE_LIMIT = 100;
+export const ACCOUNTING_BASE_URL = "https://api.freee.co.jp";
+export const HR_BASE_URL = "https://api.freee.co.jp/hr";
+export const PAGE_LIMIT = 100;
 /** 1回の一覧取得で読む最大ページ数(想定外の大量データで定時更新が止まらないようにする) */
 const MAX_PAGES = 60;
 
@@ -48,7 +48,7 @@ export interface ForecastClientDeps {
   getToken?: () => Promise<string>;
 }
 
-async function freeeRead<T>(
+export async function freeeRead<T>(
   source: string,
   baseUrl: string,
   path: string,
@@ -64,7 +64,7 @@ async function freeeRead<T>(
   return (await res.json()) as T;
 }
 
-async function readAllPages<T>(source: string, read: (offset: number) => Promise<T[]>): Promise<T[]> {
+export async function readAllPages<T>(source: string, read: (offset: number) => Promise<T[]>): Promise<T[]> {
   const all: T[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const rows = await read(page * PAGE_LIMIT);

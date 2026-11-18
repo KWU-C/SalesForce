@@ -53,7 +53,8 @@ export interface RfInputs {
   /** 賞与の支給実績(前年の同じ月の振替伝票・取引から) */
   bonusHistory: Record<string, { payDate: string | null; gross: number; deductions: number; net: number }>;
   sfProcesses: RfSfProcess[];
-  sfCosts: RfSfCost[];
+  /** 前月の仕入日の原価。読めなかったとき(連携ユーザーに参照権限が無いなど)は null */
+  sfCosts: RfSfCost[] | null;
   reserve: RfReserveInputs;
 }
 

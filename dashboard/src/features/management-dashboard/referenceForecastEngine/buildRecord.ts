@@ -17,7 +17,12 @@ export function buildReferenceForecastRecord(
   const M = base.slice(0, 7);
   const { events, summary } = matchSales(inp.sfProcesses, inp.incomeDeals, inp.partners, base, `${addMonths(M, -1)}-01`, `${addMonths(M, -2)}-01`);
   const cash = computeCash(inp, events);
-  const { monthEndReserve, paymentReserve, warnings } = computeReserves(inp);
+  const reserves = computeReserves(inp);
+  const { monthEndReserve, paymentReserve } = reserves;
+  const warnings = [
+    ...reserves.warnings,
+    ...(inp.sfCosts === null ? ["Salesforceの原価(Cost__c)を読めないため、慎重ケースの未登録外注を0円として計算しました(連携ユーザーの参照権限を確認)"] : []),
+  ];
   const stamp = inp.computedAt.slice(0, 19).replace(/[-:]/g, "");
   const prev = opts.previous;
   const plCarriedFrom = prev ? (prev.plCarriedFrom ?? prev.carriedFrom ?? prev.derivedFrom ?? prev.id) : null;

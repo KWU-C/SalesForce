@@ -359,6 +359,7 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
   // ---------- Salesforce原価でfreee未登録の外注(慎重) ----------
   const unregisteredGaichu = (() => {
     const prev = addMonths(M, -1);
+    if (inp.sfCosts === null) return { month: prev, amount: 0, vendors: 0, unavailable: true };
     const sf = new Map<string, number>();
     for (const c of inp.sfCosts) {
       if ((c.purchaseDate ?? "").slice(0, 7) !== prev) continue;
@@ -380,7 +381,7 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
         vendors += 1;
       }
     }
-    return { month: prev, amount, vendors };
+    return { month: prev, amount, vendors, unavailable: false };
   })();
 
   // ---------- 統計 ----------
@@ -721,7 +722,7 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
     estimates: [
       `給与：振込日は支給日の${payOffset}営業日前（直近の振込から推定）。振込と明細の差は直近3か月の平均${man(gapStat.mean)}（慎重は最大${man(gapStat.max)}${prevYearGap ? `、前年${monthLabel(N)}の差${man(prevYearGap.gap)}を含む` : ""}）。下書きの明細には直近3か月の経費精算の平均${man(recentExpense)}を加える`,
       `一般経費（月末一括振込の未登録分）：外注以外の平均${man(generalStat.mean)}（慎重は最大${man(generalStat.max)}）−登録済みの一般経費`,
-      `外注（月末）：${monthLabel(M)}は登録済みのみ（慎重はSalesforceの${monthLabel(unregisteredGaichu.month)}の仕入でfreee未登録の外注${man(unregisteredGaichu.amount)}（${unregisteredGaichu.vendors}社）を月末に加え、翌月10日前後の推計から同額を引く）。${monthLabel(N)}は直近3か月の月末期日の外注の平均${man(gaichuMeMean)}−登録済み（慎重は${prevYearBulkTxn ? `前年${monthLabel(N)}の月末一括振込${man(prevYearBulkTxn.amount)}−一般経費の最大` : "最大"}）`,
+      `外注（月末）：${monthLabel(M)}は登録済みのみ（慎重はSalesforceの${monthLabel(unregisteredGaichu.month)}の仕入でfreee未登録の外注${unregisteredGaichu.unavailable ? "（Salesforceの原価を読めないため0円として計算。要確認）" : `${man(unregisteredGaichu.amount)}（${unregisteredGaichu.vendors}社）`}を月末に加え、翌月10日前後の推計から同額を引く）。${monthLabel(N)}は直近3か月の月末期日の外注の平均${man(gaichuMeMean)}−登録済み（慎重は${prevYearBulkTxn ? `前年${monthLabel(N)}の月末一括振込${man(prevYearBulkTxn.amount)}−一般経費の最大` : "最大"}）`,
       `10日前後の取引先への振込：直近3回の1〜16日の振込（前月末分の繰越を除く）の中央値${man(vendorMidMean)}−登録済み`,
       "賞与：賞与明細が確定していればその額、無ければ前年の同じ月の支給実績（慎重は＋10%）",
       ...(sfMoved.length > 0

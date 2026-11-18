@@ -125,9 +125,16 @@ export async function collectReferenceForecastInputs(deps: CollectDeps = {}): Pr
   }>(
     `SELECT Id, phase__c, juchukakudo__c, seikyuubi__c, nyuukin_yoteibi__c, uriage_tax__c, seikyuusakimei__r.Name FROM Process__c WHERE seikyuubi__c >= ${sinceBilled}`
   );
-  const costs = await sf.query<{ shiirebi__c: string | null; zeikomikingaku__c: number | null; shiharaisakimei__r: { Name: string | null } | null }>(
-    `SELECT shiirebi__c, zeikomikingaku__c, shiharaisakimei__r.Name FROM Cost__c WHERE shiirebi__c >= ${addMonths(M, -1)}-01 AND shiirebi__c <= ${lastDayOfMonth(addMonths(M, -1))}`
-  );
+  // 原価(Cost__c)は慎重ケースの未登録外注にだけ使う。読めない(連携ユーザーに参照権限が無いなど)ときは止めずに null にし、注記で知らせる
+  type CostRow = { shiirebi__c: string | null; zeikomikingaku__c: number | null; shiharaisakimei__r: { Name: string | null } | null };
+  let costs: CostRow[] | null = null;
+  try {
+    costs = await sf.query<CostRow>(
+      `SELECT shiirebi__c, zeikomikingaku__c, shiharaisakimei__r.Name FROM Cost__c WHERE shiirebi__c >= ${addMonths(M, -1)}-01 AND shiirebi__c <= ${lastDayOfMonth(addMonths(M, -1))}`
+    );
+  } catch {
+    costs = null;
+  }
   const sfProcesses: RfSfProcess[] = processes.map((r) => ({
     id: r.Id,
     phase: r.phase__c ?? "",
@@ -137,7 +144,7 @@ export async function collectReferenceForecastInputs(deps: CollectDeps = {}): Pr
     amountTaxIncluded: r.uriage_tax__c ?? 0,
     billToName: r.seikyuusakimei__r?.Name ?? "",
   }));
-  const sfCosts: RfSfCost[] = costs.map((r) => ({ purchaseDate: r.shiirebi__c, amountTaxIncluded: r.zeikomikingaku__c ?? 0, vendorName: r.shiharaisakimei__r?.Name ?? "" }));
+  const sfCosts: RfSfCost[] | null = costs === null ? null : costs.map((r) => ({ purchaseDate: r.shiirebi__c, amountTaxIncluded: r.zeikomikingaku__c ?? 0, vendorName: r.shiharaisakimei__r?.Name ?? "" }));
 
   return {
     computedAt,

@@ -11,10 +11,6 @@ function signedYen(value: number): string {
   return value < 0 ? `▲${formatYen(Math.abs(value))}` : formatYen(value);
 }
 
-function changeYen(value: number): string {
-  return `${value < 0 ? "▲" : "＋"}${formatYen(Math.abs(value))}`;
-}
-
 function monthList(months: number[]): string {
   return months.map((m) => `${m}月`).join("・");
 }

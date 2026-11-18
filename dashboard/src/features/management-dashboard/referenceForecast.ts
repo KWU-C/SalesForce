@@ -29,6 +29,8 @@ export interface ReferenceCashMonth {
 export interface ReferenceCashCase {
   id: string;
   label: string;
+  /** 含めるべきだが、データを取得できず含められていない支出(2026-11-18〜。無ければ省略) */
+  missingOutflows?: string[];
   months: ReferenceCashMonth[];
 }
 

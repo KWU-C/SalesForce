@@ -84,10 +84,23 @@ export function formatIsoMinute(iso: string): string {
   return iso.slice(0, 16).replace("T", " ");
 }
 
+/** データを取得できず含められていない支出(慎重ケースの未登録外注など)。0円と区別して表示する */
+function MissingOutflows({ c }: { c: ReferenceCashCase }) {
+  if (!c.missingOutflows?.length) return null;
+  return (
+    <span className="block text-xs font-normal text-[var(--status-serious)]">
+      {`必要な支出を含められていません（金額は実際より多い可能性）：${c.missingOutflows.join("／")}`}
+    </span>
+  );
+}
+
+const missingMark = (c: ReferenceCashCase) => (c.missingOutflows?.length ? "（未取得の支出あり）" : "");
+
 function CaseBreakdown({ c }: { c: ReferenceCashCase }) {
   return (
     <div className="flex flex-col gap-1">
       <SubHeading>{c.label}</SubHeading>
+      <MissingOutflows c={c} />
       {c.months.map((m) => (
         <div key={m.month} className="overflow-x-auto">
           <table className="min-w-full text-xs">
@@ -147,10 +160,14 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
           <tbody>
             {mainCases.map((c) => (
               <tr key={c.id} className="border-b border-[var(--gridline)]">
-                <td className={`${tdLeft} font-medium text-[var(--text-primary)]`}>{c.label}</td>
+                <td className={`${tdLeft.replace("whitespace-nowrap", "whitespace-normal")} font-medium text-[var(--text-primary)]`}>
+                  {c.label}
+                  <MissingOutflows c={c} />
+                </td>
                 {c.months.map((m) => (
                   <td key={`e-${m.month}`} className={`${td} font-semibold`}>
                     {formatManYenInt(m.end)}
+                    {c.missingOutflows?.length ? <span className="text-[var(--status-serious)]">※</span> : null}
                   </td>
                 ))}
                 {c.months.map((m) => (
@@ -195,7 +212,7 @@ export function ReferenceCashForecastSection({ record }: { record: ReferenceFore
             `12/31予定の入金：Salesforce追加 ${formatManYenInt(record.cash.dec31Receipts.sfAdded)}（標準で採用する種類 ${formatManYenInt(record.cash.dec31Receipts.sfAddedStandardKinds)}）／freee未決済 ${formatManYenInt(record.cash.dec31Receipts.freeeUnsettled)}`,
             ...otherCases.map(
               (c) =>
-                `${c.label}：${c.months.map((m) => `${monthLabel(m.month)}末 ${formatManYenInt(m.end)}・日末最低 ${formatManYenInt(m.minEndOfDay.amount)}（${formatMonthDay(m.minEndOfDay.date)}）`).join("／")}`
+                `${c.label}${missingMark(c)}：${c.months.map((m) => `${monthLabel(m.month)}末 ${formatManYenInt(m.end)}・日末最低 ${formatManYenInt(m.minEndOfDay.amount)}（${formatMonthDay(m.minEndOfDay.date)}）`).join("／")}`
             ),
             ...mainCases.map(
               (c) => `${c.label}：同じ日に出金が入金より先に起きた場合の最低 ${c.months.map((m) => `${monthLabel(m.month)} ${formatManYenInt(m.minIntraday)}`).join("／")}`

@@ -91,7 +91,7 @@ const sfSameDay: SfReceiptEvent = { date: "2026-11-30", amount: 700_000, kind: "
 describe("資金の参考予測(DEVの再計算)", () => {
   const out = computeCash(inputs(), [sfSameDay]);
   const std = out.cases.find((c) => c.id === "standard")!;
-  const adj = out.checks.adjustments as { byCase: Record<string, Record<string, unknown>>; generalBulk: unknown; skippedRecurring: unknown[] };
+  const adj = out.checks.adjustments as { byCase: Record<string, Record<string, unknown>>; generalBulk: unknown; skippedRecurring: unknown[]; unregisteredGaichu: unknown };
   const daily = (cat: string, month: string) => out.dailyStandard.filter((e) => e.cat === cat && e.date.startsWith(month));
 
   it("内訳の合計が残高の増減と一致し、主なケースがそろう", () => {
@@ -133,5 +133,19 @@ describe("資金の参考予測(DEVの再計算)", () => {
   it("月末一括振込の一般経費分は直近3か月の平均、下書きの給与明細には経費精算の見込を加える", () => {
     expect(adj.generalBulk).toEqual({ mean: 3_000_000, max: 3_000_000 });
     expect(daily("出金:給与(経費精算の見込)", "2026-12")[0].amount).toBe(-100_000);
+  });
+
+  it("原価を取得できたときは、未登録外注を件数・金額とともに記録する(0件なら0円)", () => {
+    expect(adj.unregisteredGaichu).toMatchObject({ status: "取得", amount: 0, vendors: 0, lines: 0 });
+    expect(out.cases.every((c) => c.missingOutflows === undefined)).toBe(true);
+  });
+
+  it("原価を取得できないときは0円ではなく未取得とし、慎重ケースに含められていない支出として示す", () => {
+    const o = computeCash({ ...inputs(), sfCosts: null }, [sfSameDay]);
+    const a = o.checks.adjustments as { unregisteredGaichu: Record<string, unknown> };
+    expect(a.unregisteredGaichu).toMatchObject({ status: "未取得", amount: null, vendors: null });
+    const missing = Object.fromEntries(o.cases.map((c) => [c.id, c.missingOutflows?.length ?? 0]));
+    expect(missing).toEqual({ standard: 0, cautious: 1, yearEndSlip: 0, cautiousYearEndSlip: 1 });
+    expect(o.notes.estimates.some((t) => t.includes("未取得"))).toBe(true);
   });
 });

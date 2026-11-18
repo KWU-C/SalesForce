@@ -125,7 +125,7 @@ export async function collectReferenceForecastInputs(deps: CollectDeps = {}): Pr
   }>(
     `SELECT Id, phase__c, juchukakudo__c, seikyuubi__c, nyuukin_yoteibi__c, uriage_tax__c, seikyuusakimei__r.Name FROM Process__c WHERE seikyuubi__c >= ${sinceBilled}`
   );
-  // 原価(Cost__c)は慎重ケースの未登録外注にだけ使う。読めない(連携ユーザーに参照権限が無いなど)ときは止めずに null にし、注記で知らせる
+  // 原価(Cost__c)は慎重ケースの未登録外注にだけ使う。読めない(権限不足・取得失敗)ときは止めずに null(未取得。0円ではない)にし、慎重ケースに含められていない支出として示す
   type CostRow = { shiirebi__c: string | null; zeikomikingaku__c: number | null; shiharaisakimei__r: { Name: string | null } | null };
   let costs: CostRow[] | null = null;
   try {

@@ -21,7 +21,7 @@ export function buildReferenceForecastRecord(
   const { monthEndReserve, paymentReserve } = reserves;
   const warnings = [
     ...reserves.warnings,
-    ...(inp.sfCosts === null ? ["Salesforceの原価(Cost__c)を読めないため、慎重ケースの未登録外注を0円として計算しました(連携ユーザーの参照権限を確認)"] : []),
+    ...(inp.sfCosts === null ? ["Salesforceの原価(Cost__c)を取得できなかったため、慎重ケースの未登録外注は「未取得」です。慎重ケースはこの支出を含めていません(連携ユーザーの参照権限・接続を確認)"] : []),
   ];
   const stamp = inp.computedAt.slice(0, 19).replace(/[-:]/g, "");
   const prev = opts.previous;

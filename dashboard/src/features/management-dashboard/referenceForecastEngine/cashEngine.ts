@@ -81,6 +81,8 @@ export interface CashEngineOutput {
   cases: {
     id: CaseId;
     label: string;
+    /** このケースに含めるべきだが、データを取得できず含められていない支出(無ければ省略) */
+    missingOutflows?: string[];
     months: {
       month: string;
       start: number;
@@ -359,12 +361,19 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
   // ---------- Salesforce原価でfreee未登録の外注(慎重) ----------
   const unregisteredGaichu = (() => {
     const prev = addMonths(M, -1);
-    if (inp.sfCosts === null) return { month: prev, amount: 0, vendors: 0, unavailable: true };
+    // 取得できないときは0円ではなく「未取得」。計算上は0円だが、慎重ケースに含められていない支出として表示する
+    if (inp.sfCosts === null) return { month: prev, status: "未取得" as const, amount: null, vendors: null, lines: null, costLines: null, costTotal: null };
     const sf = new Map<string, number>();
+    const sfLines = new Map<string, number>();
+    let costLines = 0;
+    let costTotal = 0;
     for (const c of inp.sfCosts) {
       if ((c.purchaseDate ?? "").slice(0, 7) !== prev) continue;
       const v = normalizeName(c.vendorName);
       sf.set(v, (sf.get(v) ?? 0) + Math.round(c.amountTaxIncluded));
+      sfLines.set(v, (sfLines.get(v) ?? 0) + 1);
+      costLines += 1;
+      costTotal += Math.round(c.amountTaxIncluded);
     }
     const fr = new Map<string, number>();
     for (const d of inp.expenseDeals) {
@@ -374,14 +383,16 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
     }
     let amount = 0;
     let vendors = 0;
+    let lines = 0;
     for (const [v, s] of sf) {
       const f = [...fr.entries()].filter(([k]) => v && (k === v || k.includes(v) || v.includes(k))).reduce((a, [, x]) => a + x, 0);
       if (s > f) {
         amount += s - f;
         vendors += 1;
+        lines += sfLines.get(v) ?? 0;
       }
     }
-    return { month: prev, amount, vendors, unavailable: false };
+    return { month: prev, status: "取得" as const, amount, vendors, lines, costLines, costTotal };
   })();
 
   // ---------- 統計 ----------
@@ -606,7 +617,7 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
 
     // 10日前後の取引先への振込(未登録分)
     const day10 = nextBusinessDay(dayInMonth(month, 10));
-    const gaichuUnreg = k === "慎重" ? unregisteredGaichu.amount : 0;
+    const gaichuUnreg = k === "慎重" ? (unregisteredGaichu.amount ?? 0) : 0;
     if (inWin(day10)) {
       const reg = registered("外注", `${month}-01`, `${month}-16`) + registered("一般経費", `${month}-01`, `${month}-16`);
       const less = !isM ? gaichuUnreg : 0;
@@ -630,7 +641,10 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
       let gaiBasis = "";
       if (isM) {
         gaiEst = gaichuUnreg + regGai;
-        gaiBasis = "仮定(慎重: Salesforceの前月の仕入でfreee未登録の外注を月末に支払う)";
+        gaiBasis =
+          k === "慎重" && unregisteredGaichu.status === "未取得"
+            ? "未取得(慎重: Salesforceの原価を取得できず、前月の仕入でfreee未登録の外注を含めていない。登録済みの外注のみ)"
+            : "仮定(慎重: Salesforceの前月の仕入でfreee未登録の外注を月末に支払う)";
       } else if (k === "慎重" && prevYearBulkTxn) {
         gaiEst = prevYearBulkTxn.amount - generalStat.max;
         gaiBasis = `推計(慎重: 前年${monthLabel(month)}の月末一括振込−一般経費の最大を外注分とし、登録済みの外注を差し引く)`;
@@ -687,7 +701,11 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
       start = bal;
       return out;
     });
-    return { id: caseId, label: CASES[caseId].label, months };
+    const missingOutflows =
+      CASES[caseId].assume === "慎重" && unregisteredGaichu.status === "未取得"
+        ? [`未登録外注（Salesforceの${monthLabel(unregisteredGaichu.month)}の仕入でfreee未登録の外注）：未取得のため含めていない`]
+        : [];
+    return { id: caseId, label: CASES[caseId].label, ...(missingOutflows.length > 0 ? { missingOutflows } : {}), months };
   });
 
   const stdIncome = incomeFor("standard");
@@ -722,7 +740,7 @@ export function computeCash(inp: RfInputs, sfEvents: SfReceiptEvent[]): CashEngi
     estimates: [
       `給与：振込日は支給日の${payOffset}営業日前（直近の振込から推定）。振込と明細の差は直近3か月の平均${man(gapStat.mean)}（慎重は最大${man(gapStat.max)}${prevYearGap ? `、前年${monthLabel(N)}の差${man(prevYearGap.gap)}を含む` : ""}）。下書きの明細には直近3か月の経費精算の平均${man(recentExpense)}を加える`,
       `一般経費（月末一括振込の未登録分）：外注以外の平均${man(generalStat.mean)}（慎重は最大${man(generalStat.max)}）−登録済みの一般経費`,
-      `外注（月末）：${monthLabel(M)}は登録済みのみ（慎重はSalesforceの${monthLabel(unregisteredGaichu.month)}の仕入でfreee未登録の外注${unregisteredGaichu.unavailable ? "（Salesforceの原価を読めないため0円として計算。要確認）" : `${man(unregisteredGaichu.amount)}（${unregisteredGaichu.vendors}社）`}を月末に加え、翌月10日前後の推計から同額を引く）。${monthLabel(N)}は直近3か月の月末期日の外注の平均${man(gaichuMeMean)}−登録済み（慎重は${prevYearBulkTxn ? `前年${monthLabel(N)}の月末一括振込${man(prevYearBulkTxn.amount)}−一般経費の最大` : "最大"}）`,
+      `外注（月末）：${monthLabel(M)}は登録済みのみ（慎重はSalesforceの${monthLabel(unregisteredGaichu.month)}の仕入でfreee未登録の外注${unregisteredGaichu.status === "未取得" ? "（Salesforceの原価を取得できず未取得。慎重ケースはこの支出を含めていない）" : `${man(unregisteredGaichu.amount ?? 0)}（${unregisteredGaichu.vendors}社・原価${unregisteredGaichu.lines}件）`}を月末に加え、翌月10日前後の推計から同額を引く）。${monthLabel(N)}は直近3か月の月末期日の外注の平均${man(gaichuMeMean)}−登録済み（慎重は${prevYearBulkTxn ? `前年${monthLabel(N)}の月末一括振込${man(prevYearBulkTxn.amount)}−一般経費の最大` : "最大"}）`,
       `10日前後の取引先への振込：直近3回の1〜16日の振込（前月末分の繰越を除く）の中央値${man(vendorMidMean)}−登録済み`,
       "賞与：賞与明細が確定していればその額、無ければ前年の同じ月の支給実績（慎重は＋10%）",
       ...(sfMoved.length > 0

@@ -535,6 +535,35 @@ describe("computeJournalCashFlow: 給与・人件費の内訳と指定業務委�
     expect(r.labor).toBe(7_800);
   });
 
+  it("traces a payroll payment to the same-amount accrual line (2026-11-18): 【給与】の摘要でも従業員給与、同額の福利厚生費の行は諸経費、役員と給与の混在は手取りの割合で按分", () => {
+    // 発生仕訳(現金なし)。50期9月からの摘要「【給与】氏名（所属） CR3 ﾌﾘｺﾐ」「【福利厚生】…」の形
+    const accrualCr3 = group(
+      "2026-08-17",
+      [line("[製]給料手当", 4_000), line("福利厚生費", 1_000)],
+      [line("預り金", 900), line("未払金", 3_100, "", "【給与】A（B） CR3"), line("未払金", 1_000, "", "【福利厚生】A（B） CR3")]
+    );
+    // 役員報酬3,000＋給料手当1,000、預り金800 → 手取り3,200(役員2,400・給与800)
+    const accrualMixed = group("2026-08-17", [line("役員報酬", 3_000), line("給料手当", 1_000)], [line("預り金", 800), line("未払金", 1_700, "", "【給与】C"), line("未払金", 1_500, "", "【給与】D")]);
+    const pay = (memo: string, amount: number) => settlement("", amount, "未払金", memo);
+    const r = compute(
+      [pay("【給与】A（B） CR3 ﾌﾘｺﾐ", 3_100), pay("【福利厚生】A（B） CR3 ﾌﾘｺﾐ", 1_000), pay("【給与】C ﾌﾘｺﾐ", 1_700), pay("【給与】D ﾌﾘｺﾐ", 1_500)],
+      { evidenceGroups: [accrualCr3, accrualMixed] }
+    );
+    expect(r.laborDetail.employeeSalary).toBe(3_100 + 800);
+    expect(r.laborDetail.executive).toBe(2_400);
+    expect(r.otherOperating).toBe(1_000);
+    expect(r.unclassified).toBe(0);
+    expect(r.total).toBe(3_100 + 1_000 + 1_700 + 1_500);
+  });
+
+  it("traces a partner payable to the same-amount accrual entry, not the partner's overall mix (借入の元本と利息が別の未払金行)", () => {
+    const principal = group("2026-06-01", [line("長期借入金", 400)], [line("未払金", 400, "銀行A")]);
+    const interest = group("2026-06-01", [line("支払利息", 30)], [line("未払金", 30, "銀行A")]);
+    const r = compute([settlement("銀行A", 400, "未払金"), settlement("銀行A", 30, "未払金")], { evidenceGroups: [principal, interest] });
+    expect(r.financing).toBe(400);
+    expect(r.interest).toBe(30);
+  });
+
   it("separates the bonus payable (発生仕訳の未払金) from the same month's payroll transfers into 従業員賞与, without changing 給与・人件費", () => {
     const bonusAccrual = group(
       "2026-07-07",

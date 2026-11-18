@@ -213,6 +213,8 @@ function makeBucketOf(outflowCategoryOf: (accountName: string) => OutflowCategor
 interface PayableMix {
   weights: Map<OutflowBucket, number>;
   method: "trace" | "memo";
+  /** 補助科目が空欄の未払金を、同額の発生行から辿ったもの */
+  fromUnsubAccrual?: boolean;
 }
 
 function payableKey(account: string, subAccount: string): string {
@@ -251,13 +253,108 @@ function buildPayableEvidence(
 }
 
 /**
+ * 補助科目(取引先)が空欄の未払金の発生行(給与・賞与・社会保険料・給与と一緒に払う福利厚生費など)。
+ * 支払行は同額の発生行を辿り、その発生仕訳の借方科目で区分する(2026-11-18、入出金明細の分類調査)。
+ * 50期9月から給与の摘要が「【給与】氏名（所属） CR3 ﾌﾘｺﾐ」の形に変わり、摘要ルール(部署の接頭辞・【給与】=役員の現金渡し)
+ * では従業員給与が役員に、福利厚生費・CR4・部署なし(役員と給与の混在)が未分類になっていたため。
+ */
+interface UnsubAccrual {
+  date: string;
+  /** 債務科目|補助科目(取引先) */
+  key: string;
+  amount: number;
+  mix: Map<OutflowBucket, number>;
+  used: boolean;
+}
+
+function buildUnsubAccruals(
+  groups: JournalGroup[],
+  bucketOf: (accountName: string, itemName: string, partnerName: string) => OutflowBucket
+): Map<string, UnsubAccrual[]> {
+  const byAmount = new Map<string, UnsubAccrual[]>();
+  for (const group of groups) {
+    if (group.credits.some((l) => l.account === CASH_JOURNAL_ACCOUNT)) continue; // 支払伝票は発生ではない
+    // 補助科目が空欄の未払金に加え、取引先つきの未払金・買掛金も、同額の発生行があればその仕訳の科目で区分する
+    // (取引先全体の科目構成で按分すると、福利厚生費の支払に外注費が混ざるなどの誤りが出るため)
+    const lines = group.credits.filter((l) => PAYABLE_ACCOUNTS.includes(l.account) && l.amount > 0);
+    if (lines.length === 0) continue;
+    // 借方科目ごとの純額(同じ科目の貸方=欠勤控除などは差し引く)
+    const net = new Map<string, { account: string; subAccount: string; amount: number }>();
+    for (const d of group.debits) {
+      if (d.account === CASH_JOURNAL_ACCOUNT || d.account === COMPOUND_PLACEHOLDER_ACCOUNT || PAYABLE_ACCOUNTS.includes(d.account) || d.amount <= 0) continue;
+      const key = `${d.account}|${d.subAccount}`;
+      const cur = net.get(key) ?? { account: d.account, subAccount: d.subAccount, amount: 0 };
+      cur.amount += d.amount;
+      net.set(key, cur);
+    }
+    for (const c of group.credits) {
+      for (const cur of net.values()) if (cur.account === c.account && c.amount > 0) cur.amount -= c.amount;
+    }
+    // 支払(未払金)は源泉所得税・社会保険料(貸方の預り金)を差し引いた手取り。預り金は給与・人件費の科目から按分して差し引く
+    const withheld = group.credits.filter((c) => c.account === "預り金" && c.amount > 0).reduce((s2, c) => s2 + c.amount, 0);
+    const laborNet = [...net.values()].filter((x) => x.amount > 0 && bucketOf(x.account, x.subAccount, "").startsWith(LABOR_PREFIX));
+    const laborTotal = laborNet.reduce((s2, x) => s2 + x.amount, 0);
+    if (withheld > 0 && laborTotal > 0) {
+      const ratio = Math.min(1, withheld / laborTotal);
+      for (const x of laborNet) x.amount = Math.round(x.amount * (1 - ratio));
+    }
+    const remaining = [...net.values()].filter((x) => x.amount > 0);
+    if (remaining.length === 0) continue;
+    // 発生行と同額の借方科目があれば、その科目だけで区分する(例: 【福利厚生】の行＝福利厚生費)。残りの行は残りの科目の構成で按分
+    const exact = new Map<number, (typeof remaining)[number]>();
+    for (const [i, line] of lines.entries()) {
+      const hit = remaining.find((x) => x.amount === line.amount && ![...exact.values()].includes(x));
+      if (hit) exact.set(i, hit);
+    }
+    const rest = remaining.filter((x) => ![...exact.values()].includes(x));
+    for (const [i, line] of lines.entries()) {
+      const hit = exact.get(i);
+      // 区分は債務の取引先名も使う(TCDマザーの判定など)
+      const mix = new Map<OutflowBucket, number>();
+      if (hit) mix.set(bucketOf(hit.account, hit.subAccount, line.subAccount), 1);
+      else for (const x of rest) {
+        const b = bucketOf(x.account, x.subAccount, line.subAccount);
+        mix.set(b, (mix.get(b) ?? 0) + x.amount);
+      }
+      if (mix.size === 0) continue;
+      const key = `${line.account}|${line.subAccount}|${line.amount}`;
+      const list = byAmount.get(key) ?? [];
+      list.push({ date: group.date, key, amount: line.amount, mix, used: false });
+      byAmount.set(key, list);
+    }
+  }
+  return byAmount;
+}
+
+/** 支払日以前(取引先なしは62日、取引先つきは200日以内)で、まだ使っていない同じ債務科目・取引先・同額の発生行のうち最も新しいもの */
+function takeUnsubAccrual(accruals: Map<string, UnsubAccrual[]>, line: JournalLine, date: string): UnsubAccrual | null {
+  const days = line.subAccount === "" ? 62 : 200;
+  const from = new Date(Date.parse(`${date}T00:00:00Z`) - days * 86400000).toISOString().slice(0, 10);
+  const hit = (accruals.get(`${line.account}|${line.subAccount}|${line.amount}`) ?? [])
+    .filter((a) => !a.used && a.date <= date && a.date >= from)
+    .sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+  if (!hit) return null;
+  hit.used = true;
+  return hit;
+}
+
+/**
  * 債務の精算行の区分を決める。優先順位(摘要ルールは補助判定、ユーザー確定 2026-09-19):
  * 1. 取引先(補助科目)があり、その取引先の発生仕訳が範囲内にあれば、その借方科目の構成で按分(仕訳科目による判定)
  * 2. 判定できない場合のみ摘要ルール(社会保険料→税金・社会保険等、給与振込→人件費)
  * 3. どれにも当たらなければnull(呼び出し側が未分類にする)
  * 補助科目が空欄の債務は取引先が特定できず、空欄全体の構成は個別の支払の根拠にならないため使わない。
  */
-function payableMix(line: JournalLine, evidence: Map<string, Map<OutflowBucket, number>>): PayableMix | null {
+function payableMix(
+  line: JournalLine,
+  evidence: Map<string, Map<OutflowBucket, number>>,
+  unsubAccruals: Map<string, UnsubAccrual[]> = new Map(),
+  date = ""
+): PayableMix | null {
+  if (date) {
+    const accrual = takeUnsubAccrual(unsubAccruals, line, date);
+    if (accrual) return { weights: new Map(accrual.mix), method: "trace", fromUnsubAccrual: true };
+  }
   if (line.subAccount !== "") {
     const mix = evidence.get(payableKey(line.account, line.subAccount));
     if (mix && mix.size > 0) return { weights: new Map(mix), method: "trace" };
@@ -337,6 +434,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
   const outflowCategoryOf = buildOutflowCategoryOf(accountItems);
   const bucketOf = makeBucketOf(outflowCategoryOf);
   const evidence = buildPayableEvidence(params.evidenceGroups ?? groups, bucketOf);
+  const unsubAccruals = buildUnsubAccruals(params.evidenceGroups ?? groups, bucketOf);
   const walletableByName = new Map<string, FreeeWalletable>();
   for (const w of walletables) if (w.name) walletableByName.set(w.name, w);
 
@@ -447,6 +545,8 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
   const unclassifiedOutflowItems: UnclassifiedOutflowItem[] = [];
   let payableTraced = 0;
   let payableByMemoRule = 0;
+  /** 発生行から辿って従業員賞与に区分した額(下の賞与の分離で二重に付け替えない) */
+  let tracedUnsubBonus = 0;
   let ledgerOnlyTotal = 0;
   for (const w of works) {
     if (w.cashOutBoundary <= 0 || w.isAtSourceDeduction) continue;
@@ -462,7 +562,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
       if (debit.account === CASH_JOURNAL_ACCOUNT || debit.account === COMPOUND_PLACEHOLDER_ACCOUNT) continue;
       if (debit.amount <= 0) continue;
       if (PAYABLE_ACCOUNTS.includes(debit.account)) {
-        const mix = payableMix(debit, evidence);
+        const mix = payableMix(debit, evidence, unsubAccruals, w.group.date);
         if (mix === null) {
           addWeight("unclassified", debit.amount);
           unclassifiedReasons.push({ weight: debit.amount, item: { reason: "payable_untraceable", account: debit.account } });
@@ -478,6 +578,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
             item: { reason: "balance_sheet_account", account: debit.account },
           });
         }
+        if (mix.fromUnsubAccrual) tracedUnsubBonus += (debit.amount * (mix.weights.get(`${LABOR_PREFIX}employeeBonus`) ?? 0)) / mixTotal;
         if (mix.method === "trace") payableTraced += debit.amount;
         else payableByMemoRule += debit.amount;
       } else {
@@ -658,7 +759,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
   }
   const salaryKey = `${LABOR_PREFIX}employeeSalary`;
   const bonusKey = `${LABOR_PREFIX}employeeBonus`;
-  const shift = Math.min(employeeBonusPayable, Math.max(0, laborBuckets.get(salaryKey) ?? 0));
+  const shift = Math.min(Math.max(0, Math.round(employeeBonusPayable - tracedUnsubBonus)), Math.max(0, laborBuckets.get(salaryKey) ?? 0));
   if (shift > 0) {
     laborBuckets.set(salaryKey, (laborBuckets.get(salaryKey) ?? 0) - shift);
     laborBuckets.set(bonusKey, (laborBuckets.get(bonusKey) ?? 0) + shift);

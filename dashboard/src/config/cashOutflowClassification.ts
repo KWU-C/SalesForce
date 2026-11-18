@@ -36,7 +36,7 @@ export const OTHER_OUTFLOW_PL_CATEGORIES: readonly string[] = [
 /** 社会保険料の銀行引落(摘要に含まれる銀行記載/文言) → 税金・社会保険等 */
 export const SOCIAL_INSURANCE_MEMO_TOKENS: readonly string[] = ["ｼﾔｶｲﾎｹﾝﾘﾖｳ", "社会保険料"];
 /** 給与の振込(部門タグで始まり銀行記載「ﾌﾘｺﾐ」を含む摘要、または「【給与】」を含む摘要) → 人件費 */
-export const PAYROLL_MEMO_DEPARTMENT_PREFIXES: readonly string[] = ["CR1 ", "CR2 ", "CR3 ", "取締役 ", "管理部 "];
+export const PAYROLL_MEMO_DEPARTMENT_PREFIXES: readonly string[] = ["CR1 ", "CR2 ", "CR3 ", "CR4 ", "取締役 ", "管理部 "];
 export const PAYROLL_MEMO_TRANSFER_TOKEN = "ﾌﾘｺﾐ";
 export const PAYROLL_MEMO_LABEL_TOKEN = "【給与】";
 

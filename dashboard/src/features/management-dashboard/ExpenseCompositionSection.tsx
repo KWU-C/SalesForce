@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { useCssVar } from "@/utils/useCssVar";
-import { formatPercent, formatYen } from "@/utils/format";
+import { formatPercent } from "@/utils/format";
 import { OPERATING_CATEGORIES, FINANCING_AND_RESERVE_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
 import { SectionBanner } from "./SectionBanner";
@@ -18,7 +19,18 @@ const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   assetTransfer: "積立・資産移動",
 };
 
-interface ExpenseCompositionSectionProps {
+/** 円・3桁区切り、マイナスは▲(2026-11-18) */
+function yen(v: number): string {
+  const r = Math.round(v);
+  return `${r < 0 ? "▲" : ""}${Math.abs(r).toLocaleString("ja-JP")}円`;
+}
+
+/** 支出構成で選べる月(2026-11-18: 最新の終了月を初期表示、当月は途中と明記) */
+export interface ExpenseCompositionMonth {
+  key: string;
+  label: string;
+  /** 当月(途中の帳簿値) */
+  inProgress: boolean;
   expenseByCategory: Record<ExpenseCategory, number>;
   /** 外部支出総額(振替除く)。比率の分母 */
   externalExpenseTotal: number;
@@ -42,7 +54,7 @@ function CompositionTooltip({ active, payload }: { active?: boolean; payload?: P
         <span className="text-[var(--text-secondary)]">{entry.name}</span>
       </div>
       <p className="mt-1 font-medium tabular-nums text-[var(--text-primary)]">
-        {typeof entry.value === "number" ? formatYen(entry.value) : entry.value}
+        {typeof entry.value === "number" ? yen(entry.value) : entry.value}
       </p>
     </div>
   );
@@ -65,10 +77,10 @@ function CategoryRow({
         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
         <span className="text-[var(--text-secondary)]">{CATEGORY_LABEL[category]}</span>
       </div>
-      <div className="text-right">
-        <span className="font-medium tabular-nums text-[var(--text-primary)]">{formatYen(amount)}</span>
-        <span className="ml-2 tabular-nums text-[var(--text-muted)]">
-          {total > 0 ? formatPercent((amount / total) * 100) : "—"}
+      <div className="whitespace-nowrap text-right">
+        <span className="font-medium tabular-nums text-[var(--text-primary)]">{yen(amount)}</span>
+        <span className="ml-2 tabular-nums text-[var(--text-secondary)]">
+          {total > 0 ? `（${formatPercent((amount / total) * 100)}）` : "（—）"}
         </span>
       </div>
     </div>
@@ -83,11 +95,10 @@ function CategoryRow({
  * 借入返済・積立資産移動は通常の営業コストと意味が異なるため、「財務・将来準備」として
  * 「通常運営」と見た目上も区別する(ユーザー確定)。
  */
-export function ExpenseCompositionSection({
-  expenseByCategory,
-  externalExpenseTotal,
-  unclassified,
-}: ExpenseCompositionSectionProps) {
+export function ExpenseCompositionSection({ months, defaultKey }: { months: ExpenseCompositionMonth[]; defaultKey: string }) {
+  const [selectedKey, setSelectedKey] = useState(defaultKey);
+  const selected = months.find((m) => m.key === selectedKey) ?? months[0];
+  const { expenseByCategory, externalExpenseTotal, unclassified } = selected;
   const operatingColor1 = useCssVar("--series-category-1", "#00b5be");
   const operatingColor2 = useCssVar("--series-category-2", "#a892f4");
   const operatingColor3 = useCssVar("--series-category-3", "#416e29");
@@ -119,6 +130,27 @@ export function ExpenseCompositionSection({
   return (
     <div className="flex flex-col gap-2">
       <SectionBanner>支出構成</SectionBanner>
+      <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--text-secondary)]">
+        <label htmlFor="expense-composition-month">対象月</label>
+        <select
+          id="expense-composition-month"
+          value={selected.key}
+          onChange={(e) => setSelectedKey(e.target.value)}
+          className="rounded border border-[var(--border-hairline)] bg-[var(--surface-1)] px-2 py-1 text-sm text-[var(--text-primary)]"
+        >
+          {months.map((m) => (
+            <option key={m.key} value={m.key}>
+              {m.inProgress ? `${m.label}（当月・途中）` : m.label}
+            </option>
+          ))}
+        </select>
+        <span>{`外部支出合計 ${yen(externalExpenseTotal)}。比率は外部支出合計に対する割合。`}</span>
+      </div>
+      {selected.inProgress && (
+        <p className="text-sm text-[var(--status-serious)]">
+          当月は途中の値です（freeeに登録済みの取引まで）。給与など月の後半に払う支出がまだ入っていないことがあります。
+        </p>
+      )}
       <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-1)] p-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <div className="flex shrink-0 justify-center">
@@ -181,10 +213,10 @@ export function ExpenseCompositionSection({
                     <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: unclassifiedColor }} />
                     <span className="text-[var(--text-secondary)]">判定できない出金</span>
                   </div>
-                  <div className="text-right">
-                    <span className="font-medium tabular-nums text-[var(--text-primary)]">{formatYen(unclassified)}</span>
-                    <span className="ml-2 tabular-nums text-[var(--text-muted)]">
-                      {externalExpenseTotal > 0 ? formatPercent((unclassified / externalExpenseTotal) * 100) : "—"}
+                  <div className="whitespace-nowrap text-right">
+                    <span className="font-medium tabular-nums text-[var(--text-primary)]">{yen(unclassified)}</span>
+                    <span className="ml-2 tabular-nums text-[var(--text-secondary)]">
+                      {externalExpenseTotal > 0 ? `（${formatPercent((unclassified / externalExpenseTotal) * 100)}）` : "（—）"}
                     </span>
                   </div>
                 </div>

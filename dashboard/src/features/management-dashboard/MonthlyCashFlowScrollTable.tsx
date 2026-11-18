@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { formatYen } from "@/utils/format";
 import { EXTERNAL_CASH_FLOW_CALCULATION_VERSION } from "./externalCashFlow";
 import { OPERATING_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
@@ -40,6 +39,35 @@ export interface MonthColumn {
    * 月次とは別のFirestoreドキュメントを更新する)を表示する(ユーザー確定、2026-09-18)。
    */
   isTermTotal?: boolean;
+  /** 当期累計の列(2026-11-18)。流れは月の合計、残高は月末値。label は「50期累計」、period は「9月–11月」 */
+  cumulative?: { label: string; period: string };
+}
+
+/**
+ * 月の状態(2026-11-18、ユーザー指定)。資金データの取得・照合状況で示す。損益の仕掛品振替の有無は使わない。
+ * - 当月: 途中(登録済み分)
+ * - 月末前に取得した値: 月末前の取得(「この月をfreeeから更新」で取り直す)
+ * - 未分類の入出金が残る: 未分類あり
+ * - 49期固有の証拠付き補完・除外を適用: 帳簿補完あり
+ * - それ以外: 照合済み(未分類なし)
+ */
+export function cashMonthState(col: MonthColumn): { label: string; warn: boolean } | null {
+  const cf = col.cashFlow;
+  if (!cf) return { label: "未取得", warn: true };
+  if (col.cumulative || col.isTermTotal) return null;
+  if (col.isCurrent) return { label: "途中（登録済み分）", warn: true };
+  const monthEnd = Date.UTC(col.calendarYear, col.month, 1) - 9 * 3600 * 1000;
+  if (cf.fetchedAt.getTime() < monthEnd) return { label: "月末前の取得", warn: true };
+  const unclassified = (cf.inflow?.unclassified ?? 0) + (cf.outflow?.unclassified ?? 0);
+  if (unclassified !== 0) return { label: `未分類あり ${formatAmount(unclassified)}`, warn: true };
+  if (cf.status === "provisional") return { label: "帳簿補完あり", warn: false };
+  return { label: "照合済み", warn: false };
+}
+
+/** 円・3桁区切り、マイナスは▲(2026-11-18) */
+export function formatAmount(value: number): string {
+  const v = Math.round(value);
+  return v < 0 ? `▲${Math.abs(v).toLocaleString("ja-JP")}` : v.toLocaleString("ja-JP");
 }
 
 type RowDef =
@@ -287,7 +315,7 @@ const SECTIONS: SectionDef[] = [
  * ユーザー確定、2026-09-21。営業活動〜資金結果の流れとは別の独立した表にする) */
 const CLOSING_ROW: Extract<RowDef, { kind: "value" }> = {
   kind: "value",
-  label: "月末現預金",
+  label: "月末現預金（当月は帳簿残高・登録済み分）",
   finalMetric: true,
   get: (cf) => cf.cashClosing,
   // 月初現預金との差額を金額の下に小さく添える(文言は付けず数値のみ、マイナスの場合は
@@ -307,7 +335,7 @@ function monthColBg(colIndex: number): string {
 }
 
 function formatCell(value: number | null): string {
-  return value === null ? "データ未設定" : formatYen(value);
+  return value === null ? "未取得" : formatAmount(value);
 }
 
 function ValueRow({ row, columns }: { row: Extract<RowDef, { kind: "value" }>; columns: MonthColumn[] }) {
@@ -542,6 +570,10 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
   return (
     <div className="flex flex-col gap-2">
       <SectionBanner>月次資金収支（会社版家計簿）</SectionBanner>
+      <div className="flex flex-col gap-0.5 text-sm text-[var(--text-secondary)]">
+        <p>単位：円。▲はマイナス。「未取得」は値が無いことを示し、0円とは区別しています。</p>
+        <p>月の状態は資金データの取得・照合状況です（途中・月末前の取得・未分類あり・照合済み）。損益の仕掛品振替の有無とは関係ありません。当月の月末現預金は当月末の帳簿残高（登録済み分）で、予測ではありません。</p>
+      </div>
 
       <div className="overflow-x-auto">
         <div className="flex flex-col gap-3">
@@ -556,13 +588,13 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                   </th>
                   {columns.map((col) => (
                     <th
-                      key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : "month"}`}
+                      key={`${col.fiscalYear}-${col.month}-${col.isTermTotal ? "total" : col.cumulative ? "cumulative" : "month"}`}
                       className={`${MONTH_COL_WIDTH} border-b border-[var(--gridline)] px-3 py-2 text-right align-bottom ${
-                        col.isTermTotal ? "bg-[var(--surface-sunken)]" : ""
+                        col.isTermTotal || col.cumulative ? "bg-[var(--surface-sunken)]" : ""
                       }`}
                     >
                       <div className="flex items-center justify-end gap-1 whitespace-nowrap text-sm font-semibold text-[var(--text-primary)]">
-                        {col.calendarYear}年{col.month}月
+                        {col.cumulative ? `${col.cumulative.label}（${col.cumulative.period}）` : `${col.calendarYear}年${col.month}月`}
                         {col.isTermTotal && (
                           <span
                             className="rounded bg-[var(--series-1)] px-1 py-0.5 text-[10px] font-bold text-white"
@@ -576,7 +608,7 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                             当月
                           </span>
                         )}
-                        {col.cashFlow && col.cashFlow.calculationVersion !== EXTERNAL_CASH_FLOW_CALCULATION_VERSION && (
+                        {!col.cumulative && col.cashFlow && col.cashFlow.calculationVersion !== EXTERNAL_CASH_FLOW_CALCULATION_VERSION && (
                           <span
                             className="rounded bg-[var(--status-warning)] px-1 py-0.5 text-[10px] font-bold text-white"
                             title="入金・出金の区分内訳は旧ロジックで保存された値のため未反映です(合計も旧ロジックの値)。「更新」で再計算されます"
@@ -584,22 +616,17 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
                             旧ロジック
                           </span>
                         )}
-                        {!col.isTermTotal && col.cashFlow?.status === "provisional" && (
-                          <span
-                            className="rounded bg-[var(--status-warning)] px-1 py-0.5 text-[10px] font-bold text-white"
-                            title={
-                              (col.cashFlow.inflow?.unclassified ?? 0) !== 0 ||
-                              (col.cashFlow.outflow?.unclassified ?? 0) !== 0
-                                ? "未分類の入金・出金あり(仕訳科目でも摘要ルールでも判定できないため分類していない)"
-                                : "49期固有の証拠付き補完・除外(銀行明細欠落の帳簿補完、帳簿未計上の往復)を適用済み"
-                            }
-                          >
-                            暫定
-                          </span>
-                        )}
                       </div>
+                      {(() => {
+                        const st = cashMonthState(col);
+                        return st ? (
+                          <div className={`mt-0.5 text-xs font-normal ${st.warn ? "text-[var(--status-serious)]" : "text-[var(--text-secondary)]"}`}>{st.label}</div>
+                        ) : col.cumulative ? (
+                          <div className="mt-0.5 text-xs font-normal text-[var(--text-secondary)]">残高は月末値、ほかは月の合計</div>
+                        ) : null;
+                      })()}
                       <div className="mt-1 flex justify-end">
-                        {col.isTermTotal ? (
+                        {col.cumulative ? null : col.isTermTotal ? (
                           <RefreshTermButton term={col.term} />
                         ) : (
                           <RefreshMonthButton fiscalYear={col.fiscalYear} month={col.month} />

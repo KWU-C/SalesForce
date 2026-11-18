@@ -47,7 +47,8 @@ import {
   OverviewLinks,
   OverviewNotice,
 } from "@/features/management-dashboard/ManagementOverview";
-import { ExpenseCompositionSection } from "@/features/management-dashboard/ExpenseCompositionSection";
+import { ExpenseCompositionSection, type ExpenseCompositionMonth } from "@/features/management-dashboard/ExpenseCompositionSection";
+import { sumMonthlyCashFlows } from "@/features/management-dashboard/cashFlowCumulative";
 import { RefreshMonthButton } from "@/features/management-dashboard/RefreshMonthButton";
 import { AccountingConfirmationForm } from "@/features/management-dashboard/AccountingConfirmationForm";
 import type { AccountingConfirmation } from "@/features/management-dashboard/accountingConfirmation";
@@ -354,6 +355,35 @@ export default async function ManagementPage() {
       });
     }
   });
+  // 当期累計の列(2026-11-18、ユーザー指定)。当期の月の流れを合計し、残高は月末値(月初=期首月の月初、月末=当月の月末)
+  const currentTermIdx = monthList.map((m, i) => (m.term === currentTerm ? i : -1)).filter((i) => i >= 0);
+  const currentTermCumulative = sumMonthlyCashFlows(currentTermIdx.map((i) => cashFlowByMonth[i] ?? null));
+  if (currentTermIdx.length > 0) {
+    const firstM = monthList[currentTermIdx[0]].month;
+    cashFlowColumns.push({
+      fiscalYear: freeeFiscalYearForTerm(currentTerm),
+      term: currentTerm,
+      month: currentMonth,
+      calendarYear: calendarYearForTermMonth(currentTerm, currentMonth),
+      isCurrent: false,
+      cumulative: { label: `${currentTerm}期累計`, period: firstM === currentMonth ? `${firstM}月` : `${firstM}月–${currentMonth}月` },
+      cashFlow: currentTermCumulative,
+    });
+  }
+  // 支出構成で選べる月(新しい順)。初期表示は最新の終了月(当月は途中のため)
+  const expenseMonths: ExpenseCompositionMonth[] = monthList
+    .map((m, i) => ({ m, cf: cashFlowByMonth[i] ?? null, isCurrent: i === monthList.length - 1 }))
+    .filter((x): x is { m: (typeof monthList)[number]; cf: NonNullable<typeof x.cf>; isCurrent: boolean } => x.cf !== null)
+    .reverse()
+    .map(({ m, cf, isCurrent }) => ({
+      key: `${m.term}-${m.month}`,
+      label: `${calendarYearForTermMonth(m.term, m.month)}年${m.month}月`,
+      inProgress: isCurrent,
+      expenseByCategory: cf.expenseByCategory,
+      externalExpenseTotal: cf.externalExpenseTotal,
+      unclassified: cf.outflow?.unclassified,
+    }));
+  const expenseDefaultKey = (expenseMonths.find((x) => !x.inProgress) ?? expenseMonths[0])?.key ?? "";
   const currentCashFlow = cashFlowByMonth[cashFlowByMonth.length - 1] ?? null;
   // 「最終更新」表示は接続(トークン)更新時刻ではなく、当月分データが実際にfreeeから
   // 取得された時刻を示す(ユーザー確定、2026-09-18)。当月分は4スナップショットとも
@@ -560,7 +590,7 @@ export default async function ManagementPage() {
 
   const cashFlowTab = (
     <>
-      <p className="text-xs text-[var(--text-muted)]">
+      <p className="text-sm text-[var(--text-secondary)]">
         {"※ このタブの月次資金収支・支出構成は入出金ベース（現金の動き）です。「業績・採算」タブは発生主義の損益ベースのため、金額は一致しません。"}
       </p>
       {cashFlowError && (
@@ -570,13 +600,7 @@ export default async function ManagementPage() {
         </p>
       )}
       <MonthlyCashFlowScrollTable columns={cashFlowColumns} />
-      {currentCashFlow && (
-        <ExpenseCompositionSection
-          expenseByCategory={currentCashFlow.expenseByCategory}
-          unclassified={currentCashFlow.outflow?.unclassified}
-          externalExpenseTotal={currentCashFlow.externalExpenseTotal}
-        />
-      )}
+      {expenseMonths.length > 0 && <ExpenseCompositionSection months={expenseMonths} defaultKey={expenseDefaultKey} />}
     </>
   );
 

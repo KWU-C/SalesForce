@@ -101,7 +101,7 @@ describe("MonthlyCashFlowScrollTable rows", () => {
   it("月初現預金・月末現預金は見出しを持たない単独ペアで、月末現預金が最終到達点(finalMetric)", () => {
     expect(OPENING_ROW.label).toBe("月初現預金");
     expect(OPENING_ROW.get(cf)).toBe(cf.cashOpening);
-    expect(CLOSING_ROW.label).toBe("月末現預金");
+    expect(CLOSING_ROW.label).toBe("月末現預金（当月は帳簿残高・登録済み分）");
     expect(CLOSING_ROW.get(cf)).toBe(cf.cashClosing);
     expect(CLOSING_ROW.finalMetric).toBe(true);
   });
@@ -181,7 +181,7 @@ describe("MonthlyCashFlowScrollTable rows", () => {
     expect(getByLabel(rows, "当月現金増減")(cf)).toBe(cf.cashChange);
     // 月末現預金は表全体の最終到達点として月初現預金の直下へ移した(CLOSING_ROW)ため、
     // 資金結果の行一覧には含まれない(ユーザー確定、2026-09-21)
-    expect(rows.some((r) => r.kind === "value" && r.label === "月末現預金")).toBe(false);
+    expect(rows.some((r) => r.kind === "value" && r.label.startsWith("月末現預金"))).toBe(false);
   });
 
   it("キャッシュイン合計・キャッシュアウト合計は中項目としてインデントし、当月現金増減はインデントしない", () => {

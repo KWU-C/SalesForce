@@ -1,3 +1,4 @@
+import { isDevDeployment } from "@/config/deployEnvironment";
 import { ReferenceForecastRecomputeButton } from "./ReferenceForecastRecomputeButton";
 import { SectionBanner } from "./SectionBanner";
 import { forecastComputedAt } from "./fundSummary";
@@ -50,7 +51,7 @@ function monthLabel(month: string): string {
 
 export function Badge() {
   return (
-    <span className="rounded bg-white/20 px-2 py-0.5 text-xs font-medium text-white">DEV・参考</span>
+    <span className="rounded bg-white/20 px-2 py-0.5 text-xs font-medium text-white">{isDevDeployment() ? "DEV・参考" : "参考"}</span>
   );
 }
 
@@ -60,7 +61,7 @@ export function recordTimes(record: ReferenceForecastRecord) {
     bankSyncedThrough: record.bankSyncedThrough ?? record.baseDate,
     cashComputedAt: forecastComputedAt(record),
     reserveComputedAt: record.reserveComputedAt ?? record.monthEndReserve?.fetchedAt ?? null,
-    mode: record.computeMode === "devRecompute" ? "DEVの再計算" : "手動計算（ローカル）",
+    mode: computeModeLabel(record),
   };
 }
 
@@ -76,6 +77,31 @@ function RecordCaption({ record }: { record: ReferenceForecastRecord }) {
       <p>自動更新はしません。再計算すると新しい記録を追加し、過去の記録は残します（月末後に予測と実績を照合するため）。</p>
       <ReferenceForecastRecomputeButton />
     </div>
+  );
+}
+
+/** 予測を計算した方法の表示名(2026-11-19、本番の再計算を追加) */
+export function computeModeLabel(record: ReferenceForecastRecord): string {
+  if (record.computeMode === "prodRecompute") return "本番の再計算";
+  if (record.computeMode === "devRecompute") return "DEVの再計算";
+  return "手動計算（ローカル）";
+}
+
+/**
+ * 参考予測の記録がまだ無いとき(本番の最初など)の表示。再計算ボタンだけを出す(2026-11-19)。
+ * 他の環境の記録は移さず、このデータベースのfreee・Salesforceのデータから新しく計算する
+ */
+export function ReferenceForecastEmptySection() {
+  return (
+    <section className="flex flex-col gap-3" aria-labelledby="reference-cash-empty">
+      <SectionBanner right={<Badge />}>
+        <span id="reference-cash-empty">資金の参考予測</span>
+      </SectionBanner>
+      <p className="text-sm text-[var(--text-secondary)]">
+        まだ計算した記録がありません。再計算すると、freee・Salesforceの最新データで資金予測・準備額・支払見込額を計算し、記録として保存します（自動更新はしません）。
+      </p>
+      <ReferenceForecastRecomputeButton />
+    </section>
   );
 }
 
@@ -300,6 +326,19 @@ export function ReferencePlSection({ record }: { record: ReferenceForecastRecord
   const t = plTimes(record);
   const months = scenarios[0]?.months.map((m) => m.month) ?? [];
   const plLimits = record.notes.limits.filter((t) => t.includes("損益") || t.includes("PDF"));
+  if (scenarios.length === 0) {
+    // 損益の参考試算はローカルの手動計算で作る。画面の再計算では作らないため、引き継ぐ記録が無ければ未計算(2026-11-19)
+    return (
+      <section className="flex flex-col gap-3" aria-labelledby="reference-pl">
+        <SectionBanner right={<Badge />}>
+          <span id="reference-pl">損益の参考試算（仮定別、9〜12月の経常利益）</span>
+        </SectionBanner>
+        <p className="text-sm text-[var(--text-secondary)]">
+          {`未計算です（記録 ${record.id}）。損益の参考試算はローカルの手動計算で作り、資金の参考予測の再計算では作りません。`}
+        </p>
+      </section>
+    );
+  }
   return (
     <section className="flex flex-col gap-3" aria-labelledby="reference-pl">
       <SectionBanner right={<Badge />}>

@@ -1,5 +1,5 @@
 import { getFirestoreClient } from "@/services/firestore/firestoreClient";
-import { resolveFirestoreDatabaseId } from "@/services/firestore/databaseId";
+import { PRODUCTION_DATABASE_ID, resolveFirestoreDatabaseId } from "@/services/firestore/databaseId";
 import { assertProductionDataWritable, DEV_DATABASE_ID } from "@/services/firestore/productionDataWriteGuard";
 import {
   isReferenceForecastEnabled,
@@ -8,9 +8,10 @@ import {
 } from "@/features/management-dashboard/referenceForecast";
 
 /**
- * 資金・損益の参考予測の保存先(DEVのみ、2026-11-17)。
+ * 資金・損益の参考予測の保存先(2026-11-17、本番でも使用 2026-11-19)。
  * - referenceForecasts/{基準日}_{作成日時}: 1回の計算＝1件。create で追加し、同じIDがあれば失敗させる(上書きしない)
- * - 書き込めるのは dev のデータベース(dashboard-dev)だけ。本番のデータベースでは読み書きしない
+ * - 書き込めるのは本番(dashboard)とdev(dashboard-dev)だけ。どちらに書けるかは書き込みガード
+ *   (assertProductionDataWritable: 本番のサービス→dashboard、dev2→dashboard-dev)で決まる。DEVの記録は本番へ移さない
  */
 export const REFERENCE_FORECASTS = "referenceForecasts";
 
@@ -38,14 +39,14 @@ export class ReferenceForecastWriteError extends Error {
   }
 }
 
-/** 記録を1件追加する。dev以外のデータベース・形の崩れた記録は書かずに止める。既にあるIDは上書きしない(Firestoreのcreateが失敗する) */
+/** 記録を1件追加する。本番・dev以外のデータベース、実行環境と接続先の組み合わせが許可されていない場合、形の崩れた記録は書かずに止める。既にあるIDは上書きしない(Firestoreのcreateが失敗する) */
 export async function addReferenceForecast(
   doc: ReferenceForecastRecord,
   store: ReferenceForecastStore = createFirestoreStore(),
   databaseId: string = resolveFirestoreDatabaseId()
 ): Promise<void> {
-  if (databaseId !== DEV_DATABASE_ID) {
-    throw new ReferenceForecastWriteError(`参考予測は ${DEV_DATABASE_ID} にだけ保存します(接続先: ${databaseId})`);
+  if (databaseId !== DEV_DATABASE_ID && databaseId !== PRODUCTION_DATABASE_ID) {
+    throw new ReferenceForecastWriteError(`参考予測は ${PRODUCTION_DATABASE_ID}・${DEV_DATABASE_ID} にだけ保存します(接続先: ${databaseId})`);
   }
   assertProductionDataWritable(REFERENCE_FORECASTS);
   const errors = validateReferenceForecastRecord(doc);
@@ -53,7 +54,7 @@ export async function addReferenceForecast(
   await store.create(doc.id, doc);
 }
 
-/** 最新の記録。本番のデータベースでは読まずに null を返す */
+/** 最新の記録。本番・dev以外のデータベースでは読まずに null を返す */
 export async function getLatestReferenceForecast(
   store: ReferenceForecastStore = createFirestoreStore(),
   databaseId: string = resolveFirestoreDatabaseId()

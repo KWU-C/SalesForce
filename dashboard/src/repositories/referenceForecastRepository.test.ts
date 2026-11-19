@@ -65,7 +65,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("参考予測の保存(DEVのみ・上書きしない)", () => {
+describe("参考予測の保存(本番・devのデータベース、上書きしない)", () => {
   it("dashboard-dev には1件ずつ追加し、同じIDは上書きしない", async () => {
     vi.stubEnv("ALLOW_PRODUCTION_DATA_WRITES", "true");
     const { docs, store } = memoryStore();
@@ -76,11 +76,37 @@ describe("参考予測の保存(DEVのみ・上書きしない)", () => {
     expect(docs.get("2026-11-16_20261117T120000")?.createdAt).toBe("2026-11-17T12:00:00+09:00");
   });
 
-  it("本番のデータベースには書かない", async () => {
+  it("本番のサービスは本番のデータベース(dashboard)に保存できる(2026-11-19)", async () => {
+    vi.stubEnv("K_SERVICE", "tcd-dashboard-prod");
+    vi.stubEnv("FIRESTORE_DATABASE_ID", "dashboard");
+    const { docs, store } = memoryStore();
+    await addReferenceForecast(record(), store, "dashboard");
+    expect(docs.size).toBe(1);
+  });
+
+  it("dev2のサービスは本番のデータベースに書けず、本番のサービスはdevのデータベースに書けない(書き込みガード)", async () => {
+    const { store } = memoryStore();
+    vi.stubEnv("K_SERVICE", "tcd-dashboard-dev2");
+    vi.stubEnv("FIRESTORE_DATABASE_ID", "dashboard");
+    await expect(addReferenceForecast(record(), store, "dashboard")).rejects.toThrow();
+    vi.stubEnv("K_SERVICE", "tcd-dashboard-prod");
+    vi.stubEnv("FIRESTORE_DATABASE_ID", "dashboard-dev");
+    await expect(addReferenceForecast(record(), store, "dashboard-dev")).rejects.toThrow();
+    expect(store.create).not.toHaveBeenCalled();
+  });
+
+  it("本番・dev以外のデータベースには書かない", async () => {
     vi.stubEnv("ALLOW_PRODUCTION_DATA_WRITES", "true");
     const { store } = memoryStore();
-    await expect(addReferenceForecast(record(), store, "dashboard")).rejects.toThrow("dashboard-dev にだけ保存します");
+    await expect(addReferenceForecast(record(), store, "other-db")).rejects.toThrow("にだけ保存します");
     expect(store.create).not.toHaveBeenCalled();
+  });
+
+  it("損益の参考試算が空(未計算)の記録も保存できる(本番の最初の記録)", async () => {
+    vi.stubEnv("ALLOW_PRODUCTION_DATA_WRITES", "true");
+    const { docs, store } = memoryStore();
+    await addReferenceForecast(record({ pl: { scenarios: [] } }), store, "dashboard-dev");
+    expect(docs.size).toBe(1);
   });
 
   it("ローカルで書き込みの明示許可が無ければ書かない", async () => {
@@ -98,12 +124,15 @@ describe("参考予測の保存(DEVのみ・上書きしない)", () => {
     expect(store.create).not.toHaveBeenCalled();
   });
 
-  it("本番のデータベースでは最新の記録を読まずにnullを返す", async () => {
+  it("本番・devのデータベースでは自分の記録を読み、それ以外では読まずにnullを返す", async () => {
     const { store } = memoryStore();
-    expect(await getLatestReferenceForecast(store, "dashboard")).toBeNull();
+    expect(await getLatestReferenceForecast(store, "other-db")).toBeNull();
     expect(store.getLatest).not.toHaveBeenCalled();
-    expect(isReferenceForecastEnabled("dashboard")).toBe(false);
+    await getLatestReferenceForecast(store, "dashboard");
+    expect(store.getLatest).toHaveBeenCalledTimes(1);
+    expect(isReferenceForecastEnabled("dashboard")).toBe(true);
     expect(isReferenceForecastEnabled("dashboard-dev")).toBe(true);
+    expect(isReferenceForecastEnabled("other-db")).toBe(false);
   });
 });
 

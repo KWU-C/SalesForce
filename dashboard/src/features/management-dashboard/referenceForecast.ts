@@ -88,8 +88,12 @@ export interface ReferenceForecastRecord {
   paymentReserve?: ReferencePaymentReserve;
   /** 資金サマリーの控除額(短期借入)・納税・賞与の準備額。月末ごと(scripts/reference-forecast/month_end_reserve.py、2026-11-17) */
   monthEndReserve?: ReferenceMonthEndReserve;
-  /** 計算の方法(2026-11-18)。devRecompute=DEVの画面の再計算。無ければローカルの手動計算 */
-  computeMode?: "devRecompute";
+  /** 計算の方法(2026-11-18)。devRecompute=DEVの画面の再計算、prodRecompute=本番の画面の再計算(2026-11-19)。無ければローカルの手動計算 */
+  computeMode?: "devRecompute" | "prodRecompute";
+  /** 計算方法の版(2026-11-19)。engine=参考予測の計算方法、cashFlowActuals=入出金の実績(月次資金収支)の算出版 */
+  methodVersion?: { engine: string; cashFlowActuals: string };
+  /** 計算した実行環境のリビジョン(Cloud RunのK_REVISION、2026-11-19)。codeCommitはGitのコミット */
+  codeRevision?: string;
   /** 銀行明細の最終日(連携口座の明細がある最後の日)。予測の基準日 */
   bankSyncedThrough?: string;
   /** freeeの口座の最終更新日の範囲(銀行口座) */
@@ -180,8 +184,19 @@ export const MAIN_CASH_CASE_IDS = ["standard", "cautious", "yearEndSlip"] as con
 
 /** 参考予測は本番のデータベースでは扱わない(読み書きとも)。DEV(dashboard-dev)とローカル試験だけ */
 export function isReferenceForecastEnabled(databaseId: string = resolveFirestoreDatabaseId()): boolean {
-  return databaseId !== PRODUCTION_DATABASE_ID;
+  // 2026-11-19: 本番(dashboard)でも計算・保存する(ユーザー指示)。書き込みは「実行環境×接続先DB」の書き込みガードで
+  // 本番のサービスは dashboard、dev2 は dashboard-dev にだけ書ける。それ以外の接続先では使わない
+  return databaseId === PRODUCTION_DATABASE_ID || databaseId === REFERENCE_FORECAST_DEV_DATABASE_ID;
 }
+
+/** devのデータベース名(productionDataWriteGuard.DEV_DATABASE_IDと同じ。Firestore SDKに依存させないためここに置く) */
+const REFERENCE_FORECAST_DEV_DATABASE_ID = "dashboard-dev";
+
+/**
+ * 参考予測の計算方法の版(2026-11-19)。資金予測・入金照合・準備額・支払見込額の計算方法を変えたら上げる。
+ * 来月の予実照合で、どの方法で計算した記録かを確かめるために記録に保存する
+ */
+export const REFERENCE_FORECAST_ENGINE_VERSION = "reference-forecast-engine-2026-11-18";
 
 /** 保存前の検査。形が崩れた記録・金額でない値・取引先名らしき項目を持つ記録は保存しない */
 export function validateReferenceForecastRecord(value: unknown): string[] {
@@ -216,7 +231,9 @@ export function validateReferenceForecastRecord(value: unknown): string[] {
     if (!parts.every((v) => Number.isFinite(v) && v >= 0)) errors.push(`準備額 ${m.month} の金額が正の数値ではありません`);
     else if (m.consumptionTax.amount + m.bonus.amount !== m.reserveTotal) errors.push(`準備額 ${m.month} の合計が内訳と一致しません`);
   }
-  if ((r.pl?.scenarios ?? []).length === 0) errors.push("損益の参考試算がありません");
+  // 損益の参考試算はローカルの手動計算(前回の計算表が必要)で、画面の再計算では作らない。本番の最初の記録のように
+  // 引き継ぐ記録が無い場合は空になり、画面では「未計算」と表示する(2026-11-19)
+  if (!Array.isArray(r.pl?.scenarios)) errors.push("損益の参考試算の形式が違います");
   const text = JSON.stringify(value);
   if (/"(partner|partnerName|取引先名|employee_name|employee_display_name|account_number)"/.test(text)) errors.push("取引先名・個人名・口座番号らしき項目があります");
   return errors;

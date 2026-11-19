@@ -64,7 +64,11 @@ import {
   previousFiscalTermMonth,
 } from "@/config/fiscalPeriods";
 import { formatDateTime } from "@/utils/format";
-import { ReferenceCashForecastSection, ReferencePlSection } from "@/features/management-dashboard/ReferenceForecastSections";
+import {
+  ReferenceCashForecastSection,
+  ReferenceForecastEmptySection,
+  ReferencePlSection,
+} from "@/features/management-dashboard/ReferenceForecastSections";
 import type { ReferenceForecastRecord } from "@/features/management-dashboard/referenceForecast";
 import { getLatestReferenceForecast } from "@/repositories/referenceForecastRepository";
 
@@ -276,7 +280,7 @@ export default async function ManagementPage() {
         console.error("[management page] 前々期の月次業績の読み込みに失敗しました");
         twoTermsAgoPerformanceError = true;
       }
-      // 資金・損益の参考予測(DEVのみ。本番のデータベースでは読まずにnull)。読めなくても他の表示は止めない
+      // 資金・損益の参考予測(本番・devとも、それぞれのデータベースの記録。2026-11-19)。読めなくても他の表示は止めない
       try {
         referenceForecast = await getLatestReferenceForecast();
       } catch {
@@ -581,6 +585,7 @@ export default async function ManagementPage() {
   // 最後に残高・借入を対象日別に1つの表へ集約(旧: 資金収支・借入/現預金と借入/借入状況/資金の備え)
   const financeTab = (
     <>
+      {!referenceForecast && <ReferenceForecastEmptySection />}
       {referenceForecast && (
         <div className="flex flex-col gap-6">
           <FundSummaryDetailSection actualRows={fundActualRows} forecast={fundForecast} record={referenceForecast} />

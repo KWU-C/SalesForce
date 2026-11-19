@@ -20,11 +20,12 @@ const post = () => POST(new NextRequest("http://localhost/api/reference-forecast
 const allowed = MANAGEMENT_DASHBOARD_ALLOWED_EMAILS[0];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const m of [verifyIapJwtMock, enabledMock, latestMock, addMock, collectMock, buildMock]) m.mockReset();
 });
 
 describe("POST /api/reference-forecast/recompute", () => {
-  it("本番のデータベースでは404で何も読まない", async () => {
+  it("本番・dev以外のデータベースでは404で何も読まない", async () => {
     enabledMock.mockReturnValue(false);
     expect((await post()).status).toBe(404);
     expect(verifyIapJwtMock).not.toHaveBeenCalled();
@@ -49,6 +50,7 @@ describe("POST /api/reference-forecast/recompute", () => {
   });
 
   it("計算した記録を新しい記録として追加し、前の記録を損益の引き継ぎ元として渡す", async () => {
+    vi.stubEnv("K_SERVICE", "tcd-dashboard-dev2");
     enabledMock.mockReturnValue(true);
     verifyIapJwtMock.mockResolvedValue({ ok: true, email: allowed });
     const previous = { id: "2026-11-16_20261118T104109", createdAt: "2026-11-18T10:41:09+09:00" };
@@ -58,8 +60,27 @@ describe("POST /api/reference-forecast/recompute", () => {
     const res = await post();
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: "2026-11-18_20261118T130000", baseDate: "2026-11-18", warnings: [] });
-    expect(buildMock.mock.calls[0][1]).toMatchObject({ previous, createdBy: `DEVの再計算(${allowed})` });
+    expect(buildMock.mock.calls[0][1]).toMatchObject({ previous, createdBy: `DEVの再計算(${allowed})`, computeMode: "devRecompute" });
     expect(addMock).toHaveBeenCalledWith({ id: "2026-11-18_20261118T130000", baseDate: "2026-11-18" });
+  });
+
+  it("本番では「本番の再計算」として記録し、Gitのコミットとリビジョンを渡す(2026-11-19)", async () => {
+    vi.stubEnv("K_SERVICE", "tcd-dashboard-prod");
+    vi.stubEnv("K_REVISION", "tcd-dashboard-prod-00211-abc");
+    vi.stubEnv("APP_COMMIT_SHA", "0123456789abcdef");
+    enabledMock.mockReturnValue(true);
+    verifyIapJwtMock.mockResolvedValue({ ok: true, email: allowed });
+    latestMock.mockResolvedValue(null);
+    collectMock.mockResolvedValue({ inputs: true });
+    buildMock.mockReturnValue({ record: { id: "2026-11-18_20261119T130000", baseDate: "2026-11-18" }, warnings: [] });
+    expect((await post()).status).toBe(200);
+    expect(buildMock.mock.calls[0][1]).toMatchObject({
+      previous: null,
+      createdBy: `本番の再計算(${allowed})`,
+      computeMode: "prodRecompute",
+      codeCommit: "0123456789abcdef",
+      codeRevision: "tcd-dashboard-prod-00211-abc",
+    });
   });
 
   it("取得に失敗したら500で、記録は追加しない", async () => {

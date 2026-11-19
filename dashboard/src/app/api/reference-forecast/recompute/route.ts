@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { isDevDeployment } from "@/config/deployEnvironment";
 import { isManagementDashboardAuthorized } from "@/config/managementDashboardAccess";
 import { isReferenceForecastEnabled } from "@/features/management-dashboard/referenceForecast";
 import { buildReferenceForecastRecord } from "@/features/management-dashboard/referenceForecastEngine/buildRecord";
@@ -13,9 +14,10 @@ export const dynamic = "force-dynamic";
 const MIN_INTERVAL_MS = 2 * 60 * 1000;
 
 /**
- * 資金・損益の参考予測の再計算(DEVのみ、2026-11-18)。経営タブの閲覧許可リストの人だけが使える。
+ * 資金・損益の参考予測の再計算(DEV 2026-11-18、本番 2026-11-19)。IAPで検証した、経営タブの閲覧許可リストの人だけが使える。
  * freee・Salesforceの最新データで資金予測・入金照合・準備額・支払見込額を計算し、新しい記録として追加する
- * (既存の記録は上書きしない。月末後に予測と実績を照合できるよう過去の記録は残す)。本番のデータベースでは動かない。
+ * (既存の記録は上書きしない。月末後に予測と実績を照合できるよう過去の記録は残す)。保存先は書き込みガードで
+ * 本番のサービス→本番のデータベース、dev2→devのデータベースに限る。
  */
 export async function POST(request: NextRequest) {
   if (!isReferenceForecastEnabled()) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -29,9 +31,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "too_soon", message: "直前に計算した記録があります。2分ほどおいてから再計算してください" }, { status: 409 });
     }
     const inputs = await collectReferenceForecastInputs();
+    const dev = isDevDeployment();
     const { record, warnings } = buildReferenceForecastRecord(inputs, {
-      createdBy: `DEVの再計算(${verification.email})`,
-      codeCommit: process.env.K_REVISION ?? "local",
+      createdBy: `${dev ? "DEV" : "本番"}の再計算(${verification.email})`,
+      codeCommit: process.env.APP_COMMIT_SHA || process.env.K_REVISION || "local",
+      codeRevision: process.env.K_REVISION,
+      computeMode: dev ? "devRecompute" : "prodRecompute",
       previous,
     });
     await addReferenceForecast(record);

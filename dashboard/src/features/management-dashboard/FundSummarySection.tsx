@@ -322,7 +322,7 @@ export function PaymentReserveSection({ record }: { record: ReferenceForecastRec
         <ul className="text-[var(--text-secondary)]">
           <li>{`対象：銀行明細の最終同期日 ${record.bankSyncedThrough ?? record.baseDate}（予測の基準日）`}</li>
           <li>{`支払見込額の計算日時：${formatIsoMinute(record.reserveComputedAt ?? record.createdAt)}／データ取得日時（freee）：${formatIsoMinute(reserve.fetchedAt)}`}</li>
-          <li>{`将来支払控除後に使う月末予測の計算日時：${formatIsoMinute(forecastComputedAt(record))}${record.computeMode === "devRecompute" ? "（DEVの再計算。自動更新なし）" : record.derivedFrom ? "（支払見込額の追加時に予測は再計算していない）" : "（手動計算。自動更新なし）"}`}</li>
+          <li>{`将来支払控除後に使う月末予測の計算日時：${formatIsoMinute(forecastComputedAt(record))}${record.computeMode === "devRecompute" ? "（DEVの再計算。自動更新なし）" : record.computeMode === "prodRecompute" ? "（本番の再計算。自動更新なし）" : record.derivedFrom ? "（支払見込額の追加時に予測は再計算していない）" : "（手動計算。自動更新なし）"}`}</li>
         </ul>
         <p className="text-[var(--text-secondary)]">単位：円。</p>
       </div>

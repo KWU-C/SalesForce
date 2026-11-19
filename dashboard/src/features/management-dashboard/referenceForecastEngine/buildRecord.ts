@@ -1,4 +1,5 @@
-import { REFERENCE_FORECAST_SCHEMA_VERSION, type ReferenceForecastRecord } from "../referenceForecast";
+import { EXTERNAL_CASH_FLOW_CALCULATION_VERSION } from "../externalCashFlow";
+import { REFERENCE_FORECAST_ENGINE_VERSION, REFERENCE_FORECAST_SCHEMA_VERSION, type ReferenceForecastRecord } from "../referenceForecast";
 import { addMonths } from "./calendar";
 import { computeCash } from "./cashEngine";
 import { computeReserves } from "./reserve";
@@ -6,12 +7,18 @@ import { matchSales } from "./salesMatching";
 import type { RfDeal, RfInputs, RfManualJournal } from "./types";
 
 /**
- * DEVの再計算(2026-11-18)。集めた入力から、資金予測・入金照合・準備額・支払見込額を計算して1件の記録にする。
- * 損益(pl)は再計算せず、直前の記録の値を引き継ぐ(plCarriedFrom に元の記録ID)。
+ * 画面の再計算(DEV 2026-11-18、本番 2026-11-19)。集めた入力から、資金予測・入金照合・準備額・支払見込額を計算して1件の記録にする。
+ * 損益(pl)は再計算せず、同じデータベースの直前の記録の値を引き継ぐ(plCarriedFrom に元の記録ID)。直前の記録が無ければ空(未計算)。
  */
 export function buildReferenceForecastRecord(
   inp: RfInputs,
-  opts: { createdBy: string; codeCommit: string; previous: ReferenceForecastRecord | null }
+  opts: {
+    createdBy: string;
+    codeCommit: string;
+    previous: ReferenceForecastRecord | null;
+    computeMode?: "devRecompute" | "prodRecompute";
+    codeRevision?: string;
+  }
 ): { record: ReferenceForecastRecord; warnings: string[] } {
   const base = inp.bankSyncedThrough;
   const M = base.slice(0, 7);
@@ -25,7 +32,8 @@ export function buildReferenceForecastRecord(
   ];
   const stamp = inp.computedAt.slice(0, 19).replace(/[-:]/g, "");
   const prev = opts.previous;
-  const plCarriedFrom = prev ? (prev.plCarriedFrom ?? prev.carriedFrom ?? prev.derivedFrom ?? prev.id) : null;
+  const prevHasPl = !!prev && prev.pl.scenarios.length > 0;
+  const plCarriedFrom = prevHasPl ? (prev.plCarriedFrom ?? prev.carriedFrom ?? prev.derivedFrom ?? prev.id) : null;
   const record: ReferenceForecastRecord = {
     schemaVersion: REFERENCE_FORECAST_SCHEMA_VERSION,
     id: `${base}_${stamp}`,
@@ -43,20 +51,22 @@ export function buildReferenceForecastRecord(
       checks: cash.checks as ReferenceForecastRecord["cash"]["checks"],
     },
     matching: summary,
-    pl: prev?.pl ?? { scenarios: [] },
+    pl: prevHasPl ? prev.pl : { scenarios: [] },
     notes: {
       basis: cash.notes.basis,
       estimates: cash.notes.estimates,
       limits: [
         ...cash.notes.limits,
-        prev
+        plCarriedFrom
           ? `損益の参考試算は再計算していない（記録 ${plCarriedFrom} の値を引き継いでいる）`
-          : "損益の参考試算は再計算していない",
+          : "損益の参考試算は未計算（画面の再計算では作らない。ローカルの手動計算が必要）",
         "準備額・支払見込額は今回の計算方法（2026-11-17）のまま、freeeの最新の値で再計算している",
         ...warnings,
       ],
     },
-    computeMode: "devRecompute",
+    computeMode: opts.computeMode ?? "devRecompute",
+    methodVersion: { engine: REFERENCE_FORECAST_ENGINE_VERSION, cashFlowActuals: EXTERNAL_CASH_FLOW_CALCULATION_VERSION },
+    ...(opts.codeRevision ? { codeRevision: opts.codeRevision } : {}),
     bankSyncedThrough: base,
     walletableUpdateRange: inp.walletableUpdateRange,
     cashComputedAt: inp.computedAt,

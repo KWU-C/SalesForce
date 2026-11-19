@@ -66,7 +66,7 @@ export function cashMonthState(col: MonthColumn): { label: string; warn: boolean
 
 /** 円・3桁区切り、マイナスは▲(2026-11-18) */
 export function formatAmount(value: number): string {
-  const v = Math.round(value);
+  const v = Math.round(value) || 0; // -0 を 0 にする
   return v < 0 ? `▲${Math.abs(v).toLocaleString("ja-JP")}` : v.toLocaleString("ja-JP");
 }
 
@@ -225,7 +225,7 @@ const SECTIONS: SectionDef[] = [
         indent: true,
         inflowDetail: true,
         // v3.4: 借方が有形・無形固定資産の科目の出金(v3.3までは未分類)。営業支出には含めない
-        get: (cf) => (cf.outflow?.fixedAsset === undefined ? null : -cf.outflow.fixedAsset),
+        get: (cf) => (cf.outflow?.fixedAsset === undefined ? null : 0 - cf.outflow.fixedAsset), // 0円で「-0」と出さない
       },
       { kind: "band", label: "その他", bold: true },
       {

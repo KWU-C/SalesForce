@@ -116,7 +116,14 @@ export function FundSummarySection({
                   {`${r.target.month}月`}
                 </th>
                 <td className={`${tdLeft} border-r border-[var(--gridline)]`}>
-                  {`月末残高（${r.kind === "actual" ? "実績" : "予測"}）`}
+                  {r.kind === "actual" ? (
+                    "月末残高（実績）"
+                  ) : (
+                    // 予測であることを目立たせる(2026-11-19、ユーザー指定)。赤は既存の要注意色
+                    <>
+                      月末残高<span className="text-[var(--status-critical)]">（予測）</span>
+                    </>
+                  )}
                 </td>
                 {r.missingReason !== null ? (
                   <td colSpan={4} className={`${td} text-[var(--text-muted)]`}>

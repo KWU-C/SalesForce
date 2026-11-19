@@ -150,6 +150,15 @@ const SECTIONS: SectionDef[] = [
         get: (cf) => (cf.outflow?.laborDetail ? employeeSalarySubtotal(cf.outflow.laborDetail) : null),
       },
       { kind: "value", label: CATEGORY_LABEL.outsourcing, indent: true, get: (cf) => cf.expenseByCategory.outsourcing },
+      {
+        kind: "value",
+        label: "うち推定分類（取引先全体の構成で按分）",
+        indent: true,
+        note: true,
+        inflowDetail: true,
+        // v3.4: カードの引落しなど、同額の発生行が無い債務の精算を取引先の発生仕訳全体の科目構成で按分した額(参考内訳、合計に二重加算しない)
+        get: (cf) => (cf.outflow?.estimated ? (cf.outflow.estimated.byCategory.outsourcing ?? 0) : null),
+      },
       { kind: "value", label: CATEGORY_LABEL.taxSocial, indent: true, get: (cf) => cf.expenseByCategory.taxSocial },
       {
         kind: "value",
@@ -210,6 +219,14 @@ const SECTIONS: SectionDef[] = [
         get: (cf) => cf.inflow?.assetRecovery ?? null,
       },
       { kind: "value", label: CATEGORY_LABEL.assetTransfer, indent: true, get: (cf) => cf.assetTransferCashFlow },
+      {
+        kind: "value",
+        label: "固定資産購入",
+        indent: true,
+        inflowDetail: true,
+        // v3.4: 借方が有形・無形固定資産の科目の出金(v3.3までは未分類)。営業支出には含めない
+        get: (cf) => (cf.outflow?.fixedAsset === undefined ? null : -cf.outflow.fixedAsset),
+      },
       { kind: "band", label: "その他", bold: true },
       {
         kind: "value",
@@ -239,6 +256,14 @@ const SECTIONS: SectionDef[] = [
     title: "参考・調整",
     muted: true,
     rows: [
+      {
+        kind: "value",
+        label: "推定分類の出金（取引先全体の構成で按分） ※各区分に含む",
+        indent: true,
+        note: true,
+        inflowDetail: true,
+        get: (cf) => cf.outflow?.estimated?.total ?? null,
+      },
       {
         kind: "value",
         label: "内部移動（入金） ※合計に含めず",
@@ -573,6 +598,7 @@ export function MonthlyCashFlowScrollTable({ columns }: { columns: MonthColumn[]
       <div className="flex flex-col gap-0.5 text-sm text-[var(--text-secondary)]">
         <p>単位：円。▲はマイナス。「未取得」は値が無いことを示し、0円とは区別しています。</p>
         <p>月の状態は資金データの取得・照合状況です（途中・月末前の取得・未分類あり・照合済み）。損益の仕掛品振替の有無とは関係ありません。当月の月末現預金は当月末の帳簿残高（登録済み分）で、予測ではありません。</p>
+        <p>「推定分類」は、カードの引落しなど同じ金額の発生行が無い未払金・買掛金の支払を、その取引先（カード）の発生仕訳全体の科目構成で按分した額です（個々の利用明細とは対応させていません）。固定資産購入は工具器具備品・ソフトウェアなどの購入で、営業支出には含めません。</p>
       </div>
 
       <div className="overflow-x-auto">

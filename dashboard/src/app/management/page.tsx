@@ -384,6 +384,8 @@ export default async function ManagementPage() {
       expenseByCategory: cf.expenseByCategory,
       externalExpenseTotal: cf.externalExpenseTotal,
       unclassified: cf.outflow?.unclassified,
+      fixedAsset: cf.outflow?.fixedAsset,
+      estimated: cf.outflow?.estimated,
     }));
   const expenseDefaultKey = (expenseMonths.find((x) => !x.inProgress) ?? expenseMonths[0])?.key ?? "";
   const currentCashFlow = cashFlowByMonth[cashFlowByMonth.length - 1] ?? null;

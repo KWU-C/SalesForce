@@ -44,7 +44,7 @@ export function employeeSalarySubtotal(detail: LaborDetail): number {
 
 /**
  * 出金(キャッシュアウト)の区分別内訳。仕訳帳の「現金・預金(集計境界内)の貸方行」を、同じ伝票内の
- * 借方科目で分類した値。total(=外部支出)は9区分の合計。通期は12か月の単純合計
+ * 借方科目で分類した値。total(=外部支出)は10区分(v3.4で固定資産購入を追加)の合計。通期は12か月の単純合計
  * (通期専用の別計算は無い)。
  */
 export interface CashOutflowBreakdown {
@@ -59,9 +59,14 @@ export interface CashOutflowBreakdown {
   financing: number;
   interest: number;
   assetTransfer: number;
+  /**
+   * 固定資産購入(借方が有形固定資産・無形固定資産の科目)。v3.4(2026-11-19)で追加。v3.3より前の保存分には無い。
+   * 営業支出には含めない(財務・資産活動の「資産」)。v3.3までは未分類に入っていた
+   */
+  fixedAsset?: number;
   /** 仕訳科目でも摘要ルールでも判定できない出金(債務の原因科目が辿れない・立替金/仮払金等の残高科目) */
   unclassified: number;
-  /** 上記9区分の合計。これが外部支出(キャッシュアウト合計) */
+  /** 上記10区分の合計。これが外部支出(キャッシュアウト合計) */
   total: number;
   /** 参考(totalに含めない): 自社の現金・預金口座間の資金移動(出金側の額。入金側の内部移動と同額) */
   internalTransfer: number;
@@ -73,9 +78,18 @@ export interface CashOutflowBreakdown {
   atSourceDeductionsExcluded: number;
   /** 参考(totalの内数): 銀行明細フィードが無い期間・口座の外部支出(帳簿補完) */
   ledgerOnly: number;
-  /** 参考: 債務(未払金・買掛金)の精算のうち、原因科目を辿って分類した額/摘要ルールで分類した額(補助判定) */
+  /**
+   * 参考: 債務(未払金・買掛金)の精算のうち、原因科目を辿って分類した額/摘要ルールで分類した額(補助判定)。
+   * v3.4から、payableTracedは同額の発生行から辿れた額だけ(取引先全体の構成で按分した額はestimatedに分ける)
+   */
   payableTraced: number;
   payableByMemoRule: number;
+  /**
+   * 参考(各区分の内数): 推定分類。取引先(補助科目)つきの債務の精算で、同額の発生行が無く、その取引先の発生仕訳全体の
+   * 科目構成で按分した額(カードの引落し・同じ取引先の複数件のまとめ払いなど)。区分別(byCategory)の合計がtotal。
+   * v3.4より前の保存分には無い
+   */
+  estimated?: EstimatedOutflow;
   /** 給与・人件費の内訳(参考表示)。v3.1より前の保存分には無い */
   laborDetail: LaborDetail;
   /**
@@ -87,6 +101,12 @@ export interface CashOutflowBreakdown {
   appliedEvidenceIds: string[];
 }
 
+/** 推定分類(取引先全体の科目構成で按分した債務の精算)の区分別の額 */
+export interface EstimatedOutflow {
+  total: number;
+  byCategory: Partial<Record<OutflowCategory, number>>;
+}
+
 export const EMPTY_OUTFLOW: CashOutflowBreakdown = {
   labor: 0,
   outsourcing: 0,
@@ -96,6 +116,7 @@ export const EMPTY_OUTFLOW: CashOutflowBreakdown = {
   financing: 0,
   interest: 0,
   assetTransfer: 0,
+  fixedAsset: 0,
   unclassified: 0,
   total: 0,
   internalTransfer: 0,
@@ -105,13 +126,14 @@ export const EMPTY_OUTFLOW: CashOutflowBreakdown = {
   ledgerOnly: 0,
   payableTraced: 0,
   payableByMemoRule: 0,
+  estimated: { total: 0, byCategory: {} },
   laborDetail: EMPTY_LABOR_DETAIL,
   tcdMother: 0,
   unclassifiedItems: [],
   appliedEvidenceIds: [],
 };
 
-export type OutflowCategory = ExpenseCategory | "unclassified";
+export type OutflowCategory = ExpenseCategory | "fixedAsset" | "unclassified";
 export const OUTFLOW_CATEGORIES: readonly OutflowCategory[] = [
   "labor",
   "outsourcing",
@@ -121,6 +143,7 @@ export const OUTFLOW_CATEGORIES: readonly OutflowCategory[] = [
   "financing",
   "interest",
   "assetTransfer",
+  "fixedAsset",
   "unclassified",
 ];
 
@@ -136,6 +159,8 @@ export function sumOutflows(outflows: CashOutflowBreakdown[]): CashOutflowBreakd
     financing: sum((o) => o.financing),
     interest: sum((o) => o.interest),
     assetTransfer: sum((o) => o.assetTransfer),
+    // 旧ロジック(v3.4より前)の月が混ざると一部の月だけの合計になるため、全月そろう場合だけ合計する
+    fixedAsset: outflows.every((o) => o.fixedAsset !== undefined) ? sum((o) => o.fixedAsset ?? 0) : undefined,
     unclassified: sum((o) => o.unclassified),
     total: sum((o) => o.total),
     internalTransfer: sum((o) => o.internalTransfer),
@@ -145,12 +170,21 @@ export function sumOutflows(outflows: CashOutflowBreakdown[]): CashOutflowBreakd
     ledgerOnly: sum((o) => o.ledgerOnly),
     payableTraced: sum((o) => o.payableTraced),
     payableByMemoRule: sum((o) => o.payableByMemoRule),
+    estimated: outflows.every((o) => o.estimated !== undefined) ? sumEstimated(outflows.map((o) => o.estimated!)) : undefined,
     laborDetail: sumLaborDetails(outflows.map((o) => o.laborDetail)),
     // 旧ロジック(v3.2より前)の月が混ざると一部の月だけの合計になるため、全月そろう場合だけ合計する
     tcdMother: outflows.every((o) => o.tcdMother !== undefined) ? sum((o) => o.tcdMother ?? 0) : undefined,
     unclassifiedItems: outflows.flatMap((o) => o.unclassifiedItems),
     appliedEvidenceIds: outflows.flatMap((o) => o.appliedEvidenceIds),
   };
+}
+
+function sumEstimated(items: EstimatedOutflow[]): EstimatedOutflow {
+  const byCategory: Partial<Record<OutflowCategory, number>> = {};
+  for (const e of items) {
+    for (const [k, v] of Object.entries(e.byCategory) as [OutflowCategory, number][]) byCategory[k] = (byCategory[k] ?? 0) + v;
+  }
+  return { total: items.reduce((s, e) => s + e.total, 0), byCategory };
 }
 
 export function sumLaborDetails(details: (LaborDetail | undefined)[]): LaborDetail {

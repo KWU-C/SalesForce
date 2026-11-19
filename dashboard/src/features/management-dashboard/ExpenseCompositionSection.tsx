@@ -6,6 +6,7 @@ import { useCssVar } from "@/utils/useCssVar";
 import { formatPercent } from "@/utils/format";
 import { OPERATING_CATEGORIES, FINANCING_AND_RESERVE_CATEGORIES } from "@/config/freeeExpenseClassification";
 import type { ExpenseCategory } from "@/config/freeeExpenseClassification";
+import type { EstimatedOutflow } from "./cashOutflow";
 import { SectionBanner } from "./SectionBanner";
 
 const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
@@ -36,6 +37,10 @@ export interface ExpenseCompositionMonth {
   externalExpenseTotal: number;
   /** 未分類の出金(仕訳科目でも摘要ルールでも判定できないもの)。旧ロジックの保存分では未定義 */
   unclassified?: number;
+  /** 固定資産購入(v3.4)。旧ロジックの保存分では未定義 */
+  fixedAsset?: number;
+  /** 推定分類(取引先全体の科目構成で按分した債務の精算、各区分の内数)。旧ロジックの保存分では未定義 */
+  estimated?: EstimatedOutflow;
 }
 
 interface PieTooltipEntry {
@@ -98,7 +103,7 @@ function CategoryRow({
 export function ExpenseCompositionSection({ months, defaultKey }: { months: ExpenseCompositionMonth[]; defaultKey: string }) {
   const [selectedKey, setSelectedKey] = useState(defaultKey);
   const selected = months.find((m) => m.key === selectedKey) ?? months[0];
-  const { expenseByCategory, externalExpenseTotal, unclassified } = selected;
+  const { expenseByCategory, externalExpenseTotal, unclassified, fixedAsset, estimated } = selected;
   const operatingColor1 = useCssVar("--series-category-1", "#00b5be");
   const operatingColor2 = useCssVar("--series-category-2", "#a892f4");
   const operatingColor3 = useCssVar("--series-category-3", "#416e29");
@@ -108,6 +113,7 @@ export function ExpenseCompositionSection({ months, defaultKey }: { months: Expe
   const financingColor2 = useCssVar("--series-category-5", "#c7ac41");
   const financingColor3 = useCssVar("--border-hairline", "#c9c4b8");
   const unclassifiedColor = useCssVar("--status-warning", "#d9822b");
+  const fixedAssetColor = useCssVar("--series-previous", "#9c9686");
   const surface = useCssVar("--surface-1", "#fcfcfb");
 
   const colorByCategory: Record<ExpenseCategory, string> = {
@@ -124,6 +130,7 @@ export function ExpenseCompositionSection({ months, defaultKey }: { months: Expe
   const allCategories: ExpenseCategory[] = [...OPERATING_CATEGORIES, ...FINANCING_AND_RESERVE_CATEGORIES];
   const pieData = allCategories
     .map((c) => ({ name: CATEGORY_LABEL[c], value: expenseByCategory[c], color: colorByCategory[c] }))
+    .concat(fixedAsset ? [{ name: "固定資産購入", value: fixedAsset, color: fixedAssetColor }] : [])
     .concat(unclassified ? [{ name: "未分類", value: unclassified, color: unclassifiedColor }] : [])
     .filter((d) => d.value > 0);
 
@@ -205,6 +212,21 @@ export function ExpenseCompositionSection({ months, defaultKey }: { months: Expe
               />
             ))}
 
+            {fixedAsset !== undefined && (
+              <div className="flex items-center justify-between gap-3 py-1 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: fixedAssetColor }} />
+                  <span className="text-[var(--text-secondary)]">固定資産購入</span>
+                </div>
+                <div className="whitespace-nowrap text-right">
+                  <span className="font-medium tabular-nums text-[var(--text-primary)]">{yen(fixedAsset)}</span>
+                  <span className="ml-2 tabular-nums text-[var(--text-secondary)]">
+                    {externalExpenseTotal > 0 ? `（${formatPercent((fixedAsset / externalExpenseTotal) * 100)}）` : "（—）"}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {unclassified !== undefined && (
               <>
                 <p className="mb-1 mt-3 text-xs font-medium text-[var(--text-muted)]">未分類</p>
@@ -221,6 +243,12 @@ export function ExpenseCompositionSection({ months, defaultKey }: { months: Expe
                   </div>
                 </div>
               </>
+            )}
+
+            {estimated !== undefined && estimated.total > 0 && (
+              <p className="mt-3 text-xs text-[var(--text-muted)]">
+                {`推定分類 ${yen(estimated.total)}を含みます（うち外注加工費 ${yen(estimated.byCategory.outsourcing ?? 0)}）。カードの引落しなど同じ金額の発生行が無い支払を、その取引先の発生仕訳全体の科目構成で按分した額です。`}
+              </p>
             )}
           </div>
         </div>

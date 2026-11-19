@@ -38,6 +38,9 @@ const ACCOUNT_ITEMS: FreeeAccountItem[] = [
   { id: 20, name: "手形売却損", account_category: "営業外費用" },
   { id: 21, name: "車両費", account_category: "販売管理費" },
   { id: 22, name: "特殊な経費", account_category: "販売管理費" },
+  { id: 23, name: "工具器具備品", account_category: "有形固定資産" },
+  { id: 24, name: "ソフトウェア", account_category: "無形固定資産" },
+  { id: 25, name: "敷金", account_category: "投資その他の資産" },
 ];
 
 const SMBC = "当座預金_三井住友";
@@ -160,8 +163,37 @@ describe("computeJournalCashFlow: 債務(未払金・買掛金)の精算", () =>
 
     expect(r.outsourcing).toBe(800);
     expect(r.otherOperating).toBe(200);
-    expect(r.payableTraced).toBe(1_000);
+    // 同額の発生行が無いため取引先全体の構成で按分した推定分類(v3.4)。payableTracedには入れない
+    expect(r.payableTraced).toBe(0);
     expect(r.payableByMemoRule).toBe(0);
+    expect(r.estimated).toEqual({ total: 1_000, byCategory: { outsourcing: 800, otherOperating: 200 } });
+  });
+
+  it("does not mark a settlement traced to a same-amount accrual line as 推定分類 (v3.4)", () => {
+    const evidence = [accrual("株式会社A", "[製]外注加工費", 800), accrual("株式会社A", "通信費", 200)];
+
+    const r = compute([payment("株式会社A", 800)], { evidenceGroups: evidence });
+
+    expect(r.outsourcing).toBe(800);
+    expect(r.payableTraced).toBe(800);
+    expect(r.estimated).toEqual({ total: 0, byCategory: {} });
+  });
+
+  it("marks a card settlement (bank debit of 未払金[card]) as 推定分類 by the card's purchase mix, counted once at the bank debit (v3.4)", () => {
+    const CARD = "三井住友VISAカード（マスター）";
+    const purchases = [
+      group("2026-08-03", [line("[製]外注加工費", 300)], [line("未払金", 300, CARD)]),
+      group("2026-08-05", [line("通信費", 700)], [line("未払金", 700, CARD)]),
+    ];
+    const debit = group("2026-09-10", [line("未払金", 1_000, CARD)], [cash(SMBC, 1_000)]);
+
+    // カード利用(現金の動きなし)は出金に数えず、銀行引落しの1回だけを数える
+    const r = compute([...purchases, debit], { evidenceGroups: [...purchases, debit] });
+
+    expect(r.total).toBe(1_000);
+    expect(r.outsourcing).toBe(300);
+    expect(r.otherOperating).toBe(700);
+    expect(r.estimated).toEqual({ total: 1_000, byCategory: { outsourcing: 300, otherOperating: 700 } });
   });
 
   it("uses accrual journals outside the target period (evidenceGroups), because settlements pay for earlier months", () => {
@@ -365,6 +397,31 @@ describe("computeJournalCashFlow: 49期固有の参考情報", () => {
   });
 });
 
+describe("computeJournalCashFlow: 固定資産購入(v3.4)", () => {
+  it("puts 有形・無形固定資産 debits into 固定資産購入, not 未分類; other balance-sheet assets (敷金) stay 未分類", () => {
+    const r = compute([
+      group("2026-09-30", [line("工具器具備品", 600)], [cash(SMBC, 600)]),
+      group("2026-09-30", [line("ソフトウェア", 100)], [cash(SMBC, 100)]),
+      group("2026-09-30", [line("敷金", 50)], [cash(SMBC, 50)]),
+    ]);
+
+    expect(r.fixedAsset).toBe(700);
+    expect(r.unclassified).toBe(50);
+    expect(r.total).toBe(750);
+  });
+
+  it("traces a payable settlement whose accrual debit is 工具器具備品 to 固定資産購入", () => {
+    const accrual = group("2026-09-01", [line("工具器具備品", 679)], [line("未払金", 679, "株式会社B")]);
+    const payment = group("2026-09-30", [line("未払金", 679, "株式会社B")], [cash(SMBC, 679)]);
+
+    const r = compute([payment], { evidenceGroups: [accrual, payment] });
+
+    expect(r.fixedAsset).toBe(679);
+    expect(r.unclassified).toBe(0);
+    expect(r.payableTraced).toBe(679);
+  });
+});
+
 describe("sumOutflows", () => {
   it("sums every field so the term total is exactly the sum of its months", () => {
     const a = { ...EMPTY_OUTFLOW, labor: 100, total: 100, internalTransfer: 7, appliedEvidenceIds: ["x"] };
@@ -392,6 +449,20 @@ describe("sumOutflows", () => {
 
     expect(sumOutflows([v32, v32]).tcdMother).toBe(40);
     expect(sumOutflows([v32, legacy]).tcdMother).toBeUndefined();
+  });
+
+  it("sums 固定資産購入 and 推定分類 only when every month has them (v3.4より前の月が混ざるとundefined)", () => {
+    const v34: CashOutflowBreakdown = {
+      ...EMPTY_OUTFLOW,
+      fixedAsset: 10,
+      estimated: { total: 5, byCategory: { outsourcing: 3, otherOperating: 2 } },
+    };
+    const legacy: CashOutflowBreakdown = { ...EMPTY_OUTFLOW, fixedAsset: undefined, estimated: undefined };
+
+    expect(sumOutflows([v34, v34]).fixedAsset).toBe(20);
+    expect(sumOutflows([v34, v34]).estimated).toEqual({ total: 10, byCategory: { outsourcing: 6, otherOperating: 4 } });
+    expect(sumOutflows([v34, legacy]).fixedAsset).toBeUndefined();
+    expect(sumOutflows([v34, legacy]).estimated).toBeUndefined();
   });
 });
 

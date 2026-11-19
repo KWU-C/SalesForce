@@ -21,6 +21,7 @@ import {
   EMPLOYEE_BONUS_ACCOUNTS,
   EXECUTIVE_PAY_ACCOUNTS,
   EXECUTIVE_PAYROLL_MEMO_PREFIXES,
+  FIXED_ASSET_ACCOUNT_CATEGORIES,
   isBankFeedUnavailable,
   isTcdMother,
   OTHER_OUTFLOW_PL_CATEGORIES,
@@ -68,6 +69,7 @@ const OUTFLOW_CATEGORY_KEYS = [
   "financing",
   "interest",
   "assetTransfer",
+  "fixedAsset",
   "unclassified",
 ] as const satisfies readonly OutflowCategory[];
 
@@ -115,7 +117,10 @@ function buildInflowCategoryOf(accountItems: FreeeAccountItem[]): InflowCategory
   };
 }
 
-/** 費用等の借方科目 → 出金区分。区分リストに無い損益科目は「その他」、貸借対照表科目・未知の科目は「未分類」 */
+/**
+ * 費用等の借方科目 → 出金区分。区分リストに無い損益科目は「その他」、有形・無形固定資産の科目は「固定資産購入」(v3.4)、
+ * それ以外の貸借対照表科目・未知の科目は「未分類」
+ */
 function buildOutflowCategoryOf(accountItems: FreeeAccountItem[]) {
   const itemByName = new Map(accountItems.map((i) => [i.name, i]));
   return (accountName: string): OutflowCategory => {
@@ -123,6 +128,7 @@ function buildOutflowCategoryOf(accountItems: FreeeAccountItem[]) {
     if (matched !== null) return matched;
     const item = itemByName.get(accountName);
     if (item && OTHER_OUTFLOW_PL_CATEGORIES.includes(item.account_category ?? "")) return "other";
+    if (item && FIXED_ASSET_ACCOUNT_CATEGORIES.includes(item.account_category ?? "")) return "fixedAsset";
     return "unclassified";
   };
 }
@@ -215,6 +221,11 @@ interface PayableMix {
   method: "trace" | "memo";
   /** 補助科目が空欄の未払金を、同額の発生行から辿ったもの */
   fromUnsubAccrual?: boolean;
+  /**
+   * 推定分類: 同額の発生行が無く、取引先の発生仕訳全体の科目構成で按分したもの(カードの引落しなど、
+   * 複数の利用をまとめて払う支払。個々の支払に対応する発生行を特定していない)
+   */
+  estimated?: boolean;
 }
 
 function payableKey(account: string, subAccount: string): string {
@@ -357,7 +368,7 @@ function payableMix(
   }
   if (line.subAccount !== "") {
     const mix = evidence.get(payableKey(line.account, line.subAccount));
-    if (mix && mix.size > 0) return { weights: new Map(mix), method: "trace" };
+    if (mix && mix.size > 0) return { weights: new Map(mix), method: "trace", estimated: true };
   }
   const memo = line.memo;
   if (SOCIAL_INSURANCE_MEMO_TOKENS.some((t) => memo.includes(t))) {
@@ -545,6 +556,8 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
   const unclassifiedOutflowItems: UnclassifiedOutflowItem[] = [];
   let payableTraced = 0;
   let payableByMemoRule = 0;
+  /** 推定分類(取引先全体の科目構成で按分)の区分別の額(円未満を含む。最後に丸める) */
+  const estimatedByCategory = new Map<OutflowCategory, number>();
   /** 発生行から辿って従業員賞与に区分した額(下の賞与の分離で二重に付け替えない) */
   let tracedUnsubBonus = 0;
   let ledgerOnlyTotal = 0;
@@ -555,6 +568,8 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     if (w.outflowExternal <= 0) continue;
 
     const weights = new Map<OutflowBucket, number>();
+    /** weightsのうち推定分類(取引先全体の構成で按分)に由来する分 */
+    const estimatedWeights = new Map<OutflowBucket, number>();
     const unclassifiedReasons: { weight: number; item: Pick<UnclassifiedOutflowItem, "reason" | "account"> }[] = [];
     const addWeight = (category: OutflowBucket, amount: number) =>
       weights.set(category, (weights.get(category) ?? 0) + amount);
@@ -569,7 +584,10 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
           continue;
         }
         const mixTotal = [...mix.weights.values()].reduce((s, v) => s + v, 0);
-        for (const [category, value] of mix.weights) addWeight(category, (debit.amount * value) / mixTotal);
+        for (const [category, value] of mix.weights) {
+          addWeight(category, (debit.amount * value) / mixTotal);
+          if (mix.estimated) estimatedWeights.set(category, (estimatedWeights.get(category) ?? 0) + (debit.amount * value) / mixTotal);
+        }
         // 取引先の発生仕訳の借方に、立替金など区分できない科目が混じっている場合の未分類分
         const unclassifiedShare = mix.weights.get("unclassified") ?? 0;
         if (unclassifiedShare > 0) {
@@ -579,8 +597,8 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
           });
         }
         if (mix.fromUnsubAccrual) tracedUnsubBonus += (debit.amount * (mix.weights.get(`${LABOR_PREFIX}employeeBonus`) ?? 0)) / mixTotal;
-        if (mix.method === "trace") payableTraced += debit.amount;
-        else payableByMemoRule += debit.amount;
+        if (mix.method === "trace" && !mix.estimated) payableTraced += debit.amount;
+        else if (mix.method === "memo") payableByMemoRule += debit.amount;
       } else {
         const category = bucketOf(debit.account, debit.subAccount, "");
         addWeight(category, debit.amount);
@@ -594,6 +612,14 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
       unclassifiedOutflowItems.push({ date: w.group.date, amount: w.outflowExternal, reason: "no_debit_account", account: "" });
     } else {
       w.outflowAllocation = allocateTwoStage(w.outflowExternal, weights);
+      // 推定分類の額: 各バケットの現金の配分額のうち、推定に由来する重みの割合
+      for (const [bucket, est] of estimatedWeights) {
+        const weight = weights.get(bucket) ?? 0;
+        if (weight <= 0) continue;
+        const amount = ((w.outflowAllocation.get(bucket) ?? 0) * est) / weight;
+        const category = bucketCategory(bucket);
+        estimatedByCategory.set(category, (estimatedByCategory.get(category) ?? 0) + amount);
+      }
       const unclassifiedAmount = w.outflowAllocation.get("unclassified") ?? 0;
       if (unclassifiedAmount !== 0) {
         const main = unclassifiedReasons.sort((a, b) => b.weight - a.weight)[0]?.item ?? {
@@ -727,6 +753,7 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     financing: 0,
     interest: 0,
     assetTransfer: 0,
+    fixedAsset: 0,
     unclassified: 0,
   };
   const laborBuckets = new Map<OutflowBucket, number>();
@@ -777,6 +804,11 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     contractors,
   };
   const outflowTotal = OUTFLOW_CATEGORY_KEYS.reduce((s, k) => s + outflowTotals[k], 0);
+  const estimatedRounded: Partial<Record<OutflowCategory, number>> = {};
+  for (const k of OUTFLOW_CATEGORY_KEYS) {
+    const v = Math.round(estimatedByCategory.get(k) ?? 0);
+    if (v !== 0) estimatedRounded[k] = v;
+  }
   const outflow: CashOutflowBreakdown = {
     ...outflowTotals,
     total: outflowTotal,
@@ -787,6 +819,10 @@ export function computeJournalCashFlow(params: ComputeJournalCashFlowParams): Jo
     ledgerOnly: Math.round(ledgerOnlyTotal),
     payableTraced,
     payableByMemoRule,
+    estimated: {
+      total: Object.values(estimatedRounded).reduce((s, v) => s + (v ?? 0), 0),
+      byCategory: estimatedRounded,
+    },
     laborDetail,
     tcdMother,
     unclassifiedItems: unclassifiedOutflowItems,
